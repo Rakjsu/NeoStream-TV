@@ -6,6 +6,7 @@ import type { LiveStream, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { CategoryMenu } from '../components/CategoryMenu';
 import { AnimatedSearchBar } from '../components/AnimatedSearchBar';
+import { VideoPlayer } from '../components/VideoPlayer';
 import './LiveTV.css';
 
 export function LiveTV() {
@@ -16,6 +17,7 @@ export function LiveTV() {
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedChannel, setSelectedChannel] = useState<LiveStream | null>(null);
+    const [playingChannel, setPlayingChannel] = useState<LiveStream | null>(null);
     const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
     const [visibleCount, setVisibleCount] = useState(24);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -187,6 +189,7 @@ export function LiveTV() {
             const channel = filteredStreams[focusedChannelIndex];
             if (channel) {
                 setSelectedChannel(channel);
+                setPlayingChannel(channel);
             }
         }
     };
@@ -194,10 +197,15 @@ export function LiveTV() {
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
+        enabled: !playingChannel,
     });
 
     const handleImageError = (streamId: number) => {
         setBrokenImages(prev => new Set(prev).add(streamId));
+    };
+
+    const getLivePlaybackUrl = (stream: LiveStream) => {
+        return stream.direct_source || api.getLiveStreamUrl(stream.stream_id);
     };
 
     // Loading State with Animation
@@ -299,7 +307,7 @@ export function LiveTV() {
                             </div>
                         </div>
                         <div className="preview-actions">
-                            <button className="play-button">
+                            <button className="play-button" onClick={() => setPlayingChannel(selectedChannel)}>
                                 ▶ Assistir
                             </button>
                             <button className="info-button">
@@ -354,6 +362,18 @@ export function LiveTV() {
                 <span>OK Selecionar</span>
                 <span>← Voltar</span>
             </div>
+
+            {playingChannel && (
+                <VideoPlayer
+                    src={getLivePlaybackUrl(playingChannel)}
+                    title={playingChannel.name}
+                    poster={playingChannel.stream_icon}
+                    isLive
+                    autoPlay
+                    contentType="live"
+                    onClose={() => setPlayingChannel(null)}
+                />
+            )}
         </div>
     );
 }
