@@ -253,3 +253,8 @@
         margin-left: -44px;
     }
 }
+/* Foco de D-pad (TV) */
+.search-btn.tv-focused {
+    box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.8);
+    transform: scale(1.08);
+}

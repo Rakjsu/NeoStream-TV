@@ -16,6 +16,8 @@ interface UseHlsOptions {
     onError?: () => void;
     onStreamError?: () => void; // For live TV fallback
     autoPlay?: boolean;
+    /** Live usa buffers menores — TVs Tizen antigas têm ~1GB de RAM */
+    isLive?: boolean;
 }
 
 interface UseHlsReturn {
@@ -33,12 +35,14 @@ export function useHls({
     videoRef,
     onError,
     onStreamError,
-    autoPlay = false
+    autoPlay = false,
+    isLive = false
 }: UseHlsOptions): UseHlsReturn {
     const hlsRef = useRef<Hls | null>(null);
     const srcRef = useRef<string>('');
     const onErrorRef = useRef(onError);
     const onStreamErrorRef = useRef(onStreamError);
+    const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Quality state
     const [qualityLevels, setQualityLevels] = useState<QualityLevel[]>([]);
@@ -46,6 +50,10 @@ export function useHls({
     const [isAutoQuality, setIsAutoQuality] = useState(true);
 
     const destroyHlsInstance = useCallback(() => {
+        if (retryTimeoutRef.current) {
+            clearTimeout(retryTimeoutRef.current);
+            retryTimeoutRef.current = null;
+        }
         if (hlsRef.current) {
             hlsRef.current.destroy();
             hlsRef.current = null;
@@ -117,12 +125,14 @@ export function useHls({
 
         if (isHls) {
             if (Hls.isSupported()) {
+                // Live usa buffers curtos: 90s de back-buffer em RAM derruba
+                // TVs Tizen antigas (OOM). VOD mantém buffer maior pra seek.
                 const hls = new Hls({
                     enableWorker: true,
                     lowLatencyMode: false,
-                    backBufferLength: 90,
-                    maxBufferLength: 60,
-                    maxMaxBufferLength: 600,
+                    backBufferLength: isLive ? 30 : 90,
+                    maxBufferLength: isLive ? 30 : 60,
+                    maxMaxBufferLength: isLive ? 60 : 600,
                     startLevel: -1, // Auto quality selection
                 });
 
@@ -160,8 +170,10 @@ export function useHls({
                                 console.error('[HLS] Network error, trying to recover...');
                                 hls.startLoad();
                                 // If network error persists, call stream error callback
-                                setTimeout(() => {
-                                    if (hls.media?.error) {
+                                if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+                                retryTimeoutRef.current = setTimeout(() => {
+                                    retryTimeoutRef.current = null;
+                                    if (hlsRef.current === hls && hls.media?.error) {
                                         onStreamErrorRef.current?.();
                                     }
                                 }, 5000);
@@ -204,7 +216,7 @@ export function useHls({
             cleanup();
             srcRef.current = '';
         };
-    }, [src, autoPlay, cleanup, destroyHlsInstance, videoRef]);
+    }, [src, autoPlay, isLive, cleanup, destroyHlsInstance, videoRef]);
 
     return {
         hlsRef,

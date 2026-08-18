@@ -82,21 +82,34 @@ class XtreamAPI {
     private username: string = '';
     private password: string = '';
 
-    private async makeRequest<T>(action: string, params: Record<string, string> = {}): Promise<T> {
+    private async makeRequest<T>(action: string, params: Record<string, string> = {}, timeoutMs = 30000): Promise<T> {
         const url = buildApiUrl(this.baseUrl, this.username, this.password, action, params);
 
-        const response = await fetch(url.toString(), {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json',
-            },
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        try {
+            const response = await fetch(url.toString(), {
+                method: 'GET',
+                signal: controller.signal,
+                headers: {
+                    'Accept': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            return await response.json();
+        } catch (error: unknown) {
+            if (error instanceof Error && error.name === 'AbortError') {
+                throw new Error('Tempo esgotado. O servidor demorou muito para responder.');
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
         }
-
-        return response.json();
     }
 
     private async fetchAuth(baseUrl: string, username: string, password: string, signal: AbortSignal): Promise<AuthResponse> {
@@ -246,6 +259,15 @@ class XtreamAPI {
 
     async getSeriesCategories(): Promise<Category[]> {
         return this.makeRequest<Category[]>('get_series_categories');
+    }
+
+    /** EPG curto por canal (agora/a seguir). Campos title/description em base64. */
+    async getShortEpg(streamId: number, limit = 6): Promise<{ epg_listings?: unknown[] }> {
+        return this.makeRequest<{ epg_listings?: unknown[] }>(
+            'get_short_epg',
+            { stream_id: String(streamId), limit: String(limit) },
+            10000
+        );
     }
 
     getLiveStreamUrl(streamId: number): string {

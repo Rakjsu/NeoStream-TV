@@ -1,39 +1,45 @@
 // MyList Page - Watch Later List - Matching NeoStream Desktop Style
 
 import { useCallback, useState } from 'react';
-import { storage } from '../services/storage';
+import { storage, type WatchLaterItem } from '../services/storage';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useFocusZone } from '../contexts/FocusContext';
+import { ContentDetailModal } from '../components/ContentDetailModal';
+import { MoviePlayer } from '../components/MoviePlayer';
+import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
+import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
 import './MyList.css';
 
-interface WatchLaterItem {
-    id: string;
-    type: 'movie' | 'series' | 'channel';
-    title: string;
-    poster?: string;
-    rating?: string;
-    year?: string;
-    addedAt: number;
+interface MyListProps {
+    onNavigate?: (page: string) => void;
 }
 
-export function MyList() {
+export function MyList({ onNavigate }: MyListProps) {
     const [items, setItems] = useState<WatchLaterItem[]>(() => storage.getWatchLater());
     const [activeTab, setActiveTab] = useState<'all' | 'movies' | 'series'>('all');
     const [removingId, setRemovingId] = useState<string | null>(null);
+    const { focusZone, setFocusZone } = useFocusZone();
+
+    // Playback / modal
+    const [modalItem, setModalItem] = useState<WatchLaterItem | null>(null);
+    const [playingMovie, setPlayingMovie] = useState<WatchLaterItem | null>(null);
+    const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
 
     // Focus states for TV navigation
     const [focusArea, setFocusArea] = useState<'tabs' | 'items'>('items');
     const [focusedTabIndex, setFocusedTabIndex] = useState(0);
     const [focusedItemIndex, setFocusedItemIndex] = useState(0);
+    const [emptyFocusIndex, setEmptyFocusIndex] = useState(0);
 
     const loadItems = useCallback(() => {
         const saved = storage.getWatchLater();
         setItems(saved);
     }, []);
 
-    const removeItem = (id: string) => {
-        setRemovingId(id);
+    const removeItem = (item: WatchLaterItem) => {
+        setRemovingId(item.id);
         setTimeout(() => {
-            storage.removeWatchLater(id);
+            storage.removeWatchLater(item.id, item.type);
             loadItems();
             setRemovingId(null);
         }, 300);
@@ -50,13 +56,53 @@ export function MyList() {
     const displayItems = activeTab === 'all' ? items :
         activeTab === 'movies' ? movies : series;
 
+    // Indice focado sempre no range (a lista encolhe ao remover itens)
+    const safeItemIndex = Math.min(focusedItemIndex, Math.max(0, displayItems.length - 1));
+
     const tabs = ['all', 'movies', 'series'] as const;
+
+    // Abrir item: ambos os tipos abrem a ficha (o modal resolve episódios)
+    const openItem = (item: WatchLaterItem) => {
+        setModalItem(item);
+    };
+
+    // Play direto do card: filme toca na hora; série abre a ficha
+    const playItem = async (item: WatchLaterItem) => {
+        if (item.type === 'movie') {
+            setPlayingMovie(item);
+        } else if (item.type === 'series') {
+            openItem(item);
+        }
+    };
+
+    const playSeriesEpisode = async (item: WatchLaterItem, season?: number, episode?: number) => {
+        try {
+            const queue = await buildEpisodeQueue(item.id, item.title, item.poster, season, episode);
+            if (queue) {
+                setSeriesQueue(queue);
+                setModalItem(null);
+            }
+        } catch (err) {
+            console.error('Error building episode queue:', err);
+        }
+    };
 
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
+        if (items.length === 0) {
+            if (direction === 'left') {
+                if (emptyFocusIndex === 0) setFocusZone('sidebar');
+                else setEmptyFocusIndex(0);
+            } else if (direction === 'right') {
+                setEmptyFocusIndex(1);
+            }
+            return;
+        }
+
         if (focusArea === 'tabs') {
             if (direction === 'left') {
-                setFocusedTabIndex(prev => Math.max(0, prev - 1));
+                if (focusedTabIndex === 0) setFocusZone('sidebar');
+                else setFocusedTabIndex(prev => Math.max(0, prev - 1));
             } else if (direction === 'right') {
                 setFocusedTabIndex(prev => Math.min(tabs.length - 1, prev + 1));
             } else if (direction === 'down') {
@@ -76,7 +122,8 @@ export function MyList() {
             } else if (direction === 'down') {
                 setFocusedItemIndex(prev => Math.min(total - 1, prev + cols));
             } else if (direction === 'left') {
-                setFocusedItemIndex(prev => Math.max(0, prev - 1));
+                if (focusedItemIndex % cols === 0) setFocusZone('sidebar');
+                else setFocusedItemIndex(prev => Math.max(0, prev - 1));
             } else if (direction === 'right') {
                 setFocusedItemIndex(prev => Math.min(total - 1, prev + 1));
             }
@@ -84,14 +131,23 @@ export function MyList() {
     };
 
     const handleEnter = () => {
+        if (items.length === 0) {
+            onNavigate?.(emptyFocusIndex === 0 ? 'movies' : 'series');
+            return;
+        }
+
         if (focusArea === 'tabs') {
             setActiveTab(tabs[focusedTabIndex]);
+        } else if (focusArea === 'items') {
+            const item = displayItems[safeItemIndex];
+            if (item) openItem(item);
         }
     };
 
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
+        enabled: focusZone === 'content' && !modalItem && !playingMovie && !seriesQueue,
     });
 
     // Empty State
@@ -110,11 +166,17 @@ export function MyList() {
                         <strong> "+ Minha Lista"</strong> no modal de detalhes.
                     </p>
                     <div className="empty-suggestions">
-                        <button className="suggestion-btn">
+                        <button
+                            className={`suggestion-btn ${emptyFocusIndex === 0 ? 'tv-focused' : ''}`}
+                            onClick={() => onNavigate?.('movies')}
+                        >
                             <span>🎬</span>
                             <span>Explorar Filmes</span>
                         </button>
-                        <button className="suggestion-btn">
+                        <button
+                            className={`suggestion-btn ${emptyFocusIndex === 1 ? 'tv-focused' : ''}`}
+                            onClick={() => onNavigate?.('series')}
+                        >
                             <span>📺</span>
                             <span>Explorar Séries</span>
                         </button>
@@ -174,9 +236,10 @@ export function MyList() {
             <div className="cards-grid">
                 {displayItems.map((item, index) => (
                     <div
-                        key={item.id}
-                        className={`card ${removingId === item.id ? 'removing' : ''} ${focusArea === 'items' && focusedItemIndex === index ? 'tv-focused' : ''}`}
+                        key={`${item.type}-${item.id}`}
+                        className={`card ${removingId === item.id ? 'removing' : ''} ${focusArea === 'items' && safeItemIndex === index ? 'tv-focused' : ''}`}
                         style={{ animationDelay: `${index * 0.05}s` }}
+                        onClick={() => openItem(item)}
                     >
                         <div className="card-poster">
                             {item.poster ? (
@@ -194,12 +257,18 @@ export function MyList() {
                                     className="remove-btn"
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        removeItem(item.id);
+                                        removeItem(item);
                                     }}
                                 >
                                     🗑️
                                 </button>
-                                <button className="play-btn">
+                                <button
+                                    className="play-btn"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        void playItem(item);
+                                    }}
+                                >
                                     ▶️
                                 </button>
                             </div>
@@ -221,6 +290,49 @@ export function MyList() {
                 <span>OK Selecionar</span>
                 <span>← Voltar</span>
             </div>
+
+            {/* Content Detail Modal */}
+            {modalItem && (
+                <ContentDetailModal
+                    isOpen={true}
+                    onClose={() => { setModalItem(null); loadItems(); }}
+                    contentId={modalItem.id}
+                    contentType={modalItem.type === 'series' ? 'series' : 'movie'}
+                    contentData={{
+                        name: modalItem.title,
+                        cover: modalItem.poster || '',
+                        rating: modalItem.rating,
+                        container_extension: modalItem.container,
+                    }}
+                    onPlay={(season, episode) => {
+                        if (modalItem.type === 'movie') {
+                            setPlayingMovie(modalItem);
+                            setModalItem(null);
+                        } else {
+                            void playSeriesEpisode(modalItem, season, episode);
+                        }
+                    }}
+                />
+            )}
+
+            {/* Movie Player */}
+            {playingMovie && (
+                <MoviePlayer
+                    movieId={playingMovie.id}
+                    title={playingMovie.title}
+                    poster={playingMovie.poster}
+                    container={playingMovie.container}
+                    onClose={() => setPlayingMovie(null)}
+                />
+            )}
+
+            {/* Series Player */}
+            {seriesQueue && (
+                <SeriesQueuePlayer
+                    queue={seriesQueue}
+                    onClose={() => setSeriesQueue(null)}
+                />
+            )}
         </div>
     );
 }

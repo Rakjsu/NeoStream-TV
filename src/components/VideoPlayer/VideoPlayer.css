@@ -32,9 +32,23 @@
     height: 100% !important;
     max-width: 100% !important;
     max-height: 100% !important;
-    object-fit: cover !important;
+    object-fit: contain !important;
     display: block !important;
     cursor: pointer;
+}
+
+/* Modos de proporção (ciclados pelo botão 📐 do player) */
+.video-element.aspect-stretch {
+    object-fit: fill !important;
+}
+
+.video-element.aspect-fill {
+    object-fit: cover !important;
+}
+
+.video-element.aspect-zoom {
+    object-fit: contain !important;
+    transform: translate(-50%, -50%) scale(1.33) !important;
 }
 
 /* Close Button */
@@ -608,4 +622,153 @@
 :-moz-full-screen .quality-menu,
 :-ms-fullscreen .quality-menu {
     z-index: 2147483647 !important;
+}
+/* ===== Live TV pro (paridade com o desktop) ===== */
+
+/* OSD do digit-jump */
+.digit-osd {
+    position: absolute;
+    top: 8%;
+    right: 6%;
+    font-size: 72px;
+    font-weight: 700;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.65);
+    padding: 8px 28px;
+    border-radius: 12px;
+    letter-spacing: 6px;
+    z-index: 30;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+
+/* Overlay de zapping */
+.zap-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 380px;
+    max-width: 40vw;
+    background: rgba(10, 10, 20, 0.92);
+    display: flex;
+    flex-direction: column;
+    z-index: 40;
+    padding: 24px 0;
+}
+
+.zap-overlay-header {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    padding: 0 24px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.zap-overlay-list {
+    flex: 1;
+    overflow: hidden;
+    padding: 8px 0;
+}
+
+.zap-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 24px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.zap-item.focused {
+    background: rgba(168, 85, 247, 0.35);
+    box-shadow: inset 3px 0 0 #a855f7;
+    color: #fff;
+}
+
+.zap-item.current {
+    font-weight: 700;
+}
+
+.zap-item > * + * {
+    margin-left: 12px;
+}
+
+.zap-num {
+    min-width: 44px;
+    color: rgba(255, 255, 255, 0.5);
+    font-variant-numeric: tabular-nums;
+}
+
+.zap-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.zap-playing {
+    color: #a855f7;
+}
+
+.zap-overlay-hint {
+    padding: 12px 24px 0;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.45);
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Mini-EPG no player ao vivo */
+.player-mini-epg {
+    padding: 0 24px 12px;
+}
+
+.mini-epg-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+}
+
+.mini-epg-row > * + * {
+    margin-left: 16px;
+}
+
+.mini-epg-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mini-epg-time {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.6);
+    white-space: nowrap;
+}
+
+.mini-epg-progress {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    margin: 8px 0 4px;
+    overflow: hidden;
+}
+
+.mini-epg-progress-fill {
+    height: 100%;
+    background: #a855f7;
+}
+
+.mini-epg-next {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.55);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Botão de controle ativo (sleep armado) */
+.control-btn.active {
+    color: #a855f7;
 }

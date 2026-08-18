@@ -21,11 +21,36 @@ import './index.css';
 type Page = 'home' | 'live' | 'movies' | 'series' | 'mylist' | 'favorites' | 'settings';
 type AuthState = 'loading' | 'languageSelection' | 'welcome' | 'login' | 'authenticated';
 
+// No Tizen real, teclas além de setas/OK/Back (CH±, dígitos, color keys,
+// media keys) só chegam ao web app se registradas via tvinputdevice.
+const TIZEN_KEYS = [
+  'ChannelUp', 'ChannelDown',
+  'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue',
+  '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+  'MediaPlayPause', 'MediaPause', 'MediaPlay', 'MediaStop',
+];
+
+function registerTizenKeys() {
+  const tizen = (window as unknown as { tizen?: { tvinputdevice?: { registerKey: (key: string) => void } } }).tizen;
+  if (!tizen?.tvinputdevice) return;
+  for (const key of TIZEN_KEYS) {
+    try {
+      tizen.tvinputdevice.registerKey(key);
+    } catch {
+      // Tecla não suportada nesse modelo — segue o baile
+    }
+  }
+}
+
 function App() {
   const [authState, setAuthState] = useState<AuthState>('loading');
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [focusZone, setFocusZone] = useState<FocusZone>('content');
   const [showProfileManager, setShowProfileManager] = useState(false);
+
+  useEffect(() => {
+    registerTizenKeys();
+  }, []);
 
   const checkAuth = useCallback(async () => {
     if (!storage.hasSettings()) {
@@ -121,8 +146,8 @@ function App() {
           {currentPage === 'live' && <LiveTV />}
           {currentPage === 'movies' && <Movies />}
           {currentPage === 'series' && <Series />}
-          {currentPage === 'mylist' && <MyList />}
-          {currentPage === 'favorites' && <Favorites />}
+          {currentPage === 'mylist' && <MyList onNavigate={handlePageChange} />}
+          {currentPage === 'favorites' && <Favorites onNavigate={handlePageChange} />}
           {currentPage === 'settings' && <Settings />}
         </main>
 

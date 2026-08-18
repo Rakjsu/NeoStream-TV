@@ -1,14 +1,14 @@
 // Movies Page - Matching NeoStream Desktop Style
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../services/api';
 import type { VODStream, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
-import { CategoryMenu } from '../components/CategoryMenu';
-import { AnimatedSearchBar } from '../components/AnimatedSearchBar';
+import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
+import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { ContentDetailModal } from '../components/ContentDetailModal';
-import { VideoPlayer } from '../components/VideoPlayer';
+import { MoviePlayer } from '../components/MoviePlayer';
 import './Movies.css';
 
 export function Movies() {
@@ -28,9 +28,13 @@ export function Movies() {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     // Focus states for TV navigation
+    // 'categories' = zona do header: índice 0 é a busca, 1 é o menu de categorias
     const [focusArea, setFocusArea] = useState<'categories' | 'movies'>('movies');
     const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
     const [focusedMovieIndex, setFocusedMovieIndex] = useState(0);
+    const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+    const searchRef = useRef<AnimatedSearchBarHandle>(null);
+    const categoryMenuRef = useRef<CategoryMenuHandle>(null);
 
     // Calculate initial visible count based on screen size
     useEffect(() => {
@@ -79,13 +83,16 @@ export function Movies() {
         fetchData();
     }, []);
 
-    // Filter streams
-    const filteredStreams = streams.filter((stream) => {
-        const streamName = stream.name || '';
-        const matchesSearch = streamName.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesCategory = selectedCategory === 'all' || stream.category_id === selectedCategory;
-        return matchesSearch && matchesCategory;
-    });
+    // Filter streams (memoizado — recalcular a cada tecla do D-pad trava TVs antigas)
+    const filteredStreams = useMemo(() => {
+        const query = searchQuery.toLowerCase();
+        return streams.filter((stream) => {
+            const streamName = stream.name || '';
+            const matchesSearch = streamName.toLowerCase().includes(query);
+            const matchesCategory = selectedCategory === 'all' || stream.category_id === selectedCategory;
+            return matchesSearch && matchesCategory;
+        });
+    }, [streams, searchQuery, selectedCategory]);
 
     // Lazy loading scroll - load one more row when scrolling near bottom
     useEffect(() => {
@@ -123,15 +130,16 @@ export function Movies() {
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
         if (focusArea === 'categories') {
+            // Header: 0 = busca, 1 = menu de categorias
             if (direction === 'left') {
                 if (focusedCategoryIndex === 0) {
-                    // At first category - go to sidebar
+                    // At search - go to sidebar
                     setFocusZone('sidebar');
                 } else {
-                    setFocusedCategoryIndex(prev => Math.max(0, prev - 1));
+                    setFocusedCategoryIndex(0);
                 }
             } else if (direction === 'right') {
-                setFocusedCategoryIndex(prev => Math.min(categories.length, prev + 1));
+                setFocusedCategoryIndex(1);
             } else if (direction === 'down') {
                 setFocusArea('movies');
                 setFocusedMovieIndex(0);
@@ -200,9 +208,9 @@ export function Movies() {
     const handleEnter = () => {
         if (focusArea === 'categories') {
             if (focusedCategoryIndex === 0) {
-                setSelectedCategory('all');
+                searchRef.current?.open();
             } else {
-                setSelectedCategory(categories[focusedCategoryIndex - 1]?.category_id || 'all');
+                categoryMenuRef.current?.open();
             }
         } else if (focusArea === 'movies') {
             const movie = filteredStreams[focusedMovieIndex];
@@ -213,11 +221,11 @@ export function Movies() {
         }
     };
 
-    // Only enable when content is focused
+    // Only enable when content is focused and no modal/player/panel is open
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
-        enabled: focusZone === 'content',
+        enabled: focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen,
     });
 
     const handleImageError = (streamId: number) => {
@@ -273,17 +281,22 @@ export function Movies() {
 
             {/* Animated Search Bar */}
             <AnimatedSearchBar
+                ref={searchRef}
                 value={searchQuery}
                 onChange={setSearchQuery}
                 placeholder="Buscar filmes..."
+                tvFocused={focusArea === 'categories' && focusedCategoryIndex === 0}
             />
 
             {/* Category Menu (Hamburger Button) */}
             <CategoryMenu
+                ref={categoryMenuRef}
                 categories={categories}
                 selectedCategory={selectedCategory}
                 onSelectCategory={setSelectedCategory}
                 type="vod"
+                tvFocused={focusArea === 'categories' && focusedCategoryIndex === 1}
+                onOpenChange={setCategoryMenuOpen}
             />
 
             {/* Content Detail Modal */}
@@ -316,12 +329,13 @@ export function Movies() {
                 />
             )}
 
-            {/* Video Player */}
+            {/* Video Player (com retomada e progresso salvo) */}
             {showPlayer && playingMovie && (
-                <VideoPlayer
-                    src={api.getVodStreamUrl(playingMovie.stream_id, playingMovie.container_extension || 'mp4')}
+                <MoviePlayer
+                    movieId={String(playingMovie.stream_id)}
                     title={playingMovie.name}
                     poster={playingMovie.stream_icon || playingMovie.cover}
+                    container={playingMovie.container_extension}
                     onClose={() => {
                         setShowPlayer(false);
                         setPlayingMovie(null);

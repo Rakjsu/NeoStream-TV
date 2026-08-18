@@ -688,3 +688,162 @@
     transform: translateY(-2px);
     box-shadow: 0 12px 40px rgba(239, 68, 68, 0.4);
 }
+/* ===== Live TV pro (paridade com o desktop) ===== */
+
+/* Toolbar de filtros */
+.livetv-toolbar {
+    position: absolute;
+    top: 24px;
+    right: 96px;
+    display: flex;
+    z-index: 20;
+}
+
+/* gap em flex so existe no Chromium 84+ (Tizen 6.5); usar margens */
+.livetv-toolbar .toolbar-btn + .toolbar-btn {
+    margin-left: 10px;
+}
+
+.toolbar-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #fff;
+    font-size: 18px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.toolbar-btn:hover {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.toolbar-btn.active {
+    background: rgba(168, 85, 247, 0.35);
+    border-color: rgba(168, 85, 247, 0.8);
+}
+
+/* EPG na ficha do canal */
+.preview-details {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.preview-details > * + * {
+    margin-top: 14px;
+}
+
+.preview-epg {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.preview-epg > * + * {
+    margin-top: 6px;
+}
+
+.preview-epg-empty {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 14px;
+}
+
+.preview-epg-now,
+.preview-epg-next {
+    display: flex;
+    align-items: baseline;
+    min-width: 0;
+}
+
+.preview-epg-now > * + *,
+.preview-epg-next > * + * {
+    margin-left: 10px;
+}
+
+.epg-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #a855f7;
+    white-space: nowrap;
+}
+
+.epg-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.epg-title-next {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.75);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.epg-time {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.5);
+    white-space: nowrap;
+}
+
+.preview-epg-progress {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.preview-epg-progress-fill {
+    height: 100%;
+    background: #a855f7;
+}
+
+/* Botões de variante de qualidade */
+.preview-variants {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.preview-variants .variant-btn {
+    margin: 0 8px 8px 0;
+}
+
+.variant-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.variant-btn:hover {
+    background: rgba(168, 85, 247, 0.35);
+    border-color: rgba(168, 85, 247, 0.8);
+}
+
+/* Botão de favorito ativo na ficha */
+.info-button.active {
+    background: rgba(250, 204, 21, 0.25);
+    border-color: rgba(250, 204, 21, 0.7);
+}
+
+/* Estrela no card do canal favorito */
+.channel-fav {
+    color: #facc15;
+}
+
+/* Dicas das color keys */
+.hint-red, .hint-green, .hint-yellow, .hint-blue {
+    opacity: 0.85;
+}

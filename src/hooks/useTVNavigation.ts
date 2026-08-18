@@ -27,7 +27,7 @@ const TV_KEYS = {
 };
 
 type Direction = 'up' | 'down' | 'left' | 'right';
-type TVAction = 'enter' | 'back' | 'play' | 'pause' | 'stop';
+type TVAction = 'enter' | 'back' | 'play' | 'pause' | 'stop' | 'red' | 'green' | 'yellow' | 'blue';
 type TizenHardwareKeyEvent = Event & { keyName?: string };
 
 interface UseTVNavigationOptions {
@@ -55,7 +55,9 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}) {
         // This allows the native TV keyboard (IME) to handle Backspace, Left, Right, etc.
         const target = event.target as HTMLElement;
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
-            if (matchKey(key, TV_KEYS.ENTER)) {
+            // Dentro de input, espaço (32) é TEXTO — só Enter/OK de verdade
+            // fecha o teclado (buscar "ESPN 2" precisa do espaço)
+            if (matchKey(key, ['Enter', '13', '29443', 'Select'])) {
                 event.preventDefault();
                 event.stopPropagation();
                 target.blur();
@@ -109,6 +111,16 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}) {
             if (onAction) { event.preventDefault(); onAction('pause'); }
         } else if (matchKey(key, TV_KEYS.STOP)) {
             if (onAction) { event.preventDefault(); onAction('stop'); }
+        }
+        // Color keys (atalhos por página)
+        else if (matchKey(key, TV_KEYS.RED)) {
+            if (onAction) { event.preventDefault(); onAction('red'); }
+        } else if (matchKey(key, TV_KEYS.GREEN)) {
+            if (onAction) { event.preventDefault(); onAction('green'); }
+        } else if (matchKey(key, TV_KEYS.YELLOW)) {
+            if (onAction) { event.preventDefault(); onAction('yellow'); }
+        } else if (matchKey(key, TV_KEYS.BLUE)) {
+            if (onAction) { event.preventDefault(); onAction('blue'); }
         }
     }, [enabled, onNavigate, onAction, onBack, onEnter]);
 

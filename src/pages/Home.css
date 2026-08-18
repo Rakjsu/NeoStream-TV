@@ -343,3 +343,24 @@
     color: rgba(156, 163, 175, 0.5);
     font-size: 11px;
 }
+/* Continuar Assistindo */
+.continue-progress {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 0 0 8px 8px;
+    overflow: hidden;
+}
+
+.continue-progress-fill {
+    height: 100%;
+    background: #a855f7;
+}
+
+.continue-episode {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.85em;
+}

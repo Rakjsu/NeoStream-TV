@@ -1,14 +1,15 @@
 // Series Page - Matching NeoStream Desktop Style
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../services/api';
 import type { Series as SeriesType, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
-import { CategoryMenu } from '../components/CategoryMenu';
-import { AnimatedSearchBar } from '../components/AnimatedSearchBar';
+import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
+import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { ContentDetailModal } from '../components/ContentDetailModal';
-import { VideoPlayer } from '../components/VideoPlayer';
+import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
+import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
 import './Series.css';
 
 export function Series() {
@@ -21,16 +22,19 @@ export function Series() {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedSeries, setSelectedSeries] = useState<SeriesType | null>(null);
     const [showModal, setShowModal] = useState(false);
-    const [showPlayer, setShowPlayer] = useState(false);
-    const [playerInfo, setPlayerInfo] = useState<{ url: string; title: string; poster: string } | null>(null);
+    const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
     const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
     const [visibleCount, setVisibleCount] = useState(24); // Start with reasonable default
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     // Focus states for TV navigation
+    // 'categories' = zona do header: índice 0 é a busca, 1 é o menu de categorias
     const [focusArea, setFocusArea] = useState<'categories' | 'series'>('series');
     const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
     const [focusedSeriesIndex, setFocusedSeriesIndex] = useState(0);
+    const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+    const searchRef = useRef<AnimatedSearchBarHandle>(null);
+    const categoryMenuRef = useRef<CategoryMenuHandle>(null);
 
     // Calculate initial visible count based on screen size
     useEffect(() => {
@@ -71,7 +75,7 @@ export function Series() {
                 setSeries(seriesData);
                 setCategories(categoriesData);
             } catch (err: unknown) {
-                setError(err instanceof Error ? err.message : 'Erro ao carregar s�ries');
+                setError(err instanceof Error ? err.message : 'Erro ao carregar s�ries');
             } finally {
                 setLoading(false);
             }
@@ -79,13 +83,16 @@ export function Series() {
         fetchData();
     }, []);
 
-    // Filter series
-    const filteredSeries = series.filter((s) => {
-        const seriesName = s.name || '';
-        const matchesSearch = seriesName.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesCategory = selectedCategory === 'all' || s.category_id === selectedCategory;
-        return matchesSearch && matchesCategory;
-    });
+    // Filter series (memoizado — recalcular a cada tecla do D-pad trava TVs antigas)
+    const filteredSeries = useMemo(() => {
+        const query = searchQuery.toLowerCase();
+        return series.filter((s) => {
+            const seriesName = s.name || '';
+            const matchesSearch = seriesName.toLowerCase().includes(query);
+            const matchesCategory = selectedCategory === 'all' || s.category_id === selectedCategory;
+            return matchesSearch && matchesCategory;
+        });
+    }, [series, searchQuery, selectedCategory]);
 
     // Lazy loading scroll - load one more row when scrolling near bottom
     useEffect(() => {
@@ -123,15 +130,16 @@ export function Series() {
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
         if (focusArea === 'categories') {
+            // Header: 0 = busca, 1 = menu de categorias
             if (direction === 'left') {
                 if (focusedCategoryIndex === 0) {
-                    // At first category - go to sidebar
+                    // At search - go to sidebar
                     setFocusZone('sidebar');
                 } else {
-                    setFocusedCategoryIndex(prev => Math.max(0, prev - 1));
+                    setFocusedCategoryIndex(0);
                 }
             } else if (direction === 'right') {
-                setFocusedCategoryIndex(prev => Math.min(categories.length, prev + 1));
+                setFocusedCategoryIndex(1);
             } else if (direction === 'down') {
                 setFocusArea('series');
                 setFocusedSeriesIndex(0);
@@ -200,9 +208,9 @@ export function Series() {
     const handleEnter = () => {
         if (focusArea === 'categories') {
             if (focusedCategoryIndex === 0) {
-                setSelectedCategory('all');
+                searchRef.current?.open();
             } else {
-                setSelectedCategory(categories[focusedCategoryIndex - 1]?.category_id || 'all');
+                categoryMenuRef.current?.open();
             }
         } else if (focusArea === 'series') {
             const item = filteredSeries[focusedSeriesIndex];
@@ -213,11 +221,11 @@ export function Series() {
         }
     };
 
-    // Only enable when content is focused
+    // Only enable when content is focused and no modal/player/panel is open
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
-        enabled: focusZone === 'content',
+        enabled: focusZone === 'content' && !showModal && !seriesQueue && !categoryMenuOpen,
     });
 
     const handleImageError = (seriesId: number) => {
@@ -273,17 +281,22 @@ export function Series() {
 
             {/* Animated Search Bar */}
             <AnimatedSearchBar
+                ref={searchRef}
                 value={searchQuery}
                 onChange={setSearchQuery}
                 placeholder="Buscar séries..."
+                tvFocused={focusArea === 'categories' && focusedCategoryIndex === 0}
             />
 
             {/* Category Menu (Hamburger Button) */}
             <CategoryMenu
+                ref={categoryMenuRef}
                 categories={categories}
                 selectedCategory={selectedCategory}
                 onSelectCategory={setSelectedCategory}
                 type="series"
+                tvFocused={focusArea === 'categories' && focusedCategoryIndex === 1}
+                onOpenChange={setCategoryMenuOpen}
             />
 
             {/* Content Detail Modal */}
@@ -307,24 +320,16 @@ export function Series() {
                         release_date: selectedSeries.release_date,
                     }}
                     onPlay={async (season, episode) => {
-                        // Get series info to find episode stream ID
+                        // Monta a fila de episódios (habilita próximo/anterior + resume)
                         try {
-                            const seriesInfo = await api.getSeriesInfo(selectedSeries.series_id);
-                            const episodes = seriesInfo?.episodes?.[season || 1] || [];
-                            const episodeData = episodes.find(e => e.episode_num === episode) || episodes[0];
-
-                            if (episodeData) {
-                                const streamUrl = api.getSeriesStreamUrl(
-                                    episodeData.id,
-                                    episodeData.container_extension || 'mp4'
-                                );
-                                setPlayerInfo({
-                                    url: streamUrl,
-                                    title: `${selectedSeries.name} - T${season} E${episode}`,
-                                    poster: selectedSeries.cover
-                                });
-                                setShowPlayer(true);
-                            }
+                            const queue = await buildEpisodeQueue(
+                                selectedSeries.series_id,
+                                selectedSeries.name,
+                                selectedSeries.cover,
+                                season,
+                                episode
+                            );
+                            if (queue) setSeriesQueue(queue);
                         } catch (err) {
                             console.error('Error getting episode info:', err);
                         }
@@ -333,16 +338,11 @@ export function Series() {
                 />
             )}
 
-            {/* Video Player */}
-            {showPlayer && playerInfo && (
-                <VideoPlayer
-                    src={playerInfo.url}
-                    title={playerInfo.title}
-                    poster={playerInfo.poster}
-                    onClose={() => {
-                        setShowPlayer(false);
-                        setPlayerInfo(null);
-                    }}
+            {/* Video Player (fila de episódios + retomada + progresso) */}
+            {seriesQueue && (
+                <SeriesQueuePlayer
+                    queue={seriesQueue}
+                    onClose={() => setSeriesQueue(null)}
                 />
             )}
 

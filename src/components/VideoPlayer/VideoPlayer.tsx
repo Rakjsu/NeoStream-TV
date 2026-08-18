@@ -1,9 +1,18 @@
 // VideoPlayer Component - Premium player with HLS support for TV
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { FaPlay, FaPause, FaCog, FaStepForward, FaStepBackward } from 'react-icons/fa';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { FaPlay, FaPause, FaCog, FaStepForward, FaStepBackward, FaListUl, FaMoon, FaExpand } from 'react-icons/fa';
 import { useHls } from '../../hooks/useHls';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
+import type { EpgProgram } from '../../services/epgService';
+import { aspectPrefs, ASPECT_MODES, ASPECT_LABELS, type AspectMode } from '../../services/liveExtras';
 import './VideoPlayer.css';
+
+export interface PlayerChannel {
+    stream_id: number;
+    name: string;
+    num?: number;
+    stream_icon?: string;
+}
 
 export interface VideoPlayerProps {
     src: string;
@@ -19,11 +28,34 @@ export interface VideoPlayerProps {
     canGoNext?: boolean;
     canGoPrevious?: boolean;
     contentType?: 'movie' | 'series' | 'live';
+    /** Mini-EPG do canal ao vivo (agora / a seguir) */
+    liveEpg?: { now: EpgProgram | null; next: EpgProgram | null } | null;
+    /** Lista de canais pro zapping (CH+/CH−, dígitos e overlay 📺) */
+    channelList?: PlayerChannel[];
+    currentChannelId?: number;
+    onSwitchChannel?: (streamId: number) => void;
+    /** Chave pra lembrar a proporção por conteúdo (ex.: "live-123") */
+    contentKey?: string;
 }
 
-// Control buttons: close, prev, play, next, quality
-type ControlButton = 'close' | 'prev' | 'play' | 'next' | 'quality';
-type PlayerFocus = 'controls' | 'quality-menu';
+// Control buttons: close, prev, play, next, quality, channels, sleep, aspect
+type ControlButton = 'close' | 'prev' | 'play' | 'next' | 'quality' | 'channels' | 'sleep' | 'aspect';
+type PlayerFocus = 'controls' | 'quality-menu' | 'zap-list';
+
+const SLEEP_CHOICES = [null, 30, 60, 90] as const;
+const DIGIT_TIMEOUT_MS = 1400;
+const ZAP_WINDOW = 9; // linhas visíveis no overlay de zapping
+
+function formatClock(ms: number): string {
+    const d = new Date(ms);
+    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+}
+
+function epgProgressPct(program: EpgProgram): number {
+    const total = program.end - program.start;
+    if (total <= 0) return 0;
+    return Math.max(0, Math.min(100, ((Date.now() - program.start) / total) * 100));
+}
 
 export function VideoPlayer({
     src,
@@ -38,13 +70,22 @@ export function VideoPlayer({
     onPreviousEpisode,
     canGoNext,
     canGoPrevious,
-    contentType = 'movie'
+    contentType = 'movie',
+    liveEpg,
+    channelList,
+    currentChannelId,
+    onSwitchChannel,
+    contentKey
 }: VideoPlayerProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const progressRef = useRef<HTMLDivElement>(null);
     const hideControlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const resumeAppliedRef = useRef(false);
+    const digitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const isLiveContent = isLive || contentType === 'live';
+    const canZap = isLiveContent && !!channelList?.length && !!onSwitchChannel;
 
     // Video state
     const [playing, setPlaying] = useState(false);
@@ -63,6 +104,37 @@ export function VideoPlayer({
     const [playerFocus, setPlayerFocus] = useState<PlayerFocus>('controls');
     const [focusedControl, setFocusedControl] = useState<ControlButton>('play');
 
+    // Zapping (live)
+    const [digitBuffer, setDigitBuffer] = useState('');
+    const [zapIndex, setZapIndex] = useState(0);
+
+    // Sleep timer
+    const [sleepChoiceIndex, setSleepChoiceIndex] = useState(0);
+    const [sleepUntil, setSleepUntil] = useState<number | null>(null);
+    const [sleepRemainingMin, setSleepRemainingMin] = useState<number | null>(null);
+
+    // Proporção/zoom (lembrada por conteúdo quando contentKey existe)
+    const [aspectMode, setAspectMode] = useState<AspectMode>(() =>
+        contentKey ? aspectPrefs.get(contentKey) : 'original'
+    );
+
+    // O player fica MONTADO durante o zapping (só o src muda) — estados
+    // derivados do conteúdo precisam resetar aqui, no render (padrão React
+    // de ajuste durante render; effect com setState síncrono é proibido).
+    const [lastSrc, setLastSrc] = useState(src);
+    if (src !== lastSrc) {
+        setLastSrc(src);
+        setError(null);
+        setLoading(true);
+        setDigitBuffer('');
+        setAspectMode(contentKey ? aspectPrefs.get(contentKey) : 'original');
+    }
+
+    // Ref não pode ser escrita durante o render — reset do resume em effect
+    useEffect(() => {
+        resumeAppliedRef.current = false;
+    }, [src]);
+
     // HLS hook with quality support
     const {
         cleanup,
@@ -75,6 +147,7 @@ export function VideoPlayer({
         src,
         videoRef,
         autoPlay,
+        isLive: isLive || contentType === 'live',
         onError: () => setError('Erro ao carregar stream')
     });
 
@@ -85,8 +158,120 @@ export function VideoPlayer({
         buttons.push('play');
         if (canGoNext && onNextEpisode) buttons.push('next');
         if (qualityLevels.length > 0) buttons.push('quality');
+        if (canZap) buttons.push('channels');
+        buttons.push('sleep');
+        buttons.push('aspect');
         return buttons;
-    }, [canGoPrevious, canGoNext, onPreviousEpisode, onNextEpisode, qualityLevels.length]);
+    }, [canGoPrevious, canGoNext, onPreviousEpisode, onNextEpisode, qualityLevels.length, canZap]);
+
+    // ----- Zapping helpers (live) -----
+    const currentChannelIndex = useMemo(() => {
+        if (!channelList || currentChannelId == null) return -1;
+        return channelList.findIndex(c => c.stream_id === currentChannelId);
+    }, [channelList, currentChannelId]);
+
+    const switchRelative = useCallback((delta: number) => {
+        if (!canZap || !channelList || channelList.length === 0) return;
+        const base = currentChannelIndex >= 0 ? currentChannelIndex : 0;
+        const next = (base + delta + channelList.length) % channelList.length;
+        onSwitchChannel?.(channelList[next].stream_id);
+    }, [canZap, channelList, currentChannelIndex, onSwitchChannel]);
+
+    // Digit-jump: número digitado vira canal após pequena pausa
+    useEffect(() => {
+        if (!digitBuffer) return;
+        if (digitTimeoutRef.current) clearTimeout(digitTimeoutRef.current);
+        digitTimeoutRef.current = setTimeout(() => {
+            digitTimeoutRef.current = null;
+            const num = Number(digitBuffer);
+            setDigitBuffer('');
+            // Coerção: muitos painéis Xtream mandam num como string no JSON
+            const found = channelList?.find(c => Number(c.num) === num);
+            if (found) onSwitchChannel?.(found.stream_id);
+        }, DIGIT_TIMEOUT_MS);
+        return () => {
+            if (digitTimeoutRef.current) {
+                clearTimeout(digitTimeoutRef.current);
+                digitTimeoutRef.current = null;
+            }
+        };
+    }, [digitBuffer, channelList, onSwitchChannel]);
+
+    // Teclas extras do controle: CH+/CH− (427/428, PageUp/PageDown) e dígitos.
+    // Só na camada de controles — com menu/overlay aberto, zapear por baixo
+    // deixaria o foco dessas camadas apontando pro conteúdo errado.
+    const playerFocusRef = useRef(playerFocus);
+    useEffect(() => {
+        playerFocusRef.current = playerFocus;
+    }, [playerFocus]);
+    useEffect(() => {
+        if (!canZap) return;
+        const handleExtraKeys = (event: KeyboardEvent) => {
+            if (playerFocusRef.current !== 'controls') return;
+            const key = event.key || String(event.keyCode);
+            const code = event.keyCode;
+
+            if (key === 'MediaChannelUp' || code === 427 || key === 'PageUp' || code === 33) {
+                event.preventDefault();
+                switchRelative(-1);
+            } else if (key === 'MediaChannelDown' || code === 428 || key === 'PageDown' || code === 34) {
+                event.preventDefault();
+                switchRelative(1);
+            } else if (/^[0-9]$/.test(key) || (code >= 48 && code <= 57) || (code >= 96 && code <= 105)) {
+                event.preventDefault();
+                const digit = /^[0-9]$/.test(key) ? key : String(code >= 96 ? code - 96 : code - 48);
+                setDigitBuffer(prev => (prev + digit).slice(0, 4));
+            }
+        };
+        window.addEventListener('keydown', handleExtraKeys);
+        return () => window.removeEventListener('keydown', handleExtraKeys);
+    }, [canZap, switchRelative]);
+
+    // ----- Sleep timer -----
+    // O estado "remaining" é setado no handler (cycleSleep) e no callback do
+    // interval — nunca no corpo do effect (regra react-hooks/set-state-in-effect).
+    useEffect(() => {
+        if (!sleepUntil) return;
+        const interval = setInterval(() => {
+            const remaining = sleepUntil - Date.now();
+            if (remaining <= 0) {
+                videoRef.current?.pause();
+                setSleepUntil(null);
+                setSleepChoiceIndex(0);
+                setSleepRemainingMin(null);
+            } else {
+                setSleepRemainingMin(Math.ceil(remaining / 60000));
+            }
+        }, 15000);
+        return () => clearInterval(interval);
+    }, [sleepUntil]);
+
+    const cycleSleep = useCallback(() => {
+        const nextIndex = (sleepChoiceIndex + 1) % SLEEP_CHOICES.length;
+        setSleepChoiceIndex(nextIndex);
+        const minutes = SLEEP_CHOICES[nextIndex];
+        setSleepUntil(minutes ? Date.now() + minutes * 60000 : null);
+        setSleepRemainingMin(minutes ?? null);
+    }, [sleepChoiceIndex]);
+
+    // ----- Proporção/zoom -----
+    const cycleAspect = useCallback(() => {
+        setAspectMode(prev => {
+            const next = ASPECT_MODES[(ASPECT_MODES.indexOf(prev) + 1) % ASPECT_MODES.length];
+            if (contentKey) aspectPrefs.set(contentKey, next);
+            return next;
+        });
+    }, [contentKey]);
+
+    // ----- Overlay de zapping -----
+    const openZapList = useCallback(() => {
+        setPlayerFocus('zap-list');
+        setZapIndex(currentChannelIndex >= 0 ? currentChannelIndex : 0);
+    }, [currentChannelIndex]);
+
+    const closeZapList = useCallback(() => {
+        setPlayerFocus('controls');
+    }, []);
 
     // Resume time - apply once when video is ready
     useEffect(() => {
@@ -292,14 +477,32 @@ export function VideoPlayer({
             case 'quality':
                 openQualityMenu();
                 break;
+            case 'channels':
+                openZapList();
+                break;
+            case 'sleep':
+                cycleSleep();
+                break;
+            case 'aspect':
+                cycleAspect();
+                break;
         }
-    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openQualityMenu]);
+    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openQualityMenu, openZapList, cycleSleep, cycleAspect]);
 
     // TV Navigation handler
     const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
         resetHideControlsTimer();
 
-        if (playerFocus === 'quality-menu') {
+        if (playerFocus === 'zap-list') {
+            const total = channelList?.length || 0;
+            if (direction === 'up') {
+                setZapIndex(prev => Math.max(0, prev - 1));
+            } else if (direction === 'down') {
+                setZapIndex(prev => Math.min(total - 1, prev + 1));
+            } else if (direction === 'left') {
+                closeZapList();
+            }
+        } else if (playerFocus === 'quality-menu') {
             const totalItems = qualityLevels.length + 1;
             if (direction === 'up') {
                 setQualityMenuIndex(prev => Math.max(0, prev - 1));
@@ -333,12 +536,18 @@ export function VideoPlayer({
                 }
             }
         }
-    }, [playerFocus, qualityLevels.length, focusedControl, getControlButtons, resetHideControlsTimer]);
+    }, [playerFocus, qualityLevels.length, channelList?.length, focusedControl, getControlButtons, resetHideControlsTimer, closeZapList]);
 
     const handleEnter = useCallback(() => {
         resetHideControlsTimer();
 
-        if (playerFocus === 'quality-menu') {
+        if (playerFocus === 'zap-list') {
+            const channel = channelList?.[zapIndex];
+            if (channel) {
+                onSwitchChannel?.(channel.stream_id);
+                closeZapList();
+            }
+        } else if (playerFocus === 'quality-menu') {
             if (qualityMenuIndex === 0) {
                 selectQuality(-1);
             } else {
@@ -348,15 +557,17 @@ export function VideoPlayer({
         } else {
             executeControlAction();
         }
-    }, [playerFocus, qualityMenuIndex, qualityLevels, selectQuality, executeControlAction, resetHideControlsTimer]);
+    }, [playerFocus, qualityMenuIndex, qualityLevels, selectQuality, executeControlAction, resetHideControlsTimer, channelList, zapIndex, onSwitchChannel, closeZapList]);
 
     const handleBack = useCallback(() => {
-        if (playerFocus === 'quality-menu') {
+        if (playerFocus === 'zap-list') {
+            closeZapList();
+        } else if (playerFocus === 'quality-menu') {
             closeQualityMenu();
         } else if (onClose) {
             handleClose();
         }
-    }, [playerFocus, closeQualityMenu, handleClose, onClose]);
+    }, [playerFocus, closeZapList, closeQualityMenu, handleClose, onClose]);
 
     // TV Navigation hook
     useTVNavigation({
@@ -429,14 +640,53 @@ export function VideoPlayer({
 
             {/* Video Wrapper */}
             <div className="video-wrapper">
+                {/* Proporção via classes (o CSS base usa !important; style
+                    inline sem !important perderia — achado da revisão) */}
                 <video
                     ref={videoRef}
-                    className="video-element"
+                    className={`video-element aspect-${aspectMode}`}
                     poster={poster}
                     onClick={togglePlay}
                     playsInline
                 />
             </div>
+
+            {/* OSD do digit-jump (troca de canal por número) */}
+            {digitBuffer && (
+                <div className="digit-osd">{digitBuffer}</div>
+            )}
+
+            {/* Overlay de zapping (lista de canais) */}
+            {playerFocus === 'zap-list' && channelList && channelList.length > 0 && (() => {
+                const half = Math.floor(ZAP_WINDOW / 2);
+                const start = Math.max(0, Math.min(zapIndex - half, channelList.length - ZAP_WINDOW));
+                const visible = channelList.slice(start, start + ZAP_WINDOW);
+                return (
+                    <div className="zap-overlay">
+                        <div className="zap-overlay-header">📺 Canais</div>
+                        <div className="zap-overlay-list">
+                            {visible.map((channel, i) => {
+                                const realIndex = start + i;
+                                return (
+                                    <div
+                                        key={channel.stream_id}
+                                        className={`zap-item ${realIndex === zapIndex ? 'focused' : ''} ${channel.stream_id === currentChannelId ? 'current' : ''}`}
+                                        onClick={() => {
+                                            onSwitchChannel?.(channel.stream_id);
+                                            closeZapList();
+                                        }}
+                                    >
+                                        {channel.num != null && <span className="zap-num">{channel.num}</span>}
+                                        <span className="zap-name">{channel.name}</span>
+                                        {channel.stream_id === currentChannelId && <span className="zap-playing">▶</span>}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div className="zap-overlay-hint">↑↓ Navegar · OK Assistir · ← Fechar</div>
+                    </div>
+                );
+            })()}
 
             {/* Central Play Button */}
             {!playing && !loading && !error && (
@@ -498,6 +748,27 @@ export function VideoPlayer({
 
             {/* Controls */}
             <div className={`video-player-controls ${showControls ? 'visible' : 'hidden'}`}>
+                {/* Mini-EPG (live) */}
+                {isLiveContent && liveEpg?.now && (
+                    <div className="player-mini-epg">
+                        <div className="mini-epg-row">
+                            <span className="mini-epg-title">{liveEpg.now.title}</span>
+                            <span className="mini-epg-time">
+                                {formatClock(liveEpg.now.start)} – {formatClock(liveEpg.now.end)}
+                            </span>
+                        </div>
+                        <div className="mini-epg-progress">
+                            <div
+                                className="mini-epg-progress-fill"
+                                style={{ width: `${epgProgressPct(liveEpg.now)}%` }}
+                            />
+                        </div>
+                        {liveEpg.next && (
+                            <div className="mini-epg-next">A seguir: {liveEpg.next.title}</div>
+                        )}
+                    </div>
+                )}
+
                 {/* Progress Bar (VOD only) */}
                 {!isLive && contentType !== 'live' && (
                     <div
@@ -588,6 +859,41 @@ export function VideoPlayer({
                                 <span className="quality-label">{getCurrentQualityLabel()}</span>
                             </button>
                         )}
+
+                        {/* Channel List Button (live) */}
+                        {canZap && (
+                            <button
+                                className={`control-btn ${focusedControl === 'channels' && playerFocus === 'controls' ? 'focused' : ''}`}
+                                onClick={openZapList}
+                                title="Lista de canais"
+                            >
+                                <FaListUl />
+                            </button>
+                        )}
+
+                        {/* Sleep Timer Button */}
+                        <button
+                            className={`control-btn ${sleepUntil ? 'active' : ''} ${focusedControl === 'sleep' && playerFocus === 'controls' ? 'focused' : ''}`}
+                            onClick={cycleSleep}
+                            title="Timer de desligamento"
+                        >
+                            <FaMoon />
+                            {sleepRemainingMin != null && (
+                                <span className="quality-label">{sleepRemainingMin}m</span>
+                            )}
+                        </button>
+
+                        {/* Aspect Ratio Button */}
+                        <button
+                            className={`control-btn ${focusedControl === 'aspect' && playerFocus === 'controls' ? 'focused' : ''}`}
+                            onClick={cycleAspect}
+                            title="Proporção"
+                        >
+                            <FaExpand />
+                            {aspectMode !== 'original' && (
+                                <span className="quality-label">{ASPECT_LABELS[aspectMode]}</span>
+                            )}
+                        </button>
                     </div>
                 </div>
             </div>

@@ -1,11 +1,19 @@
 // Home Page - Matching NeoStream Desktop
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import type { VODStream, Series } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
+import { progressService, type MovieProgress, type SeriesProgress } from '../services/progressService';
+import { MoviePlayer } from '../components/MoviePlayer';
+import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
+import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
 import './Home.css';
+
+type ContinueItem =
+    | { kind: 'movie'; progress: MovieProgress }
+    | { kind: 'series'; progress: SeriesProgress };
 
 interface HomeProps {
     onNavigate?: (page: string) => void;
@@ -27,6 +35,15 @@ export function Home({ onNavigate }: HomeProps) {
     const [currentTime, setCurrentTime] = useState(new Date());
     const [focusedSection, setFocusedSection] = useState(0);
     const [focusedItem, setFocusedItem] = useState(0);
+
+    // Continuar assistindo
+    const [continueItems, setContinueItems] = useState<ContinueItem[]>(() => progressService.getContinueWatching());
+    const [playingMovie, setPlayingMovie] = useState<MovieProgress | null>(null);
+    const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
+
+    const refreshContinue = useCallback(() => {
+        setContinueItems(progressService.getContinueWatching());
+    }, []);
 
     // Update clock every minute
     useEffect(() => {
@@ -99,14 +116,36 @@ export function Home({ onNavigate }: HomeProps) {
         return 'Boa noite';
     };
 
-    // TV Navigation - Updated sections
+    // TV Navigation - seções dinâmicas ("continue" só aparece com progresso)
     const sections = [
         { id: 'stats', items: 3 },
+        ...(continueItems.length > 0 ? [{ id: 'continue', items: continueItems.length }] : []),
         { id: 'recommendations', items: recommendations.length },
         { id: 'series', items: recentSeries.length },
         { id: 'movies', items: recentMovies.length },
         { id: 'quick', items: 5 }
     ];
+
+    const sectionIndex = (id: string) => sections.findIndex(s => s.id === id);
+
+    const playContinueItem = async (item: ContinueItem) => {
+        if (item.kind === 'movie') {
+            setPlayingMovie(item.progress);
+        } else {
+            try {
+                const queue = await buildEpisodeQueue(
+                    item.progress.seriesId,
+                    item.progress.seriesName,
+                    item.progress.poster,
+                    item.progress.season,
+                    item.progress.episode
+                );
+                if (queue) setSeriesQueue(queue);
+            } catch (err) {
+                console.error('Error resuming series:', err);
+            }
+        }
+    };
 
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
         if (direction === 'up') {
@@ -129,10 +168,14 @@ export function Home({ onNavigate }: HomeProps) {
     };
 
     const handleEnter = () => {
-        const section = sections[focusedSection];
+        // Clamp: a seção 'continue' some quando o progresso zera
+        const section = sections[Math.min(focusedSection, sections.length - 1)];
         if (section?.id === 'stats') {
             const pages = ['live', 'movies', 'series'];
             onNavigate?.(pages[focusedItem] || 'live');
+        } else if (section?.id === 'continue') {
+            const item = continueItems[focusedItem];
+            if (item) void playContinueItem(item);
         } else if (section?.id === 'quick') {
             const pages = ['live', 'movies', 'series', 'favorites', 'settings'];
             onNavigate?.(pages[focusedItem] || 'live');
@@ -143,24 +186,25 @@ export function Home({ onNavigate }: HomeProps) {
         }
     };
 
-    // Only enable navigation when content is focused
+    // Only enable navigation when content is focused and no player is open
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
-        enabled: focusZone === 'content',
+        enabled: focusZone === 'content' && !playingMovie && !seriesQueue,
     });
 
     // Auto-scroll to focused section when it changes
     useEffect(() => {
-        const sectionIds = ['home-stats', 'home-recommendations', 'home-series', 'home-movies', 'home-quick'];
-        const sectionId = sectionIds[focusedSection];
-        if (sectionId) {
-            const element = document.getElementById(sectionId);
+        const section = sections[focusedSection];
+        if (section) {
+            const element = document.getElementById(`home-${section.id}`);
             if (element) {
                 element.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         }
-    }, [focusedSection]);
+        // sections é derivado — o id da seção focada é o que importa aqui
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusedSection, continueItems.length]);
 
     // Helper to get cover image
     const getCover = (item: VODStream | Series) => {
@@ -230,8 +274,47 @@ export function Home({ onNavigate }: HomeProps) {
 
             {/* Content Rows - Matching Original App */}
             <section className="home-content">
-                {/* Continue Watching - Placeholder for now */}
-                {/* This would need watchProgressService implementation */}
+                {/* Continue Watching */}
+                {continueItems.length > 0 && (
+                    <div id="home-continue" className="content-section">
+                        <h2 className="section-title">▶ Continuar Assistindo</h2>
+                        <div className="content-row">
+                            {continueItems.map((item, index) => {
+                                const isMovie = item.kind === 'movie';
+                                const title = isMovie ? item.progress.name : item.progress.seriesName;
+                                const subtitle = isMovie
+                                    ? null
+                                    : `T${item.progress.season} E${item.progress.episode}`;
+                                const pct = item.progress.duration > 0
+                                    ? Math.min(100, (item.progress.time / item.progress.duration) * 100)
+                                    : 0;
+                                const key = isMovie ? `m-${item.progress.id}` : `s-${item.progress.seriesId}`;
+                                return (
+                                    <button
+                                        key={key}
+                                        className={`content-card ${focusedSection === sectionIndex('continue') && focusedItem === index ? 'tv-focused' : ''}`}
+                                        onClick={() => void playContinueItem(item)}
+                                    >
+                                        <div className="card-image card-image-poster">
+                                            <img
+                                                src={item.progress.poster || ''}
+                                                alt={title}
+                                                onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">🎬</text></svg>'; }}
+                                            />
+                                            <div className="continue-progress">
+                                                <div className="continue-progress-fill" style={{ width: `${pct}%` }} />
+                                            </div>
+                                        </div>
+                                        <div className="card-title">
+                                            {title}
+                                            {subtitle && <span className="continue-episode"> · {subtitle}</span>}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 {/* Recommendations */}
                 <div id="home-recommendations" className="content-section">
@@ -240,7 +323,7 @@ export function Home({ onNavigate }: HomeProps) {
                         {recommendations.map((item, index) => (
                             <button
                                 key={getId(item)}
-                                className={`content-card ${focusedSection === 1 && focusedItem === index ? 'tv-focused' : ''}`}
+                                className={`content-card ${focusedSection === sectionIndex('recommendations') && focusedItem === index ? 'tv-focused' : ''}`}
                                 onClick={() => onNavigate?.('stream_id' in item ? 'movies' : 'series')}
                             >
                                 <div className="card-image card-image-poster">
@@ -263,7 +346,7 @@ export function Home({ onNavigate }: HomeProps) {
                         {recentSeries.map((series, index) => (
                             <button
                                 key={series.series_id}
-                                className={`content-card ${focusedSection === 2 && focusedItem === index ? 'tv-focused' : ''}`}
+                                className={`content-card ${focusedSection === sectionIndex('series') && focusedItem === index ? 'tv-focused' : ''}`}
                                 onClick={() => onNavigate?.('series')}
                             >
                                 <div className="card-image card-image-poster">
@@ -286,7 +369,7 @@ export function Home({ onNavigate }: HomeProps) {
                         {recentMovies.map((movie, index) => (
                             <button
                                 key={movie.stream_id}
-                                className={`content-card ${focusedSection === 3 && focusedItem === index ? 'tv-focused' : ''}`}
+                                className={`content-card ${focusedSection === sectionIndex('movies') && focusedItem === index ? 'tv-focused' : ''}`}
                                 onClick={() => onNavigate?.('movies')}
                             >
                                 <div className="card-image card-image-poster">
@@ -308,35 +391,35 @@ export function Home({ onNavigate }: HomeProps) {
                 <h2 className="section-title">⚡ Acesso Rápido</h2>
                 <div className="quick-grid">
                     <button
-                        className={`quick-item ${focusedSection === 4 && focusedItem === 0 ? 'tv-focused' : ''}`}
+                        className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 0 ? 'tv-focused' : ''}`}
                         onClick={() => onNavigate?.('live')}
                     >
                         <span className="quick-icon">🔴</span>
                         <span className="quick-label">TV ao Vivo</span>
                     </button>
                     <button
-                        className={`quick-item ${focusedSection === 4 && focusedItem === 1 ? 'tv-focused' : ''}`}
+                        className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 1 ? 'tv-focused' : ''}`}
                         onClick={() => onNavigate?.('movies')}
                     >
                         <span className="quick-icon">🎥</span>
                         <span className="quick-label">Filmes</span>
                     </button>
                     <button
-                        className={`quick-item ${focusedSection === 4 && focusedItem === 2 ? 'tv-focused' : ''}`}
+                        className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 2 ? 'tv-focused' : ''}`}
                         onClick={() => onNavigate?.('series')}
                     >
                         <span className="quick-icon">📺</span>
                         <span className="quick-label">Séries</span>
                     </button>
                     <button
-                        className={`quick-item ${focusedSection === 4 && focusedItem === 3 ? 'tv-focused' : ''}`}
+                        className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 3 ? 'tv-focused' : ''}`}
                         onClick={() => onNavigate?.('favorites')}
                     >
                         <span className="quick-icon">❤️</span>
                         <span className="quick-label">Favoritos</span>
                     </button>
                     <button
-                        className={`quick-item ${focusedSection === 4 && focusedItem === 4 ? 'tv-focused' : ''}`}
+                        className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 4 ? 'tv-focused' : ''}`}
                         onClick={() => onNavigate?.('settings')}
                     >
                         <span className="quick-icon">⚙️</span>
@@ -350,6 +433,31 @@ export function Home({ onNavigate }: HomeProps) {
                 <span>NeoStream TV</span>
                 <span>v1.0.0</span>
             </footer>
+
+            {/* Continue Watching: Movie Player */}
+            {playingMovie && (
+                <MoviePlayer
+                    movieId={playingMovie.id}
+                    title={playingMovie.name}
+                    poster={playingMovie.poster}
+                    container={playingMovie.container}
+                    onClose={() => {
+                        setPlayingMovie(null);
+                        refreshContinue();
+                    }}
+                />
+            )}
+
+            {/* Continue Watching: Series Player */}
+            {seriesQueue && (
+                <SeriesQueuePlayer
+                    queue={seriesQueue}
+                    onClose={() => {
+                        setSeriesQueue(null);
+                        refreshContinue();
+                    }}
+                />
+            )}
         </div>
     );
 }

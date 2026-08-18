@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { api } from '../services/api';
+import { storage } from '../services/storage';
 import { searchMovieByName, searchSeriesByName, getImageUrl, formatGenres, type TMDBMovieDetails, type TMDBSeriesDetails } from '../services/tmdb';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import type { Episode, SeriesInfo } from '../types';
@@ -25,61 +26,6 @@ interface ContentDetailModalProps {
     };
     onPlay: (season?: number, episode?: number) => void;
 }
-
-// Simple favorites service (localStorage based)
-const favoritesService = {
-    KEY: 'neostream_favorites',
-    getAll(): Array<{ id: string; type: string }> {
-        try {
-            return JSON.parse(localStorage.getItem(this.KEY) || '[]');
-        } catch { return []; }
-    },
-    has(id: string, type: string): boolean {
-        return this.getAll().some(f => f.id === id && f.type === type);
-    },
-    toggle(id: string, type: string): void {
-        const all = this.getAll();
-        const index = all.findIndex(f => f.id === id && f.type === type);
-        if (index >= 0) {
-            all.splice(index, 1);
-        } else {
-            all.push({ id, type });
-        }
-        localStorage.setItem(this.KEY, JSON.stringify(all));
-    }
-};
-
-// Simple watch later service
-interface WatchLaterItemData {
-    id: string;
-    type: string;
-    title?: string;
-    poster?: string;
-    rating?: string;
-    addedAt?: number;
-}
-
-const watchLaterService = {
-    KEY: 'neostream_watch_later',
-    getAll(): WatchLaterItemData[] {
-        try {
-            return JSON.parse(localStorage.getItem(this.KEY) || '[]');
-        } catch { return []; }
-    },
-    has(id: string, type: string): boolean {
-        return this.getAll().some(f => f.id === id && f.type === type);
-    },
-    toggle(id: string, type: string, title?: string, poster?: string, rating?: string): void {
-        const all = this.getAll();
-        const index = all.findIndex(f => f.id === id && f.type === type);
-        if (index >= 0) {
-            all.splice(index, 1);
-        } else {
-            all.push({ id, type, title, poster, rating, addedAt: Date.now() });
-        }
-        localStorage.setItem(this.KEY, JSON.stringify(all));
-    }
-};
 
 export function ContentDetailModal({
     isOpen,
@@ -261,6 +207,18 @@ export function ContentDetailModal({
         }
     }, [isOpen, focusZone, contentType, seasons.length, episodes.length, episodeFocusIndex]);
 
+    // Item completo pra salvar em Favoritos/Minha Lista (com pôster e título —
+    // a página de listas depende desses campos pra renderizar o card)
+    const buildSavedItem = useCallback(() => ({
+        id: contentId,
+        type: contentType,
+        title: contentData.name,
+        poster: (tmdbData?.poster_path ? getImageUrl(tmdbData.poster_path, 'w500') : contentData.cover) || undefined,
+        rating: tmdbData?.vote_average ? tmdbData.vote_average.toFixed(1) : contentData.rating,
+        year: contentData.release_date?.split('-')[0],
+        container: contentData.container_extension,
+    }), [contentId, contentType, contentData, tmdbData]);
+
     const handleEnter = useCallback(() => {
         if (!isOpen) return;
 
@@ -270,17 +228,10 @@ export function ContentDetailModal({
                 contentType === 'series' ? selectedEpisode : undefined
             );
         } else if (focusZone === 'watchLater') {
-            const posterForWatchLater = tmdbData?.poster_path ? getImageUrl(tmdbData.poster_path, 'w500') : contentData.cover;
-            watchLaterService.toggle(
-                contentId,
-                contentType,
-                contentData.name,
-                posterForWatchLater || undefined,
-                tmdbData?.vote_average ? tmdbData.vote_average.toFixed(1) : contentData.rating
-            );
+            storage.toggleWatchLater(buildSavedItem());
             setRefresh(r => r + 1);
         } else if (focusZone === 'favorite') {
-            favoritesService.toggle(contentId, contentType);
+            storage.toggleFavorite(buildSavedItem());
             setRefresh(r => r + 1);
         } else if (focusZone === 'close') {
             handleClose();
@@ -294,7 +245,7 @@ export function ContentDetailModal({
                 setSelectedEpisode(Number(ep.episode_num));
             }
         }
-    }, [isOpen, focusZone, contentType, selectedSeason, selectedEpisode, contentId, contentData, tmdbData, seasons, seasonFocusIndex, episodes, episodeFocusIndex, onPlay, handleClose]);
+    }, [isOpen, focusZone, contentType, selectedSeason, selectedEpisode, buildSavedItem, seasons, seasonFocusIndex, episodes, episodeFocusIndex, onPlay, handleClose]);
 
     const handleBack = useCallback(() => {
         handleClose();
@@ -480,32 +431,26 @@ export function ContentDetailModal({
 
                         {/* Watch Later Button */}
                         <button
-                            className={`action-btn secondary-btn ${watchLaterService.has(contentId, contentType) ? 'active' : ''} ${focusZone === 'watchLater' ? 'focused' : ''}`}
+                            className={`action-btn secondary-btn ${storage.isInWatchLater(contentId, contentType) ? 'active' : ''} ${focusZone === 'watchLater' ? 'focused' : ''}`}
                             onClick={() => {
-                                watchLaterService.toggle(
-                                    contentId,
-                                    contentType,
-                                    contentData.name,
-                                    posterUrl || contentData.cover,
-                                    rating
-                                );
+                                storage.toggleWatchLater(buildSavedItem());
                                 setRefresh(r => r + 1);
                             }}
                         >
-                            {watchLaterService.has(contentId, contentType) ? '✓' : '+'}
-                            {watchLaterService.has(contentId, contentType) ? 'Salvo' : 'Assistir Depois'}
+                            {storage.isInWatchLater(contentId, contentType) ? '✓' : '+'}
+                            {storage.isInWatchLater(contentId, contentType) ? 'Salvo' : 'Assistir Depois'}
                         </button>
 
                         {/* Favorite Button */}
                         <button
-                            className={`action-btn favorite-btn ${favoritesService.has(contentId, contentType) ? 'active' : ''} ${focusZone === 'favorite' ? 'focused' : ''}`}
+                            className={`action-btn favorite-btn ${storage.isFavorite(contentId, contentType) ? 'active' : ''} ${focusZone === 'favorite' ? 'focused' : ''}`}
                             onClick={() => {
-                                favoritesService.toggle(contentId, contentType);
+                                storage.toggleFavorite(buildSavedItem());
                                 setRefresh(r => r + 1);
                             }}
-                            title={favoritesService.has(contentId, contentType) ? 'Remover dos Favoritos' : 'Adicionar aos Favoritos'}
+                            title={storage.isFavorite(contentId, contentType) ? 'Remover dos Favoritos' : 'Adicionar aos Favoritos'}
                         >
-                            {favoritesService.has(contentId, contentType) ? '♥' : '♡'}
+                            {storage.isFavorite(contentId, contentType) ? '♥' : '♡'}
                         </button>
                     </div>
                 </div>
