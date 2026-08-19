@@ -3,6 +3,7 @@ export const en = {
     language_selection_title: "Select your language",
     language_pt: "Português (Brasil)",
     language_en: "English",
+    language_es: "Español",
 
     // Welcome
     welcome_title: "Welcome to NeoStream",
@@ -35,6 +36,7 @@ export const en = {
     login_error_generic: "Connection error",
 
     // Sidebar
+    sidebar_search: "Search",
     sidebar_home: "Home",
     sidebar_live: "Live TV",
     sidebar_movies: "Movies",

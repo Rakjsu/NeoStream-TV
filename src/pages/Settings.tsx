@@ -2,12 +2,26 @@ import { useEffect, useRef, useState } from 'react';
 import { storage } from '../services/storage';
 import { themeService, ACCENTS, ACCENT_IDS, BACKGROUNDS, BACKGROUND_IDS, type AccentId, type BackgroundId } from '../services/themeService';
 import { usageStats, type UsageSummary } from '../services/usageStats';
+import { playlistService, type PlaylistEntry } from '../services/playlistService';
+import { WrappedOverlay } from '../components/WrappedOverlay';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useFocusZone } from '../contexts/FocusContext';
 import './Settings.css';
 
-type FocusZone = 'bg' | 'accent' | 'input' | 'save' | 'clear';
+type FocusZone = 'bg' | 'accent' | 'lang' | 'playlists' | 'wrapped' | 'input' | 'save' | 'clear';
 
-const ZONES: FocusZone[] = ['bg', 'accent', 'input', 'save', 'clear'];
+const ZONES: FocusZone[] = ['bg', 'accent', 'lang', 'playlists', 'wrapped', 'input', 'save', 'clear'];
+
+type LanguageId = 'pt' | 'en' | 'es';
+const LANGUAGES: Array<{ id: LanguageId; label: string }> = [
+    { id: 'pt', label: 'Português' },
+    { id: 'en', label: 'English' },
+    { id: 'es', label: 'Español' },
+];
+
+interface SettingsProps {
+    onAddPlaylist?: () => void;
+}
 
 function formatHours(seconds: number): string {
     const hours = Math.floor(seconds / 3600);
@@ -16,7 +30,8 @@ function formatHours(seconds: number): string {
     return `${minutes}min`;
 }
 
-export function Settings() {
+export function Settings({ onAddPlaylist }: SettingsProps) {
+    const { focusZone: appFocusZone } = useFocusZone();
     const [tmdbKey, setTmdbKey] = useState(() => storage.getTmdbApiKey());
     const [savedKey, setSavedKey] = useState(() => storage.getTmdbApiKey());
     const [message, setMessage] = useState('');
@@ -27,13 +42,29 @@ export function Settings() {
     const [background, setBackground] = useState<BackgroundId>(() => themeService.getBackground());
     const [accent, setAccent] = useState<AccentId>(() => themeService.getAccent());
 
-    // Estatísticas (lidas 1x ao abrir a página)
+    // Idioma
+    const [language, setLanguage] = useState<LanguageId>(() => storage.getSettings().language);
+
+    // Playlists (multi-provedor)
+    const [playlists, setPlaylists] = useState<PlaylistEntry[]>(() => playlistService.list());
+    const [activePlaylistId, setActivePlaylistId] = useState<string | null>(() => playlistService.getActiveId());
+
+    // Estatísticas (lidas 1x ao abrir a página) + Wrapped
     const [usage] = useState<UsageSummary>(() => usageStats.summary());
+    const [showWrapped, setShowWrapped] = useState(false);
+
+    // Zonas ativas: 'wrapped' só existe quando há estatística (o botão só
+    // renderiza nesse caso — zona invisível virava parada morta do D-pad)
+    const zones: FocusZone[] = usage.totalSeconds > 0
+        ? ZONES
+        : ZONES.filter(zone => zone !== 'wrapped');
 
     // Foco por zona + índice horizontal dentro da zona
     const [focusZone, setFocusZone] = useState<FocusZone>('bg');
     const [bgIndex, setBgIndex] = useState(() => Math.max(0, BACKGROUND_IDS.indexOf(themeService.getBackground())));
     const [accentIndex, setAccentIndex] = useState(() => Math.max(0, ACCENT_IDS.indexOf(themeService.getAccent())));
+    const [langIndex, setLangIndex] = useState(() => Math.max(0, LANGUAGES.findIndex(l => l.id === storage.getSettings().language)));
+    const [playlistIndex, setPlaylistIndex] = useState(0);
 
     useEffect(() => {
         if (!message) return;
@@ -66,14 +97,46 @@ export function Settings() {
         setAccent(id);
     };
 
+    const applyLanguage = (id: LanguageId) => {
+        storage.saveSettings({ language: id });
+        setLanguage(id);
+        // Mesmo evento da LanguageSelection — telas traduzidas re-renderizam
+        window.dispatchEvent(new Event('neostream-lang-change'));
+        setMessage('Idioma alterado. Telas traduzidas aplicam na hora.');
+    };
+
+    // Trocar de playlist re-autentica do zero (reload é o caminho robusto na TV)
+    const switchPlaylist = (entry: PlaylistEntry) => {
+        if (entry.id === activePlaylistId) return;
+        if (playlistService.setActive(entry.id)) {
+            window.location.reload();
+        }
+    };
+
+    const removePlaylist = (entry: PlaylistEntry) => {
+        if (entry.id === activePlaylistId) {
+            setMessage('A playlist ativa não pode ser removida.');
+            return;
+        }
+        if (playlistService.remove(entry.id)) {
+            setPlaylists(playlistService.list());
+            setActivePlaylistId(playlistService.getActiveId());
+            setMessage(`Playlist "${entry.alias}" removida.`);
+        }
+    };
+
+    // Slots da zona de playlists: uma por entrada + "➕ Adicionar" no fim
+    const playlistSlots = playlists.length + 1;
+    const safePlaylistIndex = Math.min(playlistIndex, playlistSlots - 1);
+
     useTVNavigation({
-        enabled: !editing,
+        enabled: appFocusZone === 'content' && !editing && !showWrapped,
         onNavigate: (direction) => {
             if (direction === 'up' || direction === 'down') {
                 setFocusZone((current) => {
-                    const idx = ZONES.indexOf(current);
-                    const next = direction === 'up' ? Math.max(0, idx - 1) : Math.min(ZONES.length - 1, idx + 1);
-                    return ZONES[next];
+                    const idx = Math.max(0, zones.indexOf(current));
+                    const next = direction === 'up' ? Math.max(0, idx - 1) : Math.min(zones.length - 1, idx + 1);
+                    return zones[next];
                 });
                 return;
             }
@@ -82,6 +145,10 @@ export function Settings() {
                 setBgIndex(prev => direction === 'left' ? Math.max(0, prev - 1) : Math.min(BACKGROUND_IDS.length - 1, prev + 1));
             } else if (focusZone === 'accent') {
                 setAccentIndex(prev => direction === 'left' ? Math.max(0, prev - 1) : Math.min(ACCENT_IDS.length - 1, prev + 1));
+            } else if (focusZone === 'lang') {
+                setLangIndex(prev => direction === 'left' ? Math.max(0, prev - 1) : Math.min(LANGUAGES.length - 1, prev + 1));
+            } else if (focusZone === 'playlists') {
+                setPlaylistIndex(prev => direction === 'left' ? Math.max(0, prev - 1) : Math.min(playlistSlots - 1, prev + 1));
             } else if (focusZone === 'save' && direction === 'right') {
                 setFocusZone('clear');
             } else if (focusZone === 'clear' && direction === 'left') {
@@ -91,6 +158,15 @@ export function Settings() {
         onEnter: () => {
             if (focusZone === 'bg') applyBackground(BACKGROUND_IDS[bgIndex]);
             else if (focusZone === 'accent') applyAccent(ACCENT_IDS[accentIndex]);
+            else if (focusZone === 'lang') applyLanguage(LANGUAGES[langIndex].id);
+            else if (focusZone === 'playlists') {
+                if (safePlaylistIndex === playlists.length) onAddPlaylist?.();
+                else {
+                    const entry = playlists[safePlaylistIndex];
+                    if (entry) switchPlaylist(entry);
+                }
+            }
+            else if (focusZone === 'wrapped') setShowWrapped(true);
             else if (focusZone === 'input') {
                 setEditing(true);
                 inputRef.current?.focus();
@@ -98,7 +174,29 @@ export function Settings() {
             else if (focusZone === 'save') saveKey();
             else if (focusZone === 'clear') clearKey();
         },
+        onAction: (action) => {
+            // 🔴 remove a playlist focada (não-ativa)
+            if (action === 'red' && focusZone === 'playlists' && safePlaylistIndex < playlists.length) {
+                const entry = playlists[safePlaylistIndex];
+                if (entry) removePlaylist(entry);
+            }
+        },
     });
+
+    // Rola a seção da zona focada pra viewport (a página tem várias dobras)
+    useEffect(() => {
+        const sectionIds: Record<FocusZone, string> = {
+            bg: 'sec-aparencia',
+            accent: 'sec-aparencia',
+            lang: 'sec-idioma',
+            playlists: 'sec-playlists',
+            wrapped: 'sec-uso',
+            input: 'sec-tmdb',
+            save: 'sec-tmdb',
+            clear: 'sec-tmdb',
+        };
+        document.getElementById(sectionIds[focusZone])?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, [focusZone]);
 
     const hasSavedKey = savedKey.length > 0;
 
@@ -111,7 +209,7 @@ export function Settings() {
                 </header>
 
                 {/* Aparência */}
-                <section className="settings-section">
+                <section id="sec-aparencia" className="settings-section">
                     <h2 className="settings-section-title">🎨 Aparência</h2>
 
                     <label className="settings-label">Fundo</label>
@@ -143,8 +241,64 @@ export function Settings() {
                     </div>
                 </section>
 
+                {/* Idioma */}
+                <section id="sec-idioma" className="settings-section">
+                    <h2 className="settings-section-title">🌐 Idioma</h2>
+                    <p className="settings-muted">
+                        Vale para as telas traduzidas (Login, Boas-vindas, menu lateral).
+                    </p>
+                    <div className="settings-options-row">
+                        {LANGUAGES.map((lang, index) => (
+                            <button
+                                key={lang.id}
+                                className={`settings-option ${language === lang.id ? 'selected' : ''} ${focusZone === 'lang' && langIndex === index ? 'focused' : ''}`}
+                                onClick={() => applyLanguage(lang.id)}
+                            >
+                                {lang.label}
+                            </button>
+                        ))}
+                    </div>
+                </section>
+
+                {/* Playlists */}
+                <section id="sec-playlists" className="settings-section">
+                    <h2 className="settings-section-title">📡 Playlists</h2>
+                    <p className="settings-muted">
+                        OK troca de provedor (recarrega o app) · 🔴 remove a playlist focada
+                    </p>
+                    <div className="settings-options-row settings-playlists">
+                        {playlists.map((entry, index) => (
+                            <button
+                                key={entry.id}
+                                className={`settings-option ${entry.id === activePlaylistId ? 'selected' : ''} ${focusZone === 'playlists' && safePlaylistIndex === index ? 'focused' : ''}`}
+                                onClick={() => switchPlaylist(entry)}
+                                title={entry.url}
+                            >
+                                {entry.id === activePlaylistId ? '✓ ' : ''}{entry.alias}
+                                {entry.id !== activePlaylistId && (
+                                    <span
+                                        className="playlist-remove"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            removePlaylist(entry);
+                                        }}
+                                    >
+                                        ✕
+                                    </span>
+                                )}
+                            </button>
+                        ))}
+                        <button
+                            className={`settings-option ${focusZone === 'playlists' && safePlaylistIndex === playlists.length ? 'focused' : ''}`}
+                            onClick={() => onAddPlaylist?.()}
+                        >
+                            ➕ Adicionar
+                        </button>
+                    </div>
+                </section>
+
                 {/* Seu uso */}
-                <section className="settings-section">
+                <section id="sec-uso" className="settings-section">
                     <h2 className="settings-section-title">📊 Seu uso</h2>
                     {usage.totalSeconds === 0 ? (
                         <p className="settings-muted">Assista algo e as estatísticas aparecem aqui.</p>
@@ -185,12 +339,20 @@ export function Settings() {
                                     </ol>
                                 </div>
                             )}
+                            <div className="settings-actions">
+                                <button
+                                    className={`settings-button primary ${focusZone === 'wrapped' ? 'focused' : ''}`}
+                                    onClick={() => setShowWrapped(true)}
+                                >
+                                    🏆 Ver retrospectiva
+                                </button>
+                            </div>
                         </>
                     )}
                 </section>
 
                 {/* TMDB */}
-                <section className="settings-section">
+                <section id="sec-tmdb" className="settings-section">
                     <h2 className="settings-section-title">🎞 Integração TMDB</h2>
                     <p className="settings-muted">
                         Opcional. Com uma chave própria, o app busca sinopse, capas e metadados extras.
@@ -237,6 +399,11 @@ export function Settings() {
                     {message && <p className="settings-message">{message}</p>}
                 </section>
             </div>
+
+            {/* Retrospectiva (Wrapped) */}
+            {showWrapped && (
+                <WrappedOverlay onClose={() => setShowWrapped(false)} />
+            )}
         </div>
     );
 }

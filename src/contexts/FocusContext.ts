@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 
-export type FocusZone = 'sidebar' | 'content';
+export type FocusZone = 'sidebar' | 'content' | 'overlay';
 
 interface FocusContextType {
   focusZone: FocusZone;

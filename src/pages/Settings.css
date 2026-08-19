@@ -248,3 +248,22 @@
     color: rgba(255, 255, 255, 0.5);
     font-size: 14px;
 }
+
+/* Fase 4b: playlists + wrapped */
+.settings-playlists {
+    flex-wrap: wrap;
+}
+
+.settings-playlists .settings-option {
+    margin-bottom: 8px;
+}
+
+.playlist-remove {
+    margin-left: 10px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 13px;
+}
+
+.playlist-remove:hover {
+    color: #ef4444;
+}

@@ -5,19 +5,22 @@ import type { KeyboardEvent } from 'react';
 import { FaTv, FaServer, FaUser, FaLock, FaSignInAlt, FaStar, FaArrowLeft, FaGlobe } from 'react-icons/fa';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
+import { playlistService } from '../services/playlistService';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useTranslation } from '../hooks/useTranslation';
 import './Login.css';
 
 interface LoginProps {
     onLoginSuccess: () => void;
+    /** Fluxo ➕ Adicionar playlist: não pré-preencher com a credencial ativa */
+    startBlank?: boolean;
     onLanguageSelect?: () => void;
 }
 
 // Navigation order: 0=url, 1=username, 2=password, 3=includeTV, 4=includeVOD, 5=lang, 6=back, 7=submit
 const MAX_FOCUS = 7;
 
-export function Login({ onLoginSuccess, onLanguageSelect }: LoginProps) {
+export function Login({ onLoginSuccess, onLanguageSelect, startBlank = false }: LoginProps) {
     const { t } = useTranslation();
     const [url, setUrl] = useState('');
     const [username, setUsername] = useState('');
@@ -35,13 +38,14 @@ export function Login({ onLoginSuccess, onLanguageSelect }: LoginProps) {
 
     // Check for saved credentials on mount
     useEffect(() => {
+        if (startBlank) return;
         const saved = storage.getCredentials();
         if (saved) {
             setUrl(saved.url || '');
             setUsername(saved.username || '');
             setPassword(saved.password || '');
         }
-    }, []);
+    }, [startBlank]);
 
     // Listen for focus/blur on inputs to track editing state reliably
     useEffect(() => {
@@ -89,6 +93,7 @@ export function Login({ onLoginSuccess, onLanguageSelect }: LoginProps) {
             localStorage.setItem('includeTV', includeTV.toString());
             localStorage.setItem('includeVOD', includeVOD.toString());
             storage.saveCredentials({ url, username, password });
+            playlistService.registerFromLogin({ url, username, password });
             onLoginSuccess();
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : '';
@@ -225,7 +230,8 @@ export function Login({ onLoginSuccess, onLanguageSelect }: LoginProps) {
     }, [editingField]);
 
     // Get current language label
-    const currentLang = storage.getSettings().language === 'en' ? 'EN' : 'PT-BR';
+    const LANG_LABELS: Record<string, string> = { pt: 'PT-BR', en: 'EN', es: 'ES' };
+    const currentLang = LANG_LABELS[storage.getSettings().language] || 'PT-BR';
 
     return (
         <div className="login-container">

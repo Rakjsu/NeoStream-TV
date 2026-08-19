@@ -15,6 +15,8 @@ import { Settings } from './pages/Settings';
 import { LanguageSelection } from './pages/LanguageSelection';
 import { Sidebar } from './components/Sidebar';
 import { ProfileManager } from './components/ProfileManager';
+import { GlobalSearch } from './components/GlobalSearch';
+import { playlistService } from './services/playlistService';
 import { FocusContext, type FocusZone } from './contexts/FocusContext';
 import { themeService } from './services/themeService';
 import './index.css';
@@ -50,9 +52,13 @@ function App() {
   const [showProfileManager, setShowProfileManager] = useState(false);
   // Troca de perfil remonta a página atual (refetch com o gate kids certo)
   const [profileTick, setProfileTick] = useState(0);
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false);
+  // Fluxo ➕ Adicionar playlist: Login abre em branco
+  const [addingPlaylist, setAddingPlaylist] = useState(false);
 
   useEffect(() => {
     registerTizenKeys();
+    playlistService.migrate();
     themeService.apply();
   }, []);
 
@@ -88,6 +94,7 @@ function App() {
   };
 
   const handleLoginSuccess = () => {
+    setAddingPlaylist(false);
     setAuthState('authenticated');
   };
 
@@ -98,6 +105,11 @@ function App() {
   };
 
   const handlePageChange = (page: string) => {
+    if (page === 'search') {
+      setShowGlobalSearch(true);
+      setFocusZone('overlay');
+      return;
+    }
     setCurrentPage(page as Page);
     setFocusZone('content'); // Reset focus to content when changing pages
   };
@@ -131,7 +143,7 @@ function App() {
 
   // Login screen
   if (authState === 'login') {
-    return <Login onLoginSuccess={handleLoginSuccess} onLanguageSelect={() => setAuthState('languageSelection')} />;
+    return <Login onLoginSuccess={handleLoginSuccess} startBlank={addingPlaylist} onLanguageSelect={() => setAuthState('languageSelection')} />;
   }
 
   // Main app with sidebar
@@ -152,10 +164,19 @@ function App() {
           {currentPage === 'series' && <Series />}
           {currentPage === 'mylist' && <MyList onNavigate={handlePageChange} />}
           {currentPage === 'favorites' && <Favorites onNavigate={handlePageChange} />}
-          {currentPage === 'settings' && <Settings />}
+          {currentPage === 'settings' && <Settings onAddPlaylist={() => { setAddingPlaylist(true); setAuthState('login'); }} />}
         </main>
 
         {/* Profile Manager Modal */}
+        {showGlobalSearch && (
+          <GlobalSearch
+            onClose={() => {
+              setShowGlobalSearch(false);
+              setFocusZone('content');
+            }}
+          />
+        )}
+
         {showProfileManager && (
           <ProfileManager
             onClose={() => setShowProfileManager(false)}

@@ -14,9 +14,10 @@ export function LanguageSelection({ onComplete }: LanguageSelectionProps) {
     const languages = useMemo(() => [
         { code: 'pt' as const, label: t('language_pt'), icon: 'BR' },
         { code: 'en' as const, label: t('language_en'), icon: 'US' },
+        { code: 'es' as const, label: t('language_es'), icon: 'ES' },
     ], [t]);
 
-    const handleSelect = useCallback((code: 'pt' | 'en') => {
+    const handleSelect = useCallback((code: 'pt' | 'en' | 'es') => {
         // Save to storage
         storage.saveSettings({ language: code });
         // Fire event so hooks update immediately
@@ -72,7 +73,7 @@ export function LanguageSelection({ onComplete }: LanguageSelectionProps) {
                             <button
                                 key={lang.code}
                                 className={`language-btn ${focusedIndex === index ? 'focused' : ''}`}
-                                onClick={() => handleSelect(lang.code as 'pt' | 'en')}
+                                onClick={() => handleSelect(lang.code as 'pt' | 'en' | 'es')}
                                 onMouseEnter={() => setFocusedIndex(index)}
                             >
                                 <span className="language-icon">{lang.icon}</span>

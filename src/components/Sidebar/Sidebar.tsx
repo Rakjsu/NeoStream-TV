@@ -25,6 +25,7 @@ interface MenuItem {
 }
 
 const allMenuItems: MenuItem[] = [
+    { id: 'search', label: 'Buscar', emoji: '🔍', gradient: 'linear-gradient(135deg, #64748b, #475569)' },
     { id: 'home', label: 'Início', emoji: '🏠', gradient: 'linear-gradient(135deg, #f59e0b, #d97706)' },
     { id: 'live', label: 'TV ao Vivo', emoji: '📺', gradient: 'linear-gradient(135deg, #a855f7, #7c3aed)', requiresTV: true },
     { id: 'movies', label: 'Filmes', emoji: '🎬', gradient: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', requiresVOD: true },
@@ -78,7 +79,11 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
             const item = menuItems[focusedIndex];
             if (item) {
                 onItemSelect(item.id);
-                setFocusZone('content'); // Move to content after selecting
+                // 'search' abre o overlay (zona 'overlay' setada pelo App) —
+                // forcar 'content' aqui reativaria a pagina atras da busca
+                if (item.id !== 'search') {
+                    setFocusZone('content'); // Move to content after selecting
+                }
             }
         }
     };

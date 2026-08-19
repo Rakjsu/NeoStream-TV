@@ -9,8 +9,8 @@ export function useTranslation() {
         // When the hook mounts, load from storage
         const fetchLanguage = () => {
             const settings = storage.getSettings();
-            // Ensure the language is either 'pt' or 'en', fallback to pt
-            const safeLang = settings.language === 'en' ? 'en' : 'pt';
+            // Qualquer idioma registrado em translations vale; fallback pt
+            const safeLang = (settings.language in translations ? settings.language : 'pt') as Language;
             setCurrentLang(safeLang);
         };
 
