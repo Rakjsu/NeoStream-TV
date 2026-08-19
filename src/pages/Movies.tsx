@@ -9,6 +9,8 @@ import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMen
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
+import { catalogSort, sortCatalog, hideWatched, isRecentlyAdded, SORT_LABELS, type CatalogSort } from '../services/catalogExtras';
+import { progressService } from '../services/progressService';
 import './Movies.css';
 
 export function Movies() {
@@ -26,6 +28,12 @@ export function Movies() {
     const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
     const [visibleCount, setVisibleCount] = useState(24); // Start with reasonable default
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+    // Ordenação / esconder assistidos / selo NOVO (Fase 3)
+    const [sortMode, setSortMode] = useState<CatalogSort>(() => catalogSort.get('movies'));
+    const [hideWatchedOn, setHideWatchedOn] = useState(() => hideWatched.get());
+    // Congelado no mount: Date.now() no render viola a pureza do react-hooks
+    const [nowMs] = useState(() => Date.now());
 
     // Focus states for TV navigation
     // 'categories' = zona do header: índice 0 é a busca, 1 é o menu de categorias
@@ -83,16 +91,34 @@ export function Movies() {
         fetchData();
     }, []);
 
+    // Filmes concluídos (só relidos quando o toggle liga ou um player fecha —
+    // showPlayer é gatilho intencional de refresh, não dependência de dado)
+    const completedMovieIds = useMemo(() => {
+        return hideWatchedOn ? progressService.getCompletedMovieIds() : null;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hideWatchedOn, showPlayer]);
+
+    // Ordenação roda 1x por mudança de modo/dados; o filtro (que roda a cada
+    // tecla da busca) preserva a ordem — nunca re-ordenar por tecla
+    const sortedStreams = useMemo(() => sortCatalog(streams, sortMode), [streams, sortMode]);
+
     // Filter streams (memoizado — recalcular a cada tecla do D-pad trava TVs antigas)
     const filteredStreams = useMemo(() => {
         const query = searchQuery.toLowerCase();
-        return streams.filter((stream) => {
+        let list = sortedStreams.filter((stream) => {
             const streamName = stream.name || '';
             const matchesSearch = streamName.toLowerCase().includes(query);
             const matchesCategory = selectedCategory === 'all' || stream.category_id === selectedCategory;
             return matchesSearch && matchesCategory;
         });
-    }, [streams, searchQuery, selectedCategory]);
+        if (completedMovieIds) {
+            list = list.filter(stream => !completedMovieIds.has(String(stream.stream_id)));
+        }
+        return list;
+    }, [sortedStreams, searchQuery, selectedCategory, completedMovieIds]);
+
+    // Índice focado sempre no range (lista encolhe ao esconder assistidos)
+    const safeMovieIndex = Math.min(focusedMovieIndex, Math.max(0, filteredStreams.length - 1));
 
     // Lazy loading scroll - load one more row when scrolling near bottom
     useEffect(() => {
@@ -130,16 +156,16 @@ export function Movies() {
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
         if (focusArea === 'categories') {
-            // Header: 0 = busca, 1 = menu de categorias
+            // Header: 0 = busca, 1 = categorias, 2 = ordenar, 3 = esconder assistidos
             if (direction === 'left') {
                 if (focusedCategoryIndex === 0) {
                     // At search - go to sidebar
                     setFocusZone('sidebar');
                 } else {
-                    setFocusedCategoryIndex(0);
+                    setFocusedCategoryIndex(prev => prev - 1);
                 }
             } else if (direction === 'right') {
-                setFocusedCategoryIndex(1);
+                setFocusedCategoryIndex(prev => Math.min(3, prev + 1));
             } else if (direction === 'down') {
                 setFocusArea('movies');
                 setFocusedMovieIndex(0);
@@ -205,15 +231,34 @@ export function Movies() {
         }
     }, [focusedMovieIndex, focusArea, focusZone]);
 
+    const cycleSort = () => {
+        setSortMode(prev => {
+            const next = catalogSort.next(prev);
+            catalogSort.set('movies', next);
+            return next;
+        });
+    };
+
+    const toggleHideWatched = () => {
+        setHideWatchedOn(prev => {
+            hideWatched.set(!prev);
+            return !prev;
+        });
+    };
+
     const handleEnter = () => {
         if (focusArea === 'categories') {
             if (focusedCategoryIndex === 0) {
                 searchRef.current?.open();
-            } else {
+            } else if (focusedCategoryIndex === 1) {
                 categoryMenuRef.current?.open();
+            } else if (focusedCategoryIndex === 2) {
+                cycleSort();
+            } else {
+                toggleHideWatched();
             }
         } else if (focusArea === 'movies') {
-            const movie = filteredStreams[focusedMovieIndex];
+            const movie = filteredStreams[safeMovieIndex];
             if (movie) {
                 setSelectedMovie(movie);
                 setShowModal(true);
@@ -299,6 +344,24 @@ export function Movies() {
                 onOpenChange={setCategoryMenuOpen}
             />
 
+            {/* Toolbar: ordenar + esconder assistidos */}
+            <div className="catalog-toolbar">
+                <button
+                    className={`toolbar-btn ${sortMode !== 'default' ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 2 ? 'tv-focused' : ''}`}
+                    onClick={cycleSort}
+                    title="Ordenar"
+                >
+                    ↕ {SORT_LABELS[sortMode]}
+                </button>
+                <button
+                    className={`toolbar-btn ${hideWatchedOn ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 3 ? 'tv-focused' : ''}`}
+                    onClick={toggleHideWatched}
+                    title="Esconder assistidos"
+                >
+                    🙈
+                </button>
+            </div>
+
             {/* Content Detail Modal */}
             {selectedMovie && (
                 <ContentDetailModal
@@ -356,7 +419,7 @@ export function Movies() {
                         {filteredStreams.slice(0, visibleCount).map((movie, index) => (
                             <div
                                 key={movie.stream_id}
-                                className={`movie-card ${focusArea === 'movies' && focusedMovieIndex === index ? 'tv-focused' : ''} ${selectedMovie?.stream_id === movie.stream_id ? 'selected' : ''}`}
+                                className={`movie-card ${focusArea === 'movies' && safeMovieIndex === index ? 'tv-focused' : ''} ${selectedMovie?.stream_id === movie.stream_id ? 'selected' : ''}`}
                                 onClick={() => {
                                     setSelectedMovie(movie);
                                     setShowModal(true);
@@ -373,6 +436,9 @@ export function Movies() {
                                             loading="lazy"
                                             onError={() => handleImageError(movie.stream_id)}
                                         />
+                                    )}
+                                    {isRecentlyAdded(movie, nowMs) && (
+                                        <div className="new-badge">NOVO</div>
                                     )}
                                     {movie.rating && parseFloat(movie.rating) > 0 && (
                                         <div className="movie-rating">⭐ {movie.rating}</div>

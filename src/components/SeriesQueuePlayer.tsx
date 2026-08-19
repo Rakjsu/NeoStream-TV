@@ -44,6 +44,7 @@ export function SeriesQueuePlayer({ queue: initialQueue, onClose }: SeriesQueueP
                     container: ep.container,
                     time,
                     duration,
+                    isLastEpisode: !hasNext(queue),
                 });
             }}
             onNextEpisode={() => setQueue(q => (hasNext(q) ? { ...q, index: q.index + 1 } : q))}

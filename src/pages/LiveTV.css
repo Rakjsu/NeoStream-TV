@@ -693,8 +693,8 @@
 /* Toolbar de filtros */
 .livetv-toolbar {
     position: absolute;
-    top: 24px;
-    right: 96px;
+    top: 88px;
+    right: 24px;
     display: flex;
     z-index: 20;
 }

@@ -548,3 +548,62 @@
     transform: translateY(-2px);
     box-shadow: 0 12px 40px rgba(239, 68, 68, 0.4);
 }
+/* ===== Fase 3: toolbar de catálogo + selo NOVO ===== */
+
+.catalog-toolbar {
+    position: absolute;
+    top: 88px;
+    right: 24px;
+    display: flex;
+    z-index: 20;
+}
+
+.catalog-toolbar .toolbar-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #fff;
+    font-size: 15px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    white-space: nowrap;
+}
+
+/* gap em flex so existe no Chromium 84+ (Tizen 6.5); usar margens */
+.catalog-toolbar .toolbar-btn + .toolbar-btn {
+    margin-left: 10px;
+}
+
+.catalog-toolbar .toolbar-btn:hover {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.catalog-toolbar .toolbar-btn.active {
+    background: rgba(168, 85, 247, 0.35);
+    border-color: rgba(168, 85, 247, 0.8);
+}
+
+.catalog-toolbar .toolbar-btn.tv-focused {
+    box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.8);
+    transform: scale(1.06);
+}
+
+.new-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.new-badge-episodes {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+}

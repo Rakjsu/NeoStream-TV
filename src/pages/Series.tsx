@@ -10,6 +10,9 @@ import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/A
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
+import { catalogSort, sortCatalog, hideWatched, isRecentlyAdded, newEpisodes, SORT_LABELS, type CatalogSort } from '../services/catalogExtras';
+import { progressService } from '../services/progressService';
+import { storage } from '../services/storage';
 import './Series.css';
 
 export function Series() {
@@ -26,6 +29,13 @@ export function Series() {
     const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
     const [visibleCount, setVisibleCount] = useState(24); // Start with reasonable default
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+    // Ordenação / esconder assistidos / selo NOVO / novos episódios (Fase 3)
+    const [sortMode, setSortMode] = useState<CatalogSort>(() => catalogSort.get('series'));
+    const [hideWatchedOn, setHideWatchedOn] = useState(() => hideWatched.get());
+    const [newEpisodesTick, setNewEpisodesTick] = useState(0);
+    // Congelado no mount: Date.now() no render viola a pureza do react-hooks
+    const [nowMs] = useState(() => Date.now());
 
     // Focus states for TV navigation
     // 'categories' = zona do header: índice 0 é a busca, 1 é o menu de categorias
@@ -83,16 +93,60 @@ export function Series() {
         fetchData();
     }, []);
 
+    // Séries seguidas (favoritas ou com progresso) — pra badge de novos episódios
+    const followedSeriesIds = useMemo(() => {
+        const followed = progressService.getSeriesIdsWithProgress();
+        for (const fav of storage.getFavorites()) {
+            if (fav.type === 'series') followed.add(fav.id);
+        }
+        return followed;
+        // newEpisodesTick força recomputo após markSeen
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [newEpisodesTick]);
+
+    // Semeia o baseline de last_modified das séries seguidas (1x por carga)
+    useEffect(() => {
+        if (series.length === 0) return;
+        newEpisodes.seed(
+            series
+                .filter(s => followedSeriesIds.has(String(s.series_id)))
+                .map(s => ({ seriesId: String(s.series_id), lastModified: s.last_modified || '0' }))
+        );
+    }, [series, followedSeriesIds]);
+
+    // Séries terminadas (só relidas quando o toggle liga ou o player fecha —
+    // seriesQueue é gatilho intencional de refresh, não dependência de dado)
+    const finishedSeriesIds = useMemo(() => {
+        return hideWatchedOn ? progressService.getFinishedSeriesIds() : null;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hideWatchedOn, seriesQueue]);
+
+    // Ordenação roda 1x por mudança de modo/dados; o filtro (que roda a cada
+    // tecla da busca) preserva a ordem — nunca re-ordenar por tecla
+    const sortedSeries = useMemo(() => sortCatalog(series, sortMode), [series, sortMode]);
+
     // Filter series (memoizado — recalcular a cada tecla do D-pad trava TVs antigas)
     const filteredSeries = useMemo(() => {
         const query = searchQuery.toLowerCase();
-        return series.filter((s) => {
+        let list = sortedSeries.filter((s) => {
             const seriesName = s.name || '';
             const matchesSearch = seriesName.toLowerCase().includes(query);
             const matchesCategory = selectedCategory === 'all' || s.category_id === selectedCategory;
             return matchesSearch && matchesCategory;
         });
-    }, [series, searchQuery, selectedCategory]);
+        if (finishedSeriesIds) {
+            // Série terminada que ganhou episódios NOVOS não se esconde —
+            // é justamente o caso em que ela voltou a ter conteúdo não visto
+            list = list.filter(s =>
+                !finishedSeriesIds.has(String(s.series_id)) ||
+                newEpisodes.has(String(s.series_id), s.last_modified || '0')
+            );
+        }
+        return list;
+    }, [sortedSeries, searchQuery, selectedCategory, finishedSeriesIds]);
+
+    // Índice focado sempre no range (lista encolhe ao esconder assistidos)
+    const safeSeriesIndex = Math.min(focusedSeriesIndex, Math.max(0, filteredSeries.length - 1));
 
     // Lazy loading scroll - load one more row when scrolling near bottom
     useEffect(() => {
@@ -130,16 +184,16 @@ export function Series() {
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
         if (focusArea === 'categories') {
-            // Header: 0 = busca, 1 = menu de categorias
+            // Header: 0 = busca, 1 = categorias, 2 = ordenar, 3 = esconder assistidos
             if (direction === 'left') {
                 if (focusedCategoryIndex === 0) {
                     // At search - go to sidebar
                     setFocusZone('sidebar');
                 } else {
-                    setFocusedCategoryIndex(0);
+                    setFocusedCategoryIndex(prev => prev - 1);
                 }
             } else if (direction === 'right') {
-                setFocusedCategoryIndex(1);
+                setFocusedCategoryIndex(prev => Math.min(3, prev + 1));
             } else if (direction === 'down') {
                 setFocusArea('series');
                 setFocusedSeriesIndex(0);
@@ -205,19 +259,43 @@ export function Series() {
         }
     }, [focusedSeriesIndex, focusArea, focusZone]);
 
+    const cycleSort = () => {
+        setSortMode(prev => {
+            const next = catalogSort.next(prev);
+            catalogSort.set('series', next);
+            return next;
+        });
+    };
+
+    const toggleHideWatched = () => {
+        setHideWatchedOn(prev => {
+            hideWatched.set(!prev);
+            return !prev;
+        });
+    };
+
+    const openSeriesModal = (item: SeriesType) => {
+        setSelectedSeries(item);
+        setShowModal(true);
+        // Abrir a ficha "vê" os episódios novos — atualiza o baseline
+        newEpisodes.markSeen(String(item.series_id), item.last_modified || '0');
+        setNewEpisodesTick(t => t + 1);
+    };
+
     const handleEnter = () => {
         if (focusArea === 'categories') {
             if (focusedCategoryIndex === 0) {
                 searchRef.current?.open();
-            } else {
+            } else if (focusedCategoryIndex === 1) {
                 categoryMenuRef.current?.open();
+            } else if (focusedCategoryIndex === 2) {
+                cycleSort();
+            } else {
+                toggleHideWatched();
             }
         } else if (focusArea === 'series') {
-            const item = filteredSeries[focusedSeriesIndex];
-            if (item) {
-                setSelectedSeries(item);
-                setShowModal(true);
-            }
+            const item = filteredSeries[safeSeriesIndex];
+            if (item) openSeriesModal(item);
         }
     };
 
@@ -299,6 +377,24 @@ export function Series() {
                 onOpenChange={setCategoryMenuOpen}
             />
 
+            {/* Toolbar: ordenar + esconder assistidos */}
+            <div className="catalog-toolbar">
+                <button
+                    className={`toolbar-btn ${sortMode !== 'default' ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 2 ? 'tv-focused' : ''}`}
+                    onClick={cycleSort}
+                    title="Ordenar"
+                >
+                    ↕ {SORT_LABELS[sortMode]}
+                </button>
+                <button
+                    className={`toolbar-btn ${hideWatchedOn ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 3 ? 'tv-focused' : ''}`}
+                    onClick={toggleHideWatched}
+                    title="Esconder assistidos"
+                >
+                    🙈
+                </button>
+            </div>
+
             {/* Content Detail Modal */}
             {selectedSeries && (
                 <ContentDetailModal
@@ -359,11 +455,8 @@ export function Series() {
                         {filteredSeries.slice(0, visibleCount).map((item, index) => (
                             <div
                                 key={item.series_id}
-                                className={`series-card ${focusArea === 'series' && focusedSeriesIndex === index ? 'tv-focused' : ''} ${selectedSeries?.series_id === item.series_id ? 'selected' : ''}`}
-                                onClick={() => {
-                                    setSelectedSeries(item);
-                                    setShowModal(true);
-                                }}
+                                className={`series-card ${focusArea === 'series' && safeSeriesIndex === index ? 'tv-focused' : ''} ${selectedSeries?.series_id === item.series_id ? 'selected' : ''}`}
+                                onClick={() => openSeriesModal(item)}
                                 style={{ animationDelay: `${Math.min(index * 0.03, 0.5)}s` }}
                             >
                                 <div className="series-poster">
@@ -376,6 +469,12 @@ export function Series() {
                                             loading="lazy"
                                             onError={() => handleImageError(item.series_id)}
                                         />
+                                    )}
+                                    {followedSeriesIds.has(String(item.series_id)) &&
+                                        newEpisodes.has(String(item.series_id), item.last_modified || '0') ? (
+                                        <div className="new-badge new-badge-episodes">NOVOS EPS</div>
+                                    ) : isRecentlyAdded(item, nowMs) && (
+                                        <div className="new-badge">NOVO</div>
                                     )}
                                     {item.rating && parseFloat(item.rating) > 0 && (
                                         <div className="series-rating">⭐ {item.rating}</div>

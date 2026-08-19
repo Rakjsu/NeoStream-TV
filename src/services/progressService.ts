@@ -31,6 +31,8 @@ export interface SeriesProgress {
     time: number;
     duration: number;
     completed: boolean;
+    /** true quando concluiu o ÚLTIMO episódio da fila (série terminada) */
+    seriesCompleted?: boolean;
     updatedAt: number;
 }
 
@@ -83,11 +85,17 @@ export const progressService = {
         writeMap(MOVIE_KEY, map);
     },
 
-    saveSeries(item: Omit<SeriesProgress, 'completed' | 'updatedAt'>): void {
+    saveSeries(item: Omit<SeriesProgress, 'completed' | 'seriesCompleted' | 'updatedAt'> & { isLastEpisode?: boolean }): void {
         if (!item.duration || item.time < MIN_SECONDS) return;
         const map = readMap<SeriesProgress>(SERIES_KEY);
         const completed = item.time / item.duration >= COMPLETED_RATIO;
-        map[item.seriesId] = { ...item, completed, updatedAt: Date.now() };
+        const { isLastEpisode, ...rest } = item;
+        map[item.seriesId] = {
+            ...rest,
+            completed,
+            seriesCompleted: completed && !!isLastEpisode,
+            updatedAt: Date.now(),
+        };
         writeMap(SERIES_KEY, map);
     },
 
@@ -106,6 +114,34 @@ export const progressService = {
         const map = readMap<SeriesProgress>(SERIES_KEY);
         delete map[seriesId];
         writeMap(SERIES_KEY, map);
+    },
+
+    /** Ids de filmes já concluídos (>=95%) — pro filtro "esconder assistidos". */
+    getCompletedMovieIds(): Set<string> {
+        return new Set(
+            Object.values(readMap<MovieProgress>(MOVIE_KEY))
+                .filter(p => p.completed)
+                .map(p => p.id)
+        );
+    },
+
+    /** Ids de séries TERMINADAS (último episódio concluído). */
+    getFinishedSeriesIds(): Set<string> {
+        return new Set(
+            Object.values(readMap<SeriesProgress>(SERIES_KEY))
+                .filter(p => p.seriesCompleted)
+                .map(p => p.seriesId)
+        );
+    },
+
+    /** Séries "seguidas" (com progresso salvo) — pra detecção de novos episódios. */
+    getSeriesIdsWithProgress(): Set<string> {
+        return new Set(Object.keys(readMap<SeriesProgress>(SERIES_KEY)));
+    },
+
+    /** Filmes com qualquer progresso — alimenta a afinidade das recomendações. */
+    getMovieIdsWithProgress(): Set<string> {
+        return new Set(Object.keys(readMap<MovieProgress>(MOVIE_KEY)));
     },
 
     /** Itens pra fileira "Continuar Assistindo", mais recentes primeiro. */
