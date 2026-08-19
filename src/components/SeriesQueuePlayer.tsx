@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { VideoPlayer } from './VideoPlayer';
 import { progressService } from '../services/progressService';
+import { useWatchSession } from '../hooks/useWatchSession';
 import {
     type EpisodeQueue,
     currentEpisode,
@@ -22,6 +23,7 @@ interface SeriesQueuePlayerProps {
 export function SeriesQueuePlayer({ queue: initialQueue, onClose }: SeriesQueuePlayerProps) {
     const [queue, setQueue] = useState(initialQueue);
     const ep = currentEpisode(queue);
+    useWatchSession('series', queue.seriesName);
     const resumeTime = progressService.getSeriesResumeTime(queue.seriesId, ep.season, ep.episode);
 
     return (

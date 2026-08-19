@@ -34,7 +34,7 @@
     left: 0;
     right: 0;
     height: 200px;
-    background: radial-gradient(ellipse at center top, rgba(168, 85, 247, 0.15) 0%, transparent 70%);
+    background: radial-gradient(ellipse at center top, rgba(var(--ns-accent-rgb), 0.15) 0%, transparent 70%);
     pointer-events: none;
 }
 
@@ -61,12 +61,12 @@
 .logo-svg {
     position: relative;
     z-index: 2;
-    filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.5));
+    filter: drop-shadow(0 0 8px rgba(var(--ns-accent-rgb), 0.5));
     transition: filter 0.3s ease;
 }
 
 .logo-wrapper:hover .logo-svg {
-    filter: drop-shadow(0 0 15px rgba(168, 85, 247, 0.8)) drop-shadow(0 0 30px rgba(168, 85, 247, 0.5));
+    filter: drop-shadow(0 0 15px rgba(var(--ns-accent-rgb), 0.8)) drop-shadow(0 0 30px rgba(var(--ns-accent-rgb), 0.5));
     animation: logoGlow 2s ease-in-out infinite;
 }
 
@@ -74,11 +74,11 @@
 
     0%,
     100% {
-        filter: drop-shadow(0 0 15px rgba(168, 85, 247, 0.8)) drop-shadow(0 0 30px rgba(168, 85, 247, 0.5));
+        filter: drop-shadow(0 0 15px rgba(var(--ns-accent-rgb), 0.8)) drop-shadow(0 0 30px rgba(var(--ns-accent-rgb), 0.5));
     }
 
     50% {
-        filter: drop-shadow(0 0 25px rgba(168, 85, 247, 1)) drop-shadow(0 0 50px rgba(168, 85, 247, 0.7));
+        filter: drop-shadow(0 0 25px rgba(var(--ns-accent-rgb), 1)) drop-shadow(0 0 50px rgba(var(--ns-accent-rgb), 0.7));
     }
 }
 
@@ -86,7 +86,7 @@
     position: absolute;
     inset: -8px;
     border-radius: 50%;
-    border: 2px solid rgba(168, 85, 247, 0.3);
+    border: 2px solid rgba(var(--ns-accent-rgb), 0.3);
     opacity: 0;
     transition: all 0.3s ease;
 }
@@ -196,7 +196,7 @@
 
 .nav-item.tv-focused {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.5);
+    box-shadow: 0 0 0 2px rgba(var(--ns-accent-rgb), 0.5);
 }
 
 /* Item Glow */
@@ -268,7 +268,7 @@
     gap: 10px;
     padding: 10px 16px;
     background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1a 100%);
-    border: 1px solid rgba(168, 85, 247, 0.3);
+    border: 1px solid rgba(var(--ns-accent-rgb), 0.3);
     border-radius: 12px;
     white-space: nowrap;
     opacity: 0;
@@ -334,7 +334,7 @@
     position: absolute;
     inset: -3px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #a855f7, #ec4899);
+    background: linear-gradient(135deg, var(--ns-accent), #ec4899);
     opacity: 0.8;
     transition: all 0.3s ease;
 }

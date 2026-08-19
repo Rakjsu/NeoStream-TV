@@ -5,6 +5,7 @@ import { storage, type FavoriteItem } from '../services/storage';
 import { api } from '../services/api';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
+import { kidsFilter } from '../services/kidsFilter';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
@@ -21,6 +22,7 @@ export function Favorites({ onNavigate }: FavoritesProps) {
     const [activeTab, setActiveTab] = useState<'all' | 'movies' | 'series' | 'channels'>('all');
     const [removingId, setRemovingId] = useState<string | null>(null);
     const { focusZone, setFocusZone } = useFocusZone();
+    const [kidsActive] = useState(() => kidsFilter.isKidsActive());
 
     // Playback / modal
     const [modalItem, setModalItem] = useState<FavoriteItem | null>(null);
@@ -89,6 +91,10 @@ export function Favorites({ onNavigate }: FavoritesProps) {
 
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
+        if (kidsActive) {
+            if (direction === 'left') setFocusZone('sidebar');
+            return;
+        }
         if (items.length === 0) {
             if (direction === 'left') {
                 if (emptyFocusIndex === 0) setFocusZone('sidebar');
@@ -131,6 +137,7 @@ export function Favorites({ onNavigate }: FavoritesProps) {
     };
 
     const handleEnter = () => {
+        if (kidsActive) return;
         if (items.length === 0) {
             onNavigate?.(emptyFocusIndex === 0 ? 'movies' : 'series');
             return;
@@ -149,6 +156,26 @@ export function Favorites({ onNavigate }: FavoritesProps) {
         onEnter: handleEnter,
         enabled: focusZone === 'content' && !modalItem && !playingMovie && !playingChannel && !seriesQueue,
     });
+
+    // Perfil Kids: listas sao globais do aparelho e podem conter conteudo
+    // adulto salvo por outros perfis — bloqueadas no modo Kids
+    if (kidsActive) {
+        return (
+            <div className="favorites-page">
+                <div className="favorites-backdrop" />
+                <div className="empty-state">
+                    <div className="empty-icon-container">
+                        <div className="empty-icon">👶</div>
+                        <div className="empty-icon-glow" />
+                    </div>
+                    <h2 className="empty-title">Indisponível no perfil Kids</h2>
+                    <p className="empty-text">
+                        Troque para um perfil adulto para acessar esta página.
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     // Empty State
     if (items.length === 0) {

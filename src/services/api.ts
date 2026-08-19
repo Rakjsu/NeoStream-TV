@@ -81,6 +81,9 @@ class XtreamAPI {
     private baseUrl: string = '';
     private username: string = '';
     private password: string = '';
+    /** Diferença (ms) entre o relógio local do provedor e o epoch — o
+     *  timeshift do Xtream pede a hora no FUSO DO PROVEDOR. */
+    private providerOffsetMs: number = 0;
 
     private async makeRequest<T>(action: string, params: Record<string, string> = {}, timeoutMs = 30000): Promise<T> {
         const url = buildApiUrl(this.baseUrl, this.username, this.password, action, params);
@@ -190,6 +193,7 @@ class XtreamAPI {
                     this.baseUrl = candidateUrl;
                     this.username = username;
                     this.password = password;
+                    this.learnProviderOffset(data);
 
                     return data;
                 } catch (error: unknown) {
@@ -274,6 +278,35 @@ class XtreamAPI {
         return `${this.baseUrl}/live/${this.username}/${this.password}/${streamId}.m3u8`;
     }
 
+    /** Aprende o fuso do provedor pelo par time_now/timestamp_now do auth. */
+    private learnProviderOffset(data: AuthResponse): void {
+        // Reset primeiro: re-login em outro provedor não pode herdar o offset velho
+        this.providerOffsetMs = 0;
+        try {
+            const epochMs = Number(data.server_info?.timestamp_now) * 1000;
+            const wallRaw = data.server_info?.time_now; // "YYYY-MM-DD HH:MM:SS" local do servidor
+            if (!epochMs || !wallRaw) return;
+            // Interpreta a hora de parede como UTC pra medir só a diferença
+            const wallAsUtc = Date.parse(wallRaw.replace(' ', 'T') + 'Z');
+            if (Number.isNaN(wallAsUtc)) return;
+            this.providerOffsetMs = wallAsUtc - epochMs;
+        } catch {
+            this.providerOffsetMs = 0;
+        }
+    }
+
+    /**
+     * URL de catch-up/timeshift (reiniciar programa). start em epoch ms;
+     * o Xtream espera "YYYY-MM-DD:HH-MM" no fuso do provedor.
+     */
+    getTimeshiftUrl(streamId: number, startEpochMs: number, durationMin: number): string {
+        const local = new Date(startEpochMs + this.providerOffsetMs);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const start = `${local.getUTCFullYear()}-${pad(local.getUTCMonth() + 1)}-${pad(local.getUTCDate())}` +
+            `:${pad(local.getUTCHours())}-${pad(local.getUTCMinutes())}`;
+        return `${this.baseUrl}/timeshift/${this.username}/${this.password}/${durationMin}/${start}/${streamId}.m3u8`;
+    }
+
     getVodStreamUrl(streamId: number, container: string = 'mp4'): string {
         return `${this.baseUrl}/movie/${this.username}/${this.password}/${streamId}.${container}`;
     }
@@ -290,6 +323,7 @@ class XtreamAPI {
         this.baseUrl = '';
         this.username = '';
         this.password = '';
+        this.providerOffsetMs = 0;
     }
 }
 

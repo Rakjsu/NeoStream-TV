@@ -4,6 +4,7 @@
 import { VideoPlayer } from './VideoPlayer';
 import { progressService } from '../services/progressService';
 import { api } from '../services/api';
+import { useWatchSession } from '../hooks/useWatchSession';
 
 interface MoviePlayerProps {
     movieId: string;
@@ -15,6 +16,7 @@ interface MoviePlayerProps {
 
 export function MoviePlayer({ movieId, title, poster, container, onClose }: MoviePlayerProps) {
     const resumeTime = progressService.getMovieResumeTime(movieId);
+    useWatchSession('movie', title);
 
     return (
         <VideoPlayer

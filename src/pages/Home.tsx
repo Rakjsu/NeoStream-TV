@@ -8,6 +8,7 @@ import { useFocusZone } from '../contexts/FocusContext';
 import { progressService, type MovieProgress, type SeriesProgress } from '../services/progressService';
 import { storage } from '../services/storage';
 import { categoryAffinity, scoreRecommendations, spinRoulette, newEpisodes } from '../services/catalogExtras';
+import { kidsFilter } from '../services/kidsFilter';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
@@ -47,8 +48,12 @@ export function Home({ onNavigate }: HomeProps) {
     const [focusedSectionId, setFocusedSectionId] = useState('stats');
     const [focusedItem, setFocusedItem] = useState(0);
 
-    // Continuar assistindo
-    const [continueItems, setContinueItems] = useState<ContinueItem[]>(() => progressService.getContinueWatching());
+    // Continuar assistindo (fileira some no perfil Kids: o progresso é
+    // global do aparelho e pode conter títulos adultos)
+    const [kidsActive] = useState(() => kidsFilter.isKidsActive());
+    const [continueItems, setContinueItems] = useState<ContinueItem[]>(() =>
+        kidsFilter.isKidsActive() ? [] : progressService.getContinueWatching()
+    );
     const [playingMovie, setPlayingMovie] = useState<PlayableMovie | null>(null);
     const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
 
@@ -57,8 +62,8 @@ export function Home({ onNavigate }: HomeProps) {
     const rouletteRef = useRef<{ pool: VODStream[]; affinity: Map<string, number> } | null>(null);
 
     const refreshContinue = useCallback(() => {
-        setContinueItems(progressService.getContinueWatching());
-    }, []);
+        setContinueItems(kidsActive ? [] : progressService.getContinueWatching());
+    }, [kidsActive]);
 
     // Update clock every minute
     useEffect(() => {
@@ -71,11 +76,23 @@ export function Home({ onNavigate }: HomeProps) {
         async function fetchData() {
             try {
                 setLoading(true);
-                const [streams, movies, series] = await Promise.all([
+                let [streams, movies, series] = await Promise.all([
                     api.getLiveStreams(),
                     api.getVODStreams(),
                     api.getSeries()
                 ]);
+
+                // Gate do perfil Kids: precisa dos nomes das categorias
+                if (kidsFilter.isKidsActive()) {
+                    const [liveCats, vodCats, seriesCats] = await Promise.all([
+                        api.getLiveCategories(),
+                        api.getVodCategories(),
+                        api.getSeriesCategories()
+                    ]);
+                    streams = kidsFilter.apply(streams, liveCats).items;
+                    movies = kidsFilter.apply(movies, vodCats).items;
+                    series = kidsFilter.apply(series, seriesCats).items;
+                }
 
                 setCounts({
                     live: streams.length,

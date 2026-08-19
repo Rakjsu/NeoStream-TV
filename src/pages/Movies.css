@@ -277,7 +277,7 @@
 }
 
 .movies-content::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #6366f1, #a855f7);
+    background: linear-gradient(180deg, #6366f1, var(--ns-accent));
     border-radius: 3px;
 }
 
@@ -580,12 +580,12 @@
 }
 
 .catalog-toolbar .toolbar-btn.active {
-    background: rgba(168, 85, 247, 0.35);
-    border-color: rgba(168, 85, 247, 0.8);
+    background: rgba(var(--ns-accent-rgb), 0.35);
+    border-color: rgba(var(--ns-accent-rgb), 0.8);
 }
 
 .catalog-toolbar .toolbar-btn.tv-focused {
-    box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.8);
+    box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.8);
     transform: scale(1.06);
 }
 
@@ -593,7 +593,7 @@
     position: absolute;
     top: 8px;
     left: 8px;
-    background: linear-gradient(135deg, #a855f7, #ec4899);
+    background: linear-gradient(135deg, var(--ns-accent), #ec4899);
     color: #fff;
     font-size: 15px;
     font-weight: 800;

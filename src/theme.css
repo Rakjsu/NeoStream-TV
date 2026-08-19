@@ -1,0 +1,32 @@
+/* Overrides de tema (themeService seta data-bg no <html>).
+   AMOLED: fundo preto puro — ideal pra OLED e economiza energia.
+   As páginas usam gradientes/glows decorativos; aqui eles somem e os
+   containers viram #000. */
+
+html[data-bg="amoled"] body,
+html[data-bg="amoled"] .app,
+html[data-bg="amoled"] .app-content {
+    background: #000 !important;
+}
+
+html[data-bg="amoled"] .home-page,
+html[data-bg="amoled"] .livetv-page,
+html[data-bg="amoled"] .movies-page,
+html[data-bg="amoled"] .series-page,
+html[data-bg="amoled"] .mylist-page,
+html[data-bg="amoled"] .favorites-page,
+html[data-bg="amoled"] .settings-page,
+html[data-bg="amoled"] .livetv-loading-container {
+    background: #000 !important;
+}
+
+/* Camadas decorativas de fundo somem no AMOLED */
+html[data-bg="amoled"] .home-bg-decoration,
+html[data-bg="amoled"] .livetv-bg-gradient,
+html[data-bg="amoled"] .livetv-bg-glow,
+html[data-bg="amoled"] .movies-bg-gradient,
+html[data-bg="amoled"] .series-bg-gradient,
+html[data-bg="amoled"] .mylist-backdrop,
+html[data-bg="amoled"] .favorites-backdrop {
+    display: none !important;
+}

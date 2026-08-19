@@ -10,6 +10,7 @@ import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/A
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { catalogSort, sortCatalog, hideWatched, isRecentlyAdded, SORT_LABELS, type CatalogSort } from '../services/catalogExtras';
+import { kidsFilter } from '../services/kidsFilter';
 import { progressService } from '../services/progressService';
 import './Movies.css';
 
@@ -80,8 +81,10 @@ export function Movies() {
                     api.getVODStreams(),
                     api.getVodCategories()
                 ]);
-                setStreams(streamsData);
-                setCategories(categoriesData);
+                // Gate do perfil Kids (remove categorias adultas e seus filmes)
+                const gated = kidsFilter.apply(streamsData, categoriesData);
+                setStreams(gated.items);
+                setCategories(gated.categories);
             } catch (err: unknown) {
                 setError(err instanceof Error ? err.message : 'Erro ao carregar filmes');
             } finally {

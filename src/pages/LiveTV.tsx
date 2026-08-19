@@ -9,6 +9,8 @@ import { api } from '../services/api';
 import { storage } from '../services/storage';
 import { epgService, type ChannelEpg } from '../services/epgService';
 import { zapHistory, hiddenChannels, liveToggles } from '../services/liveExtras';
+import { kidsFilter } from '../services/kidsFilter';
+import { useWatchSession } from '../hooks/useWatchSession';
 import { groupChannelVariants, qualityLabel } from '../services/channelVariants';
 import type { LiveStream, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
@@ -46,7 +48,13 @@ export function LiveTV() {
 
     // EPG
     const [previewEpg, setPreviewEpg] = useState<ChannelEpg | null>(null);
+    // De QUAL canal é o previewEpg: na troca A→B o dado velho de A não pode
+    // alimentar a ficha nem o ⏮ Reiniciar de B (timeshift do trecho errado)
+    const [previewEpgFor, setPreviewEpgFor] = useState<number | null>(null);
     const [playerEpg, setPlayerEpg] = useState<ChannelEpg | null>(null);
+
+    // Catch-up (reiniciar programa via timeshift)
+    const [playingTimeshift, setPlayingTimeshift] = useState<{ url: string; title: string; poster?: string } | null>(null);
 
     // Focus states for TV navigation
     // 'categories' = zona do header: índice 0 é a busca, 1 é o menu de categorias
@@ -112,13 +120,15 @@ export function LiveTV() {
                     api.getLiveStreams(),
                     api.getLiveCategories()
                 ]);
-                setStreams(streamsData);
-                setCategories(categoriesData);
+                // Gate do perfil Kids (remove categorias adultas e seus canais)
+                const gated = kidsFilter.apply(streamsData, categoriesData);
+                setStreams(gated.items);
+                setCategories(gated.categories);
 
                 // Retomar o último canal assistido (só pré-seleciona, não dá play)
                 const lastId = storage.getLastChannel();
                 if (lastId) {
-                    const found = streamsData.find(s => s.stream_id === lastId);
+                    const found = gated.items.find(s => s.stream_id === lastId);
                     if (found) setSelectedChannel(found);
                 }
             } catch (err: unknown) {
@@ -213,6 +223,28 @@ export function LiveTV() {
         ? variantsOf.get(String(selectedChannel.stream_id)) || []
         : [];
 
+    // EPG válido só se pertence ao canal selecionado ATUAL (na troca A→B o
+    // dado velho de A não pode alimentar a ficha nem o ⏮ Reiniciar de B)
+    const activePreviewEpg = selectedChannel && previewEpgFor === selectedChannel.stream_id
+        ? previewEpg
+        : null;
+
+    // Ações da ficha (ordem dos botões navegáveis por D-pad; variantes depois).
+    // 'restart' entra no FIM: o EPG chega assíncrono e inseri-lo no meio
+    // mudaria o significado do índice já focado. tv_archive vem como número
+    // OU string dependendo do painel — coerção obrigatória.
+    const canRestart = !!(selectedChannel && Number(selectedChannel.tv_archive) > 0 && activePreviewEpg?.now);
+    const previewItems: Array<'play' | 'restart' | 'fav' | 'hide'> = [
+        'play',
+        'fav',
+        'hide',
+        ...(canRestart ? (['restart'] as const) : []),
+    ];
+    const previewActionIndex = (action: 'play' | 'restart' | 'fav' | 'hide') => previewItems.indexOf(action);
+
+    // Sessão de uso do canal ao vivo (estatísticas)
+    useWatchSession('live', playingChannel?.name || '');
+
     // Lazy loading scroll
     useEffect(() => {
         const container = scrollContainerRef.current;
@@ -231,13 +263,13 @@ export function LiveTV() {
 
     // EPG da ficha do canal selecionado
     useEffect(() => {
-        if (!selectedChannel) {
-            setPreviewEpg(null);
-            return;
-        }
+        if (!selectedChannel) return;
         let cancelled = false;
         epgService.getChannelEpg(selectedChannel.stream_id).then(epg => {
-            if (!cancelled) setPreviewEpg(epg);
+            if (!cancelled) {
+                setPreviewEpg(epg);
+                setPreviewEpgFor(selectedChannel.stream_id);
+            }
         });
         return () => { cancelled = true; };
     }, [selectedChannel]);
@@ -291,6 +323,18 @@ export function LiveTV() {
         setHiddenIds(new Set(hiddenChannels.toggle(stream.stream_id)));
     }, []);
 
+    // Reiniciar o programa atual via timeshift (só quando tv_archive > 0)
+    const restartProgram = () => {
+        if (!selectedChannel || !activePreviewEpg?.now) return;
+        const program = activePreviewEpg.now;
+        const durationMin = Math.max(1, Math.ceil((Date.now() - program.start) / 60000));
+        setPlayingTimeshift({
+            url: api.getTimeshiftUrl(selectedChannel.stream_id, program.start, durationMin),
+            title: `⏮ ${program.title} — ${selectedChannel.name}`,
+            poster: selectedChannel.stream_icon || undefined,
+        });
+    };
+
     const randomZap = useCallback(() => {
         const pool = filteredStreams.filter(s => s.stream_id !== playingChannel?.stream_id);
         if (pool.length === 0) return;
@@ -329,7 +373,7 @@ export function LiveTV() {
                 setFocusedChannelIndex(0);
             }
         } else if (focusArea === 'preview') {
-            const totalPreviewItems = 3 + selectedVariants.length;
+            const totalPreviewItems = previewItems.length + selectedVariants.length;
             if (direction === 'left') {
                 setPreviewFocusIndex(prev => Math.max(0, prev - 1));
             } else if (direction === 'right') {
@@ -403,14 +447,14 @@ export function LiveTV() {
             }
         } else if (focusArea === 'preview') {
             if (!selectedChannel) return;
-            if (previewFocusIndex === 0) {
-                playChannel(selectedChannel);
-            } else if (previewFocusIndex === 1) {
-                toggleChannelFavorite(selectedChannel);
-            } else if (previewFocusIndex === 2) {
-                toggleChannelHidden(selectedChannel);
+            if (previewFocusIndex < previewItems.length) {
+                const action = previewItems[previewFocusIndex];
+                if (action === 'play') playChannel(selectedChannel);
+                else if (action === 'restart') restartProgram();
+                else if (action === 'fav') toggleChannelFavorite(selectedChannel);
+                else toggleChannelHidden(selectedChannel);
             } else {
-                const variant = selectedVariants[previewFocusIndex - 3];
+                const variant = selectedVariants[previewFocusIndex - previewItems.length];
                 if (variant) playChannel(variant);
             }
         } else if (focusArea === 'channels') {
@@ -451,7 +495,7 @@ export function LiveTV() {
         onEnter: handleEnter,
         onBack: handleBack,
         onAction: handleAction,
-        enabled: focusZone === 'content' && !playingChannel && !categoryMenuOpen,
+        enabled: focusZone === 'content' && !playingChannel && !playingTimeshift && !categoryMenuOpen,
     });
 
     const handleImageError = (streamId: number) => {
@@ -608,26 +652,26 @@ export function LiveTV() {
                         </div>
                         <div className="preview-details">
                             {/* EPG agora / a seguir */}
-                            {previewEpg?.now ? (
+                            {activePreviewEpg?.now ? (
                                 <div className="preview-epg">
                                     <div className="preview-epg-now">
                                         <span className="epg-label">AGORA</span>
-                                        <span className="epg-title">{previewEpg.now.title}</span>
+                                        <span className="epg-title">{activePreviewEpg.now.title}</span>
                                         <span className="epg-time">
-                                            {formatClock(previewEpg.now.start)} – {formatClock(previewEpg.now.end)}
+                                            {formatClock(activePreviewEpg.now.start)} – {formatClock(activePreviewEpg.now.end)}
                                         </span>
                                     </div>
                                     <div className="preview-epg-progress">
                                         <div
                                             className="preview-epg-progress-fill"
-                                            style={{ width: `${epgService.progressPct(previewEpg.now) ?? 0}%` }}
+                                            style={{ width: `${epgService.progressPct(activePreviewEpg.now) ?? 0}%` }}
                                         />
                                     </div>
-                                    {previewEpg.next && (
+                                    {activePreviewEpg.next && (
                                         <div className="preview-epg-next">
                                             <span className="epg-label">A SEGUIR</span>
-                                            <span className="epg-title-next">{previewEpg.next.title}</span>
-                                            <span className="epg-time">{formatClock(previewEpg.next.start)}</span>
+                                            <span className="epg-title-next">{activePreviewEpg.next.title}</span>
+                                            <span className="epg-time">{formatClock(activePreviewEpg.next.start)}</span>
                                         </div>
                                     )}
                                 </div>
@@ -641,7 +685,7 @@ export function LiveTV() {
                                     {selectedVariants.map((variant, vIndex) => (
                                         <button
                                             key={variant.stream_id}
-                                            className={`variant-btn ${focusArea === 'preview' && previewFocusIndex === 3 + vIndex ? 'tv-focused' : ''}`}
+                                            className={`variant-btn ${focusArea === 'preview' && previewFocusIndex === previewItems.length + vIndex ? 'tv-focused' : ''}`}
                                             onClick={() => playChannel(variant)}
                                         >
                                             {qualityLabel(variant.name)}
@@ -652,25 +696,34 @@ export function LiveTV() {
 
                             <div className="preview-actions">
                                 <button
-                                    className={`play-button ${focusArea === 'preview' && previewFocusIndex === 0 ? 'tv-focused' : ''}`}
+                                    className={`play-button ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('play') ? 'tv-focused' : ''}`}
                                     onClick={() => playChannel(selectedChannel)}
                                 >
                                     ▶ Assistir
                                 </button>
                                 <button
-                                    className={`info-button ${favoriteChannelIds.has(selectedChannel.stream_id) ? 'active' : ''} ${focusArea === 'preview' && previewFocusIndex === 1 ? 'tv-focused' : ''}`}
+                                    className={`info-button ${favoriteChannelIds.has(selectedChannel.stream_id) ? 'active' : ''} ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('fav') ? 'tv-focused' : ''}`}
                                     onClick={() => toggleChannelFavorite(selectedChannel)}
                                     title="Favorito (🟡)"
                                 >
                                     {favoriteChannelIds.has(selectedChannel.stream_id) ? '⭐ Favorito' : '☆ Favoritar'}
                                 </button>
                                 <button
-                                    className={`info-button ${focusArea === 'preview' && previewFocusIndex === 2 ? 'tv-focused' : ''}`}
+                                    className={`info-button ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('hide') ? 'tv-focused' : ''}`}
                                     onClick={() => toggleChannelHidden(selectedChannel)}
                                     title="Ocultar canal (🔵)"
                                 >
                                     🙈 {hiddenIds.has(selectedChannel.stream_id) ? 'Mostrar' : 'Ocultar'}
                                 </button>
+                                {canRestart && (
+                                    <button
+                                        className={`info-button ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('restart') ? 'tv-focused' : ''}`}
+                                        onClick={restartProgram}
+                                        title="Reiniciar o programa atual (catch-up)"
+                                    >
+                                        ⏮ Reiniciar
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -729,7 +782,18 @@ export function LiveTV() {
                 <span className="hint-blue">🔵 Ocultar</span>
             </div>
 
-            {playingChannel && (
+            {/* Catch-up: programa reiniciado via timeshift (seekável, não-live) */}
+            {playingTimeshift && (
+                <VideoPlayer
+                    src={playingTimeshift.url}
+                    title={playingTimeshift.title}
+                    poster={playingTimeshift.poster}
+                    autoPlay
+                    onClose={() => setPlayingTimeshift(null)}
+                />
+            )}
+
+            {playingChannel && !playingTimeshift && (
                 <VideoPlayer
                     src={getLivePlaybackUrl(playingChannel)}
                     title={playingChannel.name}

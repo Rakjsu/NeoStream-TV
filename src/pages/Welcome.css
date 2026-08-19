@@ -36,7 +36,7 @@
 .welcome-orb-2 {
     width: 400px;
     height: 400px;
-    background: radial-gradient(circle, #a855f7 0%, transparent 70%);
+    background: radial-gradient(circle, var(--ns-accent) 0%, transparent 70%);
     bottom: -100px;
     right: -100px;
     animation-delay: -7s;
@@ -109,7 +109,7 @@
 .welcome-logo-bg {
     width: 100px;
     height: 100px;
-    background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+    background: linear-gradient(135deg, #6366f1 0%, var(--ns-accent) 100%);
     border-radius: 28px;
     display: flex;
     align-items: center;
@@ -153,8 +153,8 @@
     gap: 6px;
     margin-top: 12px;
     padding: 6px 14px;
-    background: rgba(168, 85, 247, 0.15);
-    border: 1px solid rgba(168, 85, 247, 0.3);
+    background: rgba(var(--ns-accent-rgb), 0.15);
+    border: 1px solid rgba(var(--ns-accent-rgb), 0.3);
     border-radius: 20px;
     color: #c4b5fd;
     font-size: 12px;

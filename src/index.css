@@ -1,6 +1,11 @@
 /* NeoStream TV - Global Styles */
 
 :root {
+  /* Tema: cor de destaque (trocável em Configurações → Aparência).
+     O themeService sobrescreve estas vars em runtime. */
+  --ns-accent: #a855f7;
+  --ns-accent-rgb: 168, 85, 247;
+
   /* Colors - Dark Theme */
   --bg-primary: #0a0a0f;
   --bg-secondary: #12121a;

@@ -16,6 +16,7 @@ import { LanguageSelection } from './pages/LanguageSelection';
 import { Sidebar } from './components/Sidebar';
 import { ProfileManager } from './components/ProfileManager';
 import { FocusContext, type FocusZone } from './contexts/FocusContext';
+import { themeService } from './services/themeService';
 import './index.css';
 
 type Page = 'home' | 'live' | 'movies' | 'series' | 'mylist' | 'favorites' | 'settings';
@@ -47,9 +48,12 @@ function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [focusZone, setFocusZone] = useState<FocusZone>('content');
   const [showProfileManager, setShowProfileManager] = useState(false);
+  // Troca de perfil remonta a página atual (refetch com o gate kids certo)
+  const [profileTick, setProfileTick] = useState(0);
 
   useEffect(() => {
     registerTizenKeys();
+    themeService.apply();
   }, []);
 
   const checkAuth = useCallback(async () => {
@@ -141,7 +145,7 @@ function App() {
           onProfileClick={() => setShowProfileManager(true)}
           focused={focusZone === 'sidebar'}
         />
-        <main className="app-content">
+        <main className="app-content" key={profileTick}>
           {currentPage === 'home' && <Home onNavigate={handlePageChange} />}
           {currentPage === 'live' && <LiveTV />}
           {currentPage === 'movies' && <Movies />}
@@ -153,7 +157,10 @@ function App() {
 
         {/* Profile Manager Modal */}
         {showProfileManager && (
-          <ProfileManager onClose={() => setShowProfileManager(false)} />
+          <ProfileManager
+            onClose={() => setShowProfileManager(false)}
+            onProfileSwitched={() => setProfileTick(t => t + 1)}
+          />
         )}
       </div>
     </FocusContext.Provider>

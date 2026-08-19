@@ -139,7 +139,7 @@
 
 .stat-card.tv-focused {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.5);
+    box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.5);
 }
 
 .stat-card-live {
@@ -258,7 +258,7 @@
 
 .content-card.tv-focused {
     outline: none;
-    border-color: rgba(168, 85, 247, 0.5);
+    border-color: rgba(var(--ns-accent-rgb), 0.5);
 }
 
 .card-image {
@@ -317,7 +317,7 @@
 
 .quick-item.tv-focused {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.5);
+    box-shadow: 0 0 0 2px rgba(var(--ns-accent-rgb), 0.5);
 }
 
 .quick-icon {
@@ -357,7 +357,7 @@
 
 .continue-progress-fill {
     height: 100%;
-    background: #a855f7;
+    background: var(--ns-accent);
 }
 
 .continue-episode {

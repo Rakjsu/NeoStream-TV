@@ -11,6 +11,7 @@ import { ContentDetailModal } from '../components/ContentDetailModal';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
 import { catalogSort, sortCatalog, hideWatched, isRecentlyAdded, newEpisodes, SORT_LABELS, type CatalogSort } from '../services/catalogExtras';
+import { kidsFilter } from '../services/kidsFilter';
 import { progressService } from '../services/progressService';
 import { storage } from '../services/storage';
 import './Series.css';
@@ -82,8 +83,10 @@ export function Series() {
                     api.getSeries(),
                     api.getSeriesCategories()
                 ]);
-                setSeries(seriesData);
-                setCategories(categoriesData);
+                // Gate do perfil Kids (remove categorias adultas e suas séries)
+                const gated = kidsFilter.apply(seriesData, categoriesData);
+                setSeries(gated.items);
+                setCategories(gated.categories);
             } catch (err: unknown) {
                 setError(err instanceof Error ? err.message : 'Erro ao carregar s�ries');
             } finally {
