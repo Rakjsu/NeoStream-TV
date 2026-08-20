@@ -64,6 +64,34 @@ export const hiddenChannels = {
     },
 };
 
+// Categorias inteiras ocultas (item 16) — só afetam a visão "Todos"
+const HIDDEN_CATS_KEY = 'neostream_hidden_categories';
+
+export const hiddenCategories = {
+    get(): Set<string> {
+        return new Set(readJson<string[]>(HIDDEN_CATS_KEY, []));
+    },
+    toggle(categoryId: string): Set<string> {
+        const set = this.get();
+        if (set.has(categoryId)) set.delete(categoryId);
+        else set.add(categoryId);
+        writeJson(HIDDEN_CATS_KEY, [...set]);
+        return set;
+    },
+};
+
+// Boot direto no último canal (item 14)
+const BOOT_LAST_KEY = 'neostream_boot_last_channel';
+
+export const bootLastChannel = {
+    get(): boolean {
+        return localStorage.getItem(BOOT_LAST_KEY) === 'on';
+    },
+    set(value: boolean): void {
+        writeRaw(BOOT_LAST_KEY, value ? 'on' : null);
+    },
+};
+
 export type AspectMode = 'original' | 'stretch' | 'fill' | 'zoom';
 
 export const ASPECT_MODES: AspectMode[] = ['original', 'stretch', 'fill', 'zoom'];

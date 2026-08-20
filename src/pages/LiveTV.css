@@ -866,3 +866,9 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* Selo de catch-up no card (item 11) */
+.channel-catchup {
+    color: var(--ns-accent);
+    font-size: 13px;
+}

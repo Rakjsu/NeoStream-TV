@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FaPlay, FaPause, FaCog, FaStepForward, FaStepBackward, FaListUl, FaMoon, FaExpand } from 'react-icons/fa';
 import { useHls, type StreamErrorCause } from '../../hooks/useHls';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
-import type { EpgProgram } from '../../services/epgService';
+import { epgService, type EpgProgram } from '../../services/epgService';
 import { aspectPrefs, ASPECT_MODES, ASPECT_LABELS, type AspectMode } from '../../services/liveExtras';
 import './VideoPlayer.css';
 
@@ -141,6 +141,39 @@ export function VideoPlayer({
     // Zapping (live)
     const [digitBuffer, setDigitBuffer] = useState('');
     const [zapIndex, setZapIndex] = useState(0);
+    // EPG do canal focado no overlay de zapping (item 6)
+    const [zapEpg, setZapEpg] = useState<{ id: number; title: string } | null>(null);
+
+    useEffect(() => {
+        if (playerFocus !== 'zap-list' || !channelList) return;
+        const channel = channelList[zapIndex];
+        if (!channel) return;
+        let cancelled = false;
+        const timeout = setTimeout(() => {
+            epgService.getChannelEpg(channel.stream_id).then(epg => {
+                if (!cancelled && epg.now) {
+                    setZapEpg({ id: channel.stream_id, title: epg.now.title });
+                }
+            });
+        }, 400); // debounce: busca quando o foco assenta
+        return () => {
+            cancelled = true;
+            clearTimeout(timeout);
+        };
+    }, [playerFocus, zapIndex, channelList]);
+
+    // Aviso "a seguir" nos últimos 5 min do programa (item 9) — tick de 30s
+    const [nextSoonTick, setNextSoonTick] = useState(0);
+    useEffect(() => {
+        if (!isLiveContent) return;
+        const interval = setInterval(() => setNextSoonTick(t => t + 1), 30000);
+        return () => clearInterval(interval);
+    }, [isLiveContent]);
+    void nextSoonTick;
+    const nextSoon = isLiveContent && liveEpg?.now && liveEpg.next &&
+        liveEpg.now.end - Date.now() > 0 && liveEpg.now.end - Date.now() < 5 * 60 * 1000
+        ? liveEpg.next
+        : null;
 
     // Sleep timer
     const [sleepChoiceIndex, setSleepChoiceIndex] = useState(0);
@@ -860,6 +893,13 @@ export function VideoPlayer({
                 />
             </div>
 
+            {/* Aviso "a seguir" perto do fim do programa (item 9) */}
+            {nextSoon && !showControls && liveEpg?.now && (
+                <div className="next-soon-banner">
+                    Em {Math.max(1, Math.ceil((liveEpg.now.end - Date.now()) / 60000))} min: {nextSoon.title}
+                </div>
+            )}
+
             {/* OSD do digit-jump (troca de canal por número) */}
             {digitBuffer && (
                 <div className="digit-osd">{digitBuffer}</div>
@@ -886,7 +926,12 @@ export function VideoPlayer({
                                         }}
                                     >
                                         {channel.num != null && <span className="zap-num">{channel.num}</span>}
-                                        <span className="zap-name">{channel.name}</span>
+                                        <span className="zap-name">
+                                            {channel.name}
+                                            {realIndex === zapIndex && zapEpg?.id === channel.stream_id && (
+                                                <span className="zap-epg-now">agora: {zapEpg.title}</span>
+                                            )}
+                                        </span>
                                         {channel.stream_id === currentChannelId && <span className="zap-playing">▶</span>}
                                     </div>
                                 );

@@ -3,14 +3,16 @@ import { storage } from '../services/storage';
 import { themeService, ACCENTS, ACCENT_IDS, BACKGROUNDS, BACKGROUND_IDS, type AccentId, type BackgroundId } from '../services/themeService';
 import { usageStats, type UsageSummary } from '../services/usageStats';
 import { playlistService, type PlaylistEntry } from '../services/playlistService';
+import { epgOffset } from '../services/epgService';
+import { bootLastChannel } from '../services/liveExtras';
 import { WrappedOverlay } from '../components/WrappedOverlay';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
 import './Settings.css';
 
-type FocusZone = 'bg' | 'accent' | 'lang' | 'playlists' | 'wrapped' | 'input' | 'save' | 'clear';
+type FocusZone = 'bg' | 'accent' | 'lang' | 'playlists' | 'epgoffset' | 'bootlast' | 'wrapped' | 'input' | 'save' | 'clear';
 
-const ZONES: FocusZone[] = ['bg', 'accent', 'lang', 'playlists', 'wrapped', 'input', 'save', 'clear'];
+const ZONES: FocusZone[] = ['bg', 'accent', 'lang', 'playlists', 'epgoffset', 'bootlast', 'wrapped', 'input', 'save', 'clear'];
 
 type LanguageId = 'pt' | 'en' | 'es';
 const LANGUAGES: Array<{ id: LanguageId; label: string }> = [
@@ -48,6 +50,10 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     // Playlists (multi-provedor)
     const [playlists, setPlaylists] = useState<PlaylistEntry[]>(() => playlistService.list());
     const [activePlaylistId, setActivePlaylistId] = useState<string | null>(() => playlistService.getActiveId());
+
+    // TV ao vivo: fuso do EPG (item 15) + boot no último canal (item 14)
+    const [epgOffsetHours, setEpgOffsetHours] = useState(() => epgOffset.get());
+    const [bootLast, setBootLast] = useState(() => bootLastChannel.get());
 
     // Estatísticas (lidas 1x ao abrir a página) + Wrapped
     const [usage] = useState<UsageSummary>(() => usageStats.summary());
@@ -149,6 +155,16 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 setLangIndex(prev => direction === 'left' ? Math.max(0, prev - 1) : Math.min(LANGUAGES.length - 1, prev + 1));
             } else if (focusZone === 'playlists') {
                 setPlaylistIndex(prev => direction === 'left' ? Math.max(0, prev - 1) : Math.min(playlistSlots - 1, prev + 1));
+            } else if (focusZone === 'epgoffset') {
+                setEpgOffsetHours(prev => {
+                    const next = Math.max(-12, Math.min(12, prev + (direction === 'left' ? -1 : 1)));
+                    epgOffset.set(next);
+                    return next;
+                });
+            } else if (focusZone === 'bootlast') {
+                const next = direction === 'right';
+                bootLastChannel.set(next);
+                setBootLast(next);
             } else if (focusZone === 'save' && direction === 'right') {
                 setFocusZone('clear');
             } else if (focusZone === 'clear' && direction === 'left') {
@@ -165,6 +181,17 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     const entry = playlists[safePlaylistIndex];
                     if (entry) switchPlaylist(entry);
                 }
+            }
+            else if (focusZone === 'epgoffset') {
+                epgOffset.set(0);
+                setEpgOffsetHours(0);
+                setMessage('Fuso do EPG zerado.');
+            }
+            else if (focusZone === 'bootlast') {
+                setBootLast(prev => {
+                    bootLastChannel.set(!prev);
+                    return !prev;
+                });
             }
             else if (focusZone === 'wrapped') setShowWrapped(true);
             else if (focusZone === 'input') {
@@ -190,6 +217,8 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             accent: 'sec-aparencia',
             lang: 'sec-idioma',
             playlists: 'sec-playlists',
+            epgoffset: 'sec-tv',
+            bootlast: 'sec-tv',
             wrapped: 'sec-uso',
             input: 'sec-tmdb',
             save: 'sec-tmdb',
@@ -294,6 +323,23 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                         >
                             ➕ Adicionar
                         </button>
+                    </div>
+                </section>
+
+                {/* TV ao Vivo */}
+                <section id="sec-tv" className="settings-section">
+                    <h2 className="settings-section-title">📺 TV ao Vivo</h2>
+                    <div className="settings-row">
+                        <span className="settings-label">Ajuste de fuso do EPG (←→ muda, OK zera)</span>
+                        <span className={`settings-value ${focusZone === 'epgoffset' ? 'focused' : ''}`}>
+                            {epgOffsetHours > 0 ? `+${epgOffsetHours}h` : epgOffsetHours < 0 ? `${epgOffsetHours}h` : 'Sem ajuste'}
+                        </span>
+                    </div>
+                    <div className="settings-row">
+                        <span className="settings-label">Ligar direto no último canal</span>
+                        <span className={`settings-value ${focusZone === 'bootlast' ? 'focused' : ''}`}>
+                            {bootLast ? 'Ligado' : 'Desligado'}
+                        </span>
                     </div>
                 </section>
 

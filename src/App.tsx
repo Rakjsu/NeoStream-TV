@@ -17,6 +17,7 @@ import { Sidebar } from './components/Sidebar';
 import { ProfileManager } from './components/ProfileManager';
 import { GlobalSearch } from './components/GlobalSearch';
 import { playlistService } from './services/playlistService';
+import { bootLastChannel } from './services/liveExtras';
 import { FocusContext, type FocusZone } from './contexts/FocusContext';
 import { useTVNavigation } from './hooks/useTVNavigation';
 import { themeService } from './services/themeService';
@@ -124,6 +125,11 @@ function App() {
       if (credentials) {
         // Try to authenticate with saved credentials
         await api.authenticate(credentials.url, credentials.username, credentials.password);
+        // "Ligar e assistir": abre direto na TV ao vivo tocando o último canal
+        if (bootLastChannel.get() && storage.getLastChannel()) {
+          sessionStorage.setItem('neostream_autoplay_last', '1');
+          setCurrentPage('live');
+        }
         setAuthState('authenticated');
       } else {
         // No credentials saved - show welcome screen

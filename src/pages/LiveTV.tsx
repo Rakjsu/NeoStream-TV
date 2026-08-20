@@ -7,8 +7,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
-import { epgService, type ChannelEpg } from '../services/epgService';
-import { zapHistory, hiddenChannels, liveToggles } from '../services/liveExtras';
+import { epgService, epgOffset, type ChannelEpg, type EpgProgram } from '../services/epgService';
+import { zapHistory, hiddenChannels, hiddenCategories, liveToggles } from '../services/liveExtras';
 import { kidsFilter } from '../services/kidsFilter';
 import { useWatchSession } from '../hooks/useWatchSession';
 import { groupChannelVariants, qualityLabel } from '../services/channelVariants';
@@ -16,6 +16,7 @@ import type { LiveStream, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
+import { ChannelAgendaOverlay } from '../components/ChannelAgendaOverlay';
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { VideoPlayer, type PlayerChannel } from '../components/VideoPlayer';
 import './LiveTV.css';
@@ -61,8 +62,16 @@ export function LiveTV() {
         return () => clearTimeout(timeout);
     }, [toast]);
 
-    // Catch-up (reiniciar programa via timeshift)
-    const [playingTimeshift, setPlayingTimeshift] = useState<{ url: string; title: string; poster?: string } | null>(null);
+    // Catch-up (itens 2/4/10): fila de programas do arquivo via timeshift
+    const [archivePlayback, setArchivePlayback] = useState<{
+        channel: LiveStream;
+        programs: EpgProgram[];
+        index: number;
+    } | null>(null);
+    const [showAgenda, setShowAgenda] = useState(false);
+
+    // Categorias inteiras ocultas (item 16)
+    const [hiddenCatIds, setHiddenCatIds] = useState<Set<string>>(() => hiddenCategories.get());
 
     // Focus states for TV navigation
     // 'categories' = zona do header: índice 0 é a busca, 1 é o menu de categorias
@@ -134,10 +143,22 @@ export function LiveTV() {
                 setCategories(gated.categories);
 
                 // Retomar o último canal assistido (só pré-seleciona, não dá play)
+                // Flag do boot consumida SEMPRE (mesmo sem achar o canal):
+                // viva na sessão, ela dispararia autoplay em montagens futuras
+                const wantsAutoplay = sessionStorage.getItem('neostream_autoplay_last') === '1';
+                sessionStorage.removeItem('neostream_autoplay_last');
                 const lastId = storage.getLastChannel();
                 if (lastId) {
                     const found = gated.items.find(s => s.stream_id === lastId);
-                    if (found) setSelectedChannel(found);
+                    if (found) {
+                        setSelectedChannel(found);
+                        // Boot "ligar e assistir": o App sinaliza via sessionStorage
+                        if (wantsAutoplay) {
+                            setPlayingChannel(found);
+                            storage.setLastChannel(found.stream_id);
+                            zapHistory.push(found.stream_id);
+                        }
+                    }
                 }
             } catch (err: unknown) {
                 setError(err instanceof Error ? err.message : 'Erro ao carregar canais');
@@ -169,6 +190,12 @@ export function LiveTV() {
             list = list.filter(s => !hiddenIds.has(s.stream_id));
         }
 
+        // Categorias ocultas somem da visão geral; selecionar a própria
+        // categoria no menu ainda mostra (caminho pra rever/desocultar)
+        if (hiddenCatIds.size > 0 && selectedCategory !== 'FAVORITES' && !hiddenCatIds.has(selectedCategory)) {
+            list = list.filter(s => !hiddenCatIds.has(s.category_id));
+        }
+
         if (onlyWithEpg) {
             list = list.filter(s => !!s.epg_channel_id);
         }
@@ -185,7 +212,7 @@ export function LiveTV() {
         }
 
         return list;
-    }, [streams, hiddenIds, showOnlyHidden, onlyWithEpg, selectedCategory, favoriteChannelIds, searchQuery]);
+    }, [streams, hiddenIds, hiddenCatIds, showOnlyHidden, onlyWithEpg, selectedCategory, favoriteChannelIds, searchQuery]);
 
     // Agrupamento de variantes FHD/HD/SD (port do desktop)
     const { groups: filteredStreams, variantsOf } = useMemo(() => {
@@ -242,13 +269,14 @@ export function LiveTV() {
     // mudaria o significado do índice já focado. tv_archive vem como número
     // OU string dependendo do painel — coerção obrigatória.
     const canRestart = !!(selectedChannel && Number(selectedChannel.tv_archive) > 0 && activePreviewEpg?.now);
-    const previewItems: Array<'play' | 'restart' | 'fav' | 'hide'> = [
+    const previewItems: Array<'play' | 'restart' | 'fav' | 'hide' | 'agenda'> = [
         'play',
         'fav',
         'hide',
         ...(canRestart ? (['restart'] as const) : []),
+        'agenda',
     ];
-    const previewActionIndex = (action: 'play' | 'restart' | 'fav' | 'hide') => previewItems.indexOf(action);
+    const previewActionIndex = (action: 'play' | 'restart' | 'fav' | 'hide' | 'agenda') => previewItems.indexOf(action);
 
     // Sessão de uso do canal ao vivo (estatísticas)
     useWatchSession('live', playingChannel?.name || '');
@@ -351,16 +379,65 @@ export function LiveTV() {
         setToast(set.has(stream.stream_id) ? `🙈 ${stream.name} oculto` : `👁 ${stream.name} visível de novo`);
     }, []);
 
+    // Tocar programas do arquivo como FILA (agenda ou reiniciar): no fim de
+    // cada um, avança pro próximo — e ao alcançar o programa no ar, volta ao
+    // vivo (item 10)
+    const playArchive = (channel: LiveStream, programs: EpgProgram[], index: number) => {
+        setShowAgenda(false);
+        setPlayingChannel(null);
+        setArchivePlayback({ channel, programs, index });
+    };
+
+    // Programa reproduzível na fila: passado e com arquivo (campo ausente
+    // conta como reproduzível — o canal já passou pelo gate de tv_archive)
+    const isArchivable = (program: EpgProgram, nowMs: number) =>
+        program.end <= nowMs && program.hasArchive !== false;
+
+    const advanceArchive = () => {
+        if (!archivePlayback) return;
+        const nowMs = Date.now();
+        // Pula programas sem arquivo no meio da fila (senão a URL dá 404 e trava)
+        let nextIndex = archivePlayback.index + 1;
+        while (
+            nextIndex < archivePlayback.programs.length &&
+            archivePlayback.programs[nextIndex].end <= nowMs &&
+            archivePlayback.programs[nextIndex].hasArchive === false
+        ) {
+            nextIndex++;
+        }
+        const next = archivePlayback.programs[nextIndex];
+        // Sem próximo, próximo ainda no futuro, ou próximo é o programa NO AR
+        // → volta pro canal ao vivo
+        if (!next || next.start > nowMs || next.end > nowMs) {
+            const channel = archivePlayback.channel;
+            setArchivePlayback(null);
+            playChannel(channel);
+            return;
+        }
+        setArchivePlayback({ ...archivePlayback, index: nextIndex });
+    };
+
+    const previousArchiveIndex = (): number => {
+        if (!archivePlayback) return -1;
+        const nowMs = Date.now();
+        for (let i = archivePlayback.index - 1; i >= 0; i--) {
+            if (isArchivable(archivePlayback.programs[i], nowMs)) return i;
+        }
+        return -1;
+    };
+
+    const previousArchive = () => {
+        const prevIndex = previousArchiveIndex();
+        if (!archivePlayback || prevIndex < 0) return;
+        setArchivePlayback({ ...archivePlayback, index: prevIndex });
+    };
+
     // Reiniciar o programa atual via timeshift (só quando tv_archive > 0)
     const restartProgram = () => {
         if (!selectedChannel || !activePreviewEpg?.now) return;
-        const program = activePreviewEpg.now;
-        const durationMin = Math.max(1, Math.ceil((Date.now() - program.start) / 60000));
-        setPlayingTimeshift({
-            url: api.getTimeshiftUrl(selectedChannel.stream_id, program.start, durationMin),
-            title: `⏮ ${program.title} — ${selectedChannel.name}`,
-            poster: selectedChannel.stream_icon || undefined,
-        });
+        const programs = activePreviewEpg.programs.length > 0 ? activePreviewEpg.programs : [activePreviewEpg.now];
+        const index = Math.max(0, programs.findIndex(p => p.start === activePreviewEpg.now?.start));
+        playArchive(selectedChannel, programs, index);
     };
 
     const randomZap = useCallback(() => {
@@ -480,7 +557,9 @@ export function LiveTV() {
                 if (action === 'play') playChannel(selectedChannel);
                 else if (action === 'restart') restartProgram();
                 else if (action === 'fav') toggleChannelFavorite(selectedChannel);
-                else toggleChannelHidden(selectedChannel);
+                else if (action === 'hide') toggleChannelHidden(selectedChannel);
+                // Sem fallback destrutivo: item novo sem branch não pode ocultar canal
+                else if (action === 'agenda') setShowAgenda(true);
             } else {
                 const variant = selectedVariants[previewFocusIndex - previewItems.length];
                 if (variant) playChannel(variant);
@@ -523,7 +602,7 @@ export function LiveTV() {
         onEnter: handleEnter,
         onBack: handleBack,
         onAction: handleAction,
-        enabled: focusZone === 'content' && !playingChannel && !playingTimeshift && !categoryMenuOpen,
+        enabled: focusZone === 'content' && !playingChannel && !archivePlayback && !showAgenda && !categoryMenuOpen,
     });
 
     const handleImageError = (streamId: number) => {
@@ -611,6 +690,8 @@ export function LiveTV() {
                 tvFocused={focusArea === 'categories' && focusedCategoryIndex === 1}
                 onOpenChange={setCategoryMenuOpen}
                 extraCategories={[{ category_id: 'FAVORITES', category_name: '⭐ Favoritos', parent_id: 0 }]}
+                hiddenCategoryIds={hiddenCatIds}
+                onToggleHideCategory={(id) => setHiddenCatIds(new Set(hiddenCategories.toggle(id)))}
             />
 
             {/* Toolbar de filtros */}
@@ -752,6 +833,13 @@ export function LiveTV() {
                                         ⏮ Reiniciar
                                     </button>
                                 )}
+                                <button
+                                    className={`info-button ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('agenda') ? 'tv-focused' : ''}`}
+                                    onClick={() => setShowAgenda(true)}
+                                    title="Programação do dia"
+                                >
+                                    📋 Agenda
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -790,6 +878,7 @@ export function LiveTV() {
                                     <div className="channel-name">
                                         {favoriteChannelIds.has(stream.stream_id) && <span className="channel-fav">⭐ </span>}
                                         {stream?.name || 'Canal Sem Nome'}
+                                        {Number(stream.tv_archive) > 0 && <span className="channel-catchup"> ⏮</span>}
                                     </div>
                                 </div>
                                 <div className="channel-live-indicator" />
@@ -810,20 +899,47 @@ export function LiveTV() {
                 <span className="hint-blue">🔵 Ocultar</span>
             </div>
 
-            {/* Catch-up: programa reiniciado via timeshift (seekável, não-live) */}
-            {playingTimeshift && (
-                <VideoPlayer
-                    src={playingTimeshift.url}
-                    title={playingTimeshift.title}
-                    poster={playingTimeshift.poster}
-                    autoPlay
-                    onClose={() => setPlayingTimeshift(null)}
+            {/* Agenda do dia do canal (itens 2+4) */}
+            {showAgenda && selectedChannel && (
+                <ChannelAgendaOverlay
+                    channel={selectedChannel}
+                    onClose={() => setShowAgenda(false)}
+                    onPlayArchive={(programs, index) => {
+                        if (selectedChannel) playArchive(selectedChannel, programs, index);
+                    }}
                 />
             )}
 
+            {/* Catch-up: fila de programas do arquivo via timeshift (itens 4+10).
+                start é DES-ofsetado: program.start inclui o ajuste de fuso do
+                usuário, mas a URL de timeshift precisa do epoch real do provedor */}
+            {archivePlayback && (() => {
+                const program = archivePlayback.programs[archivePlayback.index];
+                if (!program) return null;
+                const realStart = program.start - epgOffset.get() * 3600 * 1000;
+                // Programa NO AR: pedir só o já gravado (fim clampado ao agora);
+                // painéis variam no tratamento de duração futura
+                const effectiveEnd = Math.min(program.end, Date.now());
+                const durationMin = Math.max(1, Math.ceil((effectiveEnd - program.start) / 60000));
+                return (
+                    <VideoPlayer
+                        key={`${archivePlayback.channel.stream_id}-${program.start}`}
+                        src={api.getTimeshiftUrl(archivePlayback.channel.stream_id, realStart, durationMin)}
+                        title={`⏮ ${program.title} — ${archivePlayback.channel.name}`}
+                        poster={archivePlayback.channel.stream_icon || undefined}
+                        autoPlay
+                        onNextEpisode={advanceArchive}
+                        onPreviousEpisode={previousArchive}
+                        canGoNext
+                        canGoPrevious={previousArchiveIndex() >= 0}
+                        onClose={() => setArchivePlayback(null)}
+                    />
+                );
+            })()}
+
             {toast && <div className="livetv-toast">{toast}</div>}
 
-            {playingChannel && !playingTimeshift && (
+            {playingChannel && !archivePlayback && (
                 <VideoPlayer
                     src={getLivePlaybackUrl(playingChannel)}
                     title={playingChannel.name}

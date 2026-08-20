@@ -796,3 +796,31 @@
 .live-badge-behind.focused {
     box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.8);
 }
+
+/* EPG no overlay de zapping (item 6) */
+.zap-epg-now {
+    display: block;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.55);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Aviso a-seguir (item 9) */
+.next-soon-banner {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    background: rgba(10, 10, 20, 0.85);
+    border: 1px solid rgba(var(--ns-accent-rgb), 0.5);
+    color: #fff;
+    font-size: 16px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    max-width: 44vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    z-index: 70;
+}

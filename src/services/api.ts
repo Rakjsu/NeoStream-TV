@@ -274,6 +274,15 @@ class XtreamAPI {
         );
     }
 
+    /** EPG completo do canal (agenda do dia + has_archive por programa). */
+    async getSimpleDataTable(streamId: number): Promise<{ epg_listings?: unknown[] }> {
+        return this.makeRequest<{ epg_listings?: unknown[] }>(
+            'get_simple_data_table',
+            { stream_id: String(streamId) },
+            15000
+        );
+    }
+
     getLiveStreamUrl(streamId: number): string {
         return `${this.baseUrl}/live/${this.username}/${this.password}/${streamId}.m3u8`;
     }

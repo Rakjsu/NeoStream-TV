@@ -23,6 +23,9 @@ interface CategoryMenuProps {
     onOpenChange?: (open: boolean) => void;
     /** Categorias virtuais extras no topo da lista (ex.: ⭐ Favoritos) */
     extraCategories?: Category[];
+    /** Categorias ocultas (item 16) — 🔵 alterna na categoria focada */
+    hiddenCategoryIds?: Set<string>;
+    onToggleHideCategory?: (categoryId: string) => void;
 }
 
 export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
@@ -34,6 +37,8 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
         tvFocused = false,
         onOpenChange,
         extraCategories = [],
+        hiddenCategoryIds,
+        onToggleHideCategory,
     }, ref) {
         const [isOpen, setIsOpen] = useState(false);
         const [isClosing, setIsClosing] = useState(false);
@@ -107,6 +112,15 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
                 if (entry) handleSelectCategory(entry.category_id);
             },
             onBack: handleClose,
+            onAction: (action) => {
+                // 🔵 oculta/mostra a categoria focada (não vale pras virtuais)
+                if (action === 'blue' && onToggleHideCategory) {
+                    const entry = allEntries[focusedIndex];
+                    if (entry && entry.category_id !== 'all' && entry.category_id !== 'FAVORITES') {
+                        onToggleHideCategory(entry.category_id);
+                    }
+                }
+            },
             enabled: isOpen && !isClosing,
         });
 
@@ -178,7 +192,7 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
                         <div className="category-panel-header">
                             <div className="header-content">
                                 <h2>Categorias</h2>
-                                <p>Explore por gênero</p>
+                                <p>Explore por gênero{onToggleHideCategory ? ' · 🔵 oculta/mostra' : ''}</p>
                             </div>
                             <button className="close-btn" onClick={handleClose}>
                                 X
@@ -192,7 +206,7 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
                                 return (
                                     <button
                                         key={cat.category_id}
-                                        className={`category-item ${selectedCategory === cat.category_id ? 'selected' : ''} ${focusedIndex === index ? 'tv-focused' : ''}`}
+                                        className={`category-item ${selectedCategory === cat.category_id ? 'selected' : ''} ${focusedIndex === index ? 'tv-focused' : ''} ${hiddenCategoryIds?.has(cat.category_id) ? 'category-hidden' : ''}`}
                                         style={isAll ? undefined : { animationDelay: `${0.1 + index * 0.03}s` }}
                                         onClick={() => handleSelectCategory(cat.category_id)}
                                     >
@@ -202,6 +216,18 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
                                         <span className="category-name">
                                             {isAll ? getTypeLabel() : cat.category_name}
                                         </span>
+                                        {!isAll && cat.category_id !== 'FAVORITES' && onToggleHideCategory && (
+                                            <span
+                                                className="category-hide-toggle"
+                                                title="Ocultar/mostrar categoria"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onToggleHideCategory(cat.category_id);
+                                                }}
+                                            >
+                                                🙈
+                                            </span>
+                                        )}
                                         {selectedCategory === cat.category_id && <div className="selected-dot" />}
                                     </button>
                                 );

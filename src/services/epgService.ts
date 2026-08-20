@@ -11,7 +11,34 @@ export interface EpgProgram {
     start: number;
     /** epoch em ms */
     end: number;
+    /** o provedor tem este programa no arquivo (catch-up)? */
+    hasArchive?: boolean;
 }
+
+// Ajuste de fuso do EPG (item 15): provedores erram o fuso dos timestamps.
+// Persistido por playlist ativa; aplicado em TODO parse.
+import { playlistService } from './playlistService';
+
+const EPG_OFFSET_PREFIX = 'neostream_epg_offset_';
+
+export const epgOffset = {
+    key(): string {
+        return EPG_OFFSET_PREFIX + (playlistService.getActiveId() || 'default');
+    },
+    get(): number {
+        const raw = Number(localStorage.getItem(this.key()));
+        return Number.isFinite(raw) ? Math.max(-12, Math.min(12, raw)) : 0;
+    },
+    set(hours: number): void {
+        try {
+            const clamped = Math.max(-12, Math.min(12, Math.round(hours)));
+            if (clamped === 0) localStorage.removeItem(this.key());
+            else localStorage.setItem(this.key(), String(clamped));
+        } catch { /* quota */ }
+        cache.clear();
+        dayCache.clear();
+    },
+};
 
 export interface ChannelEpg {
     now: EpgProgram | null;
@@ -27,6 +54,7 @@ interface ShortEpgListing {
     start?: string;
     end?: string;
     stop?: string;
+    has_archive?: number | string;
 }
 
 interface ShortEpgResponse {
@@ -37,6 +65,9 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX = 80; // teto de canais em memória (TV com pouca RAM)
 
 const cache = new Map<number, { at: number; data: ChannelEpg }>();
+// Agenda do dia (get_simple_data_table) — mais pesada, TTL maior, cap menor
+const DAY_TTL_MS = 10 * 60 * 1000;
+const dayCache = new Map<number, { at: number; programs: EpgProgram[] }>();
 // Dedupe de requisições em voo: ficha + player pedem o MESMO canal no mesmo
 // ciclo (playChannel seta os dois estados juntos) — sem isso são 2 fetches.
 const inflight = new Map<number, Promise<ChannelEpg>>();
@@ -66,12 +97,16 @@ function toMs(listing: ShortEpgListing, field: 'start' | 'stop'): number {
 
 function parseListings(data: ShortEpgResponse): EpgProgram[] {
     const listings = Array.isArray(data?.epg_listings) ? data.epg_listings : [];
+    const offsetMs = epgOffset.get() * 3600 * 1000;
     return listings
         .map(listing => ({
             title: listing.title ? decodeBase64Utf8(listing.title) : '',
             description: listing.description ? decodeBase64Utf8(listing.description) : '',
-            start: toMs(listing, 'start'),
-            end: toMs(listing, 'stop'),
+            start: toMs(listing, 'start') + offsetMs,
+            end: toMs(listing, 'stop') + offsetMs,
+            // Ausente fica undefined: consumidores tratam "desconhecido" como
+            // reproduzível quando o CANAL tem tv_archive (forks XUI omitem o campo)
+            hasArchive: listing.has_archive === undefined ? undefined : Number(listing.has_archive) > 0,
         }))
         .filter(p => p.title && p.start > 0 && p.end > p.start)
         .sort((a, b) => a.start - b.start);
@@ -123,6 +158,24 @@ export const epgService = {
         return request;
     },
 
+    /** Agenda completa do canal (passado + futuro), com has_archive. */
+    async getDayEpg(streamId: number): Promise<EpgProgram[]> {
+        const cached = dayCache.get(streamId);
+        if (cached && Date.now() - cached.at < DAY_TTL_MS) return cached.programs;
+        try {
+            const data = (await api.getSimpleDataTable(streamId)) as ShortEpgResponse;
+            const programs = parseListings(data);
+            if (dayCache.size >= 20) {
+                const oldest = [...dayCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+                if (oldest) dayCache.delete(oldest[0]);
+            }
+            dayCache.set(streamId, { at: Date.now(), programs });
+            return programs;
+        } catch {
+            return [];
+        }
+    },
+
     /** Percentual decorrido do programa atual (0-100) ou null. */
     progressPct(program: EpgProgram | null): number | null {
         if (!program) return null;
@@ -134,5 +187,6 @@ export const epgService = {
 
     clearCache(): void {
         cache.clear();
+        dayCache.clear();
     },
 };
