@@ -1,7 +1,7 @@
 // VideoPlayer Component - Premium player with HLS support for TV
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FaPlay, FaPause, FaCog, FaStepForward, FaStepBackward, FaListUl, FaMoon, FaExpand } from 'react-icons/fa';
-import { useHls } from '../../hooks/useHls';
+import { useHls, type StreamErrorCause } from '../../hooks/useHls';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
 import type { EpgProgram } from '../../services/epgService';
 import { aspectPrefs, ASPECT_MODES, ASPECT_LABELS, type AspectMode } from '../../services/liveExtras';
@@ -36,15 +36,48 @@ export interface VideoPlayerProps {
     onSwitchChannel?: (streamId: number) => void;
     /** Chave pra lembrar a proporção por conteúdo (ex.: "live-123") */
     contentKey?: string;
+    /** Todas as tentativas de reconexão falharam (LiveTV usa pra failover de variante) */
+    onStreamFailed?: () => void;
 }
 
 // Control buttons: close, prev, play, next, quality, channels, sleep, aspect
-type ControlButton = 'close' | 'prev' | 'play' | 'next' | 'quality' | 'channels' | 'sleep' | 'aspect';
+type ControlButton = 'close' | 'prev' | 'play' | 'golive' | 'next' | 'quality' | 'channels' | 'sleep' | 'aspect';
 type PlayerFocus = 'controls' | 'quality-menu' | 'zap-list';
 
 const SLEEP_CHOICES = [null, 30, 60, 90] as const;
 const DIGIT_TIMEOUT_MS = 1400;
 const ZAP_WINDOW = 9; // linhas visíveis no overlay de zapping
+const MAX_RECONNECT_ATTEMPTS = 4;
+const STALL_LIMIT_MS = 12000; // watchdog: tempo parado antes de reconectar
+
+// Mensagem acionável por causa (R1 item 45)
+const CAUSE_MESSAGES: Record<string, string> = {
+    notfound: 'Canal indisponível no provedor (404). Tente outra variante ou canal.',
+    network: 'Falha de rede. Verifique a conexão da TV.',
+    media: 'Falha ao decodificar o vídeo (codec não suportado?).',
+    stall: 'O stream congelou.',
+    fatal: 'Erro no stream.',
+};
+
+// Segura o screensaver do sistema durante a reprodução (Tizen)
+function holdSystemScreenSaver(hold: boolean): void {
+    try {
+        const webapis = (window as unknown as {
+            webapis?: { appcommon?: {
+                setScreenSaver: (state: number, ok?: () => void, err?: () => void) => void;
+                AppCommonScreenSaverState: { SCREEN_SAVER_OFF: number; SCREEN_SAVER_ON: number };
+            } };
+        }).webapis;
+        const appcommon = webapis?.appcommon;
+        if (!appcommon) return;
+        const state = hold
+            ? appcommon.AppCommonScreenSaverState.SCREEN_SAVER_OFF
+            : appcommon.AppCommonScreenSaverState.SCREEN_SAVER_ON;
+        appcommon.setScreenSaver(state, undefined, undefined);
+    } catch {
+        // Fora do Tizen (dev no browser) — sem screensaver pra segurar
+    }
+}
 
 function formatClock(ms: number): string {
     const d = new Date(ms);
@@ -75,7 +108,8 @@ export function VideoPlayer({
     channelList,
     currentChannelId,
     onSwitchChannel,
-    contentKey
+    contentKey,
+    onStreamFailed
 }: VideoPlayerProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -130,14 +164,39 @@ export function VideoPlayer({
         setAspectMode(contentKey ? aspectPrefs.get(contentKey) : 'original');
     }
 
-    // Ref não pode ser escrita durante o render — reset do resume em effect
+    // Ref não pode ser escrita durante o render — resets por troca de src
     useEffect(() => {
         resumeAppliedRef.current = false;
+        reconnectAttemptRef.current = 0;
+        streamFailedRef.current = false;
+        reloadResumeRef.current = null;
+        if (reconnectTimerRef.current) {
+            clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
+        }
+        setReconnectAttempt(0);
+        setReconnecting(false);
+        setIsBehindLive(false);
     }, [src]);
+
+    // Atrás do vivo? (pausou/atrasou num canal ao vivo → botão AO VIVO)
+    const [isBehindLive, setIsBehindLive] = useState(false);
+
+    // Reconexão com backoff (R1 itens 43/44/74): tentativa visível + watchdog
+    const [reconnectAttempt, setReconnectAttempt] = useState(0);
+    const [reconnecting, setReconnecting] = useState(false);
+    const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const reconnectAttemptRef = useRef(0);
+    // VOD: posição capturada antes do reload (o pipeline recomeça em 0)
+    const reloadResumeRef = useRef<number | null>(null);
+    // Terminal: tentativas esgotadas — watchdog para de re-agendar
+    const streamFailedRef = useRef(false);
 
     // HLS hook with quality support
     const {
+        hlsRef,
         cleanup,
+        reload,
         qualityLevels,
         currentQualityIndex,
         setQuality,
@@ -148,21 +207,149 @@ export function VideoPlayer({
         videoRef,
         autoPlay,
         isLive: isLive || contentType === 'live',
-        onError: () => setError('Erro ao carregar stream')
+        onError: (cause) => setError(CAUSE_MESSAGES[cause || 'fatal']),
+        onStreamError: (cause) => scheduleReconnect(cause || 'fatal'),
     });
+
+    // onStreamFailed via ref: o watchdog roda num effect de deps vazias e não
+    // pode capturar a closure do primeiro render (variantes do LiveTV mudam)
+    const onStreamFailedRef = useRef(onStreamFailed);
+    useEffect(() => {
+        onStreamFailedRef.current = onStreamFailed;
+    }, [onStreamFailed]);
+
+    // Agenda uma reconexão com backoff exponencial; esgotou → erro + failover
+    const scheduleReconnect = useCallback((cause: StreamErrorCause | 'stall') => {
+        if (reconnectTimerRef.current || streamFailedRef.current) return; // já agendada / terminal
+        const attempt = reconnectAttemptRef.current + 1;
+        if (attempt > MAX_RECONNECT_ATTEMPTS) {
+            streamFailedRef.current = true;
+            videoRef.current?.pause();
+            setReconnecting(false);
+            setError(CAUSE_MESSAGES[cause] || CAUSE_MESSAGES.fatal);
+            onStreamFailedRef.current?.();
+            return;
+        }
+        reconnectAttemptRef.current = attempt;
+        setReconnectAttempt(attempt);
+        setReconnecting(true);
+        setError(null);
+        const delayMs = Math.min(16000, 2000 * Math.pow(2, attempt - 1));
+        reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null;
+            // VOD volta do zero no reload — guarda a posição pra reaplicar
+            const video = videoRef.current;
+            if (!isLiveContent && video && video.currentTime > 5) {
+                reloadResumeRef.current = video.currentTime;
+            }
+            reload();
+        }, delayMs);
+    }, [reload, isLiveContent]);
+
+    // Voltou a tocar → zera o ciclo de reconexão
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+        const handlePlaying = () => {
+            reconnectAttemptRef.current = 0;
+            streamFailedRef.current = false;
+            setReconnectAttempt(0);
+            setReconnecting(false);
+        };
+        const handleLoadedMetadata = () => {
+            // Posição do VOD capturada antes do reload do watchdog
+            if (reloadResumeRef.current != null && video) {
+                video.currentTime = reloadResumeRef.current;
+                reloadResumeRef.current = null;
+            }
+        };
+        video.addEventListener('playing', handlePlaying);
+        video.addEventListener('loadedmetadata', handleLoadedMetadata);
+        return () => {
+            video.removeEventListener('playing', handlePlaying);
+            video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        };
+    }, []);
+
+    // Rede voltou (evento do sistema) → tenta na hora
+    useEffect(() => {
+        const handleOnline = () => {
+            if (reconnectTimerRef.current) {
+                clearTimeout(reconnectTimerRef.current);
+                reconnectTimerRef.current = null;
+            }
+            if (reconnectAttemptRef.current > 0 || error) {
+                setError(null);
+                setReconnecting(true);
+                reload();
+            }
+        };
+        window.addEventListener('online', handleOnline);
+        return () => window.removeEventListener('online', handleOnline);
+         
+    }, [error, reload]);
+
+    // Watchdog anti-travamento: tocando mas o relógio do vídeo não anda
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+        let lastTime = -1;
+        let stalledSince = 0;
+        const interval = setInterval(() => {
+            if (!video) return;
+            // AO VIVO: pausado ou >30s atrás do edge
+            if (isLiveContent) {
+                const edge = hlsRef.current?.liveSyncPosition;
+                setIsBehindLive(video.paused || (typeof edge === 'number' && edge - video.currentTime > 30));
+            }
+            if (video.paused || video.ended) {
+                stalledSince = 0;
+                return;
+            }
+            if (video.currentTime === lastTime) {
+                if (stalledSince === 0) stalledSince = Date.now();
+                else if (Date.now() - stalledSince >= STALL_LIMIT_MS && !reconnectTimerRef.current) {
+                    stalledSince = 0;
+                    scheduleReconnect('stall');
+                }
+            } else {
+                stalledSince = 0;
+            }
+            lastTime = video.currentTime;
+        }, 4000);
+        return () => clearInterval(interval);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [scheduleReconnect, isLiveContent]);
+
+    // Limpa o timer de reconexão ao desmontar
+    useEffect(() => {
+        return () => {
+            if (reconnectTimerRef.current) {
+                clearTimeout(reconnectTimerRef.current);
+                reconnectTimerRef.current = null;
+            }
+        };
+    }, []);
+
+    // Segura o screensaver do sistema enquanto o player existe (R1 item 77)
+    useEffect(() => {
+        holdSystemScreenSaver(true);
+        return () => holdSystemScreenSaver(false);
+    }, []);
 
     // Build list of available control buttons
     const getControlButtons = useCallback((): ControlButton[] => {
         const buttons: ControlButton[] = ['close'];
         if (canGoPrevious && onPreviousEpisode) buttons.push('prev');
         buttons.push('play');
+        if (isLiveContent && isBehindLive) buttons.push('golive');
         if (canGoNext && onNextEpisode) buttons.push('next');
         if (qualityLevels.length > 0) buttons.push('quality');
         if (canZap) buttons.push('channels');
         buttons.push('sleep');
         buttons.push('aspect');
         return buttons;
-    }, [canGoPrevious, canGoNext, onPreviousEpisode, onNextEpisode, qualityLevels.length, canZap]);
+    }, [canGoPrevious, canGoNext, onPreviousEpisode, onNextEpisode, qualityLevels.length, canZap, isLiveContent, isBehindLive]);
 
     // ----- Zapping helpers (live) -----
     const currentChannelIndex = useMemo(() => {
@@ -262,6 +449,22 @@ export function VideoPlayer({
             return next;
         });
     }, [contentKey]);
+
+    // Voltar ao edge do ao vivo (R1 item 42)
+    const seekToLive = useCallback(() => {
+        const video = videoRef.current;
+        if (!video) return;
+        const edge = hlsRef.current?.liveSyncPosition;
+        if (typeof edge === 'number' && Number.isFinite(edge)) {
+            video.currentTime = edge;
+        } else if (Number.isFinite(video.duration)) {
+            video.currentTime = video.duration;
+        }
+        video.play().catch(() => { });
+        setIsBehindLive(false);
+        // O botão golive some — foco não pode ficar órfão nele
+        setFocusedControl(prev => (prev === 'golive' ? 'play' : prev));
+    }, [hlsRef]);
 
     // ----- Overlay de zapping -----
     const openZapList = useCallback(() => {
@@ -477,6 +680,9 @@ export function VideoPlayer({
             case 'quality':
                 openQualityMenu();
                 break;
+            case 'golive':
+                seekToLive();
+                break;
             case 'channels':
                 openZapList();
                 break;
@@ -487,7 +693,7 @@ export function VideoPlayer({
                 cycleAspect();
                 break;
         }
-    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openQualityMenu, openZapList, cycleSleep, cycleAspect]);
+    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openQualityMenu, openZapList, cycleSleep, cycleAspect, seekToLive]);
 
     // TV Navigation handler
     const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
@@ -513,7 +719,10 @@ export function VideoPlayer({
             // Navigate controls with left/right
             if (direction === 'left' || direction === 'right') {
                 const buttons = getControlButtons();
-                const currentIndex = buttons.indexOf(focusedControl);
+                // Botão focado pode ter sumido (ex.: golive após voltar ao
+                // vivo) — reancora no play em vez de cair no índice 0 (close)
+                const rawIndex = buttons.indexOf(focusedControl);
+                const currentIndex = rawIndex === -1 ? buttons.indexOf('play') : rawIndex;
                 if (direction === 'left') {
                     const newIndex = Math.max(0, currentIndex - 1);
                     setFocusedControl(buttons[newIndex]);
@@ -709,6 +918,13 @@ export function VideoPlayer({
                 </div>
             )}
 
+            {/* Reconectando (R1 item 44) */}
+            {reconnecting && !error && (
+                <div className="reconnect-overlay">
+                    🔄 Reconectando… tentativa {reconnectAttempt}/{MAX_RECONNECT_ATTEMPTS}
+                </div>
+            )}
+
             {/* Error State */}
             {error && (
                 <div className="video-player-error">
@@ -835,11 +1051,21 @@ export function VideoPlayer({
                         )}
 
                         {/* Time / Live Badge */}
-                        {isLive || contentType === 'live' ? (
-                            <span className="live-badge">
-                                <span className="live-dot" />
-                                AO VIVO
-                            </span>
+                        {isLiveContent ? (
+                            isBehindLive ? (
+                                <button
+                                    className={`live-badge live-badge-behind ${focusedControl === 'golive' && playerFocus === 'controls' ? 'focused' : ''}`}
+                                    onClick={seekToLive}
+                                >
+                                    <span className="live-dot" />
+                                    VOLTAR AO VIVO
+                                </button>
+                            ) : (
+                                <span className="live-badge">
+                                    <span className="live-dot" />
+                                    AO VIVO
+                                </span>
+                            )
                         ) : (
                             <span className="time-display">
                                 {formatTime(currentTime)} / {formatTime(duration)}

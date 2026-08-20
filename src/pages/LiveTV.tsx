@@ -53,6 +53,14 @@ export function LiveTV() {
     const [previewEpgFor, setPreviewEpgFor] = useState<number | null>(null);
     const [playerEpg, setPlayerEpg] = useState<ChannelEpg | null>(null);
 
+    // Toast OSD da página (⭐/🙈/failover — R1 item 53)
+    const [toast, setToast] = useState<string | null>(null);
+    useEffect(() => {
+        if (!toast) return;
+        const timeout = setTimeout(() => setToast(null), 2500);
+        return () => clearTimeout(timeout);
+    }, [toast]);
+
     // Catch-up (reiniciar programa via timeshift)
     const [playingTimeshift, setPlayingTimeshift] = useState<{ url: string; title: string; poster?: string } | null>(null);
 
@@ -302,6 +310,23 @@ export function LiveTV() {
         zapHistory.push(stream.stream_id);
     }, []);
 
+    // Failover: stream morreu de vez → tenta a próxima variante do grupo
+    const handleStreamFailed = useCallback(() => {
+        if (!playingChannel) return;
+        const repId = representativeOf.get(playingChannel.stream_id) ?? playingChannel.stream_id;
+        const variants = variantsOf.get(String(repId));
+        if (!variants || variants.length < 2) return;
+        const index = variants.findIndex(v => v.stream_id === playingChannel.stream_id);
+        const next = variants[index + 1];
+        if (next) {
+            setToast(`⚠ Falha no stream — trocando para ${qualityLabel(next.name)}`);
+            playChannel(next);
+        } else {
+            setToast('⚠ Todas as variantes deste canal falharam');
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [playingChannel, representativeOf, variantsOf]);
+
     // Zapping vindo do player (CH±, dígitos, overlay)
     const handleSwitchChannel = useCallback((streamId: number) => {
         const found = streams.find(s => s.stream_id === streamId);
@@ -310,17 +335,20 @@ export function LiveTV() {
 
     // Ações dos atalhos coloridos
     const toggleChannelFavorite = useCallback((stream: LiveStream) => {
-        storage.toggleFavorite({
+        const added = storage.toggleFavorite({
             id: String(stream.stream_id),
             type: 'channel',
             title: stream.name,
             poster: stream.stream_icon || undefined,
         });
         setFavTick(t => t + 1);
+        setToast(added ? `⭐ ${stream.name} favoritado` : `☆ ${stream.name} removido dos favoritos`);
     }, []);
 
     const toggleChannelHidden = useCallback((stream: LiveStream) => {
-        setHiddenIds(new Set(hiddenChannels.toggle(stream.stream_id)));
+        const set = hiddenChannels.toggle(stream.stream_id);
+        setHiddenIds(new Set(set));
+        setToast(set.has(stream.stream_id) ? `🙈 ${stream.name} oculto` : `👁 ${stream.name} visível de novo`);
     }, []);
 
     // Reiniciar o programa atual via timeshift (só quando tv_archive > 0)
@@ -793,6 +821,8 @@ export function LiveTV() {
                 />
             )}
 
+            {toast && <div className="livetv-toast">{toast}</div>}
+
             {playingChannel && !playingTimeshift && (
                 <VideoPlayer
                     src={getLivePlaybackUrl(playingChannel)}
@@ -806,6 +836,7 @@ export function LiveTV() {
                     currentChannelId={playerCurrentChannelId}
                     onSwitchChannel={handleSwitchChannel}
                     contentKey={`live-${playingChannel.stream_id}`}
+                    onStreamFailed={handleStreamFailed}
                     onClose={() => setPlayingChannel(null)}
                 />
             )}

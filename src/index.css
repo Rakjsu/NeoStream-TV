@@ -271,3 +271,86 @@ body {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* Tela offline do boot (R1 item 69) */
+.app-offline-hint {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 16px;
+    max-width: 480px;
+    text-align: center;
+    margin-top: 12px;
+}
+
+.app-offline-retry {
+    margin-top: 24px;
+    background: rgba(var(--ns-accent-rgb), 0.3);
+    border: 2px solid var(--ns-accent);
+    color: #fff;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 12px 32px;
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+/* Tela de crash do error boundary (R1 item 73) */
+.app-crash {
+    position: fixed;
+    inset: 0;
+    background: #0a0a14;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px;
+    z-index: 99999;
+}
+
+.app-crash-icon {
+    font-size: 72px;
+}
+
+.app-crash-title {
+    color: #fff;
+    font-size: 32px;
+    margin: 20px 0 12px;
+}
+
+.app-crash-text {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 18px;
+    max-width: 560px;
+}
+
+.app-crash-detail {
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 13px;
+    margin-top: 10px;
+    max-width: 560px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.app-offline-actions {
+    display: flex;
+    margin-top: 24px;
+}
+
+.app-offline-actions .app-offline-retry {
+    margin-top: 0;
+}
+
+.app-offline-actions .app-offline-retry + .app-offline-retry {
+    margin-left: 16px;
+}
+
+.app-offline-secondary {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.app-offline-retry.tv-focused {
+    box-shadow: 0 0 0 4px rgba(var(--ns-accent-rgb), 0.7);
+    transform: scale(1.05);
+}

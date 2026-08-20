@@ -47,8 +47,13 @@ class StorageService {
     }
 
     getCredentials(): Credentials | null {
-        const data = localStorage.getItem(STORAGE_KEYS.CREDENTIALS);
-        return data ? JSON.parse(data) : null;
+        // Blindado: localStorage corrompido não pode derrubar o boot
+        try {
+            const data = localStorage.getItem(STORAGE_KEYS.CREDENTIALS);
+            return data ? JSON.parse(data) : null;
+        } catch {
+            return null;
+        }
     }
 
     clearCredentials(): void {
@@ -163,8 +168,12 @@ class StorageService {
     }
 
     getSettings(): Settings {
-        const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-        return data ? { ...DEFAULT_SETTINGS, ...JSON.parse(data) } : DEFAULT_SETTINGS;
+        try {
+            const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+            return data ? { ...DEFAULT_SETTINGS, ...JSON.parse(data) } : DEFAULT_SETTINGS;
+        } catch {
+            return DEFAULT_SETTINGS;
+        }
     }
 
     saveSettings(settings: Partial<Settings>): void {

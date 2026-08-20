@@ -772,3 +772,27 @@
 .control-btn.active {
     color: var(--ns-accent);
 }
+
+/* R1: reconexão + voltar ao vivo */
+.reconnect-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 55;
+    background: rgba(0, 0, 0, 0.75);
+    color: #fff;
+    font-size: 18px;
+    padding: 14px 28px;
+    border-radius: 12px;
+}
+
+.live-badge-behind {
+    cursor: pointer;
+    background: rgba(var(--ns-accent-rgb), 0.35);
+    border: 1px solid var(--ns-accent);
+}
+
+.live-badge-behind.focused {
+    box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.8);
+}

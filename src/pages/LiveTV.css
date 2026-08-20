@@ -847,3 +847,22 @@
 .hint-red, .hint-green, .hint-yellow, .hint-blue {
     opacity: 0.85;
 }
+
+/* Toast OSD da página (R1 item 53) */
+.livetv-toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10, 10, 20, 0.92);
+    border: 1px solid rgba(var(--ns-accent-rgb), 0.6);
+    color: #fff;
+    font-size: 17px;
+    padding: 12px 24px;
+    border-radius: 12px;
+    z-index: 10000;
+    max-width: 70vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

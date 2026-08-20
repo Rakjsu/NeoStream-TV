@@ -18,11 +18,13 @@ import { ProfileManager } from './components/ProfileManager';
 import { GlobalSearch } from './components/GlobalSearch';
 import { playlistService } from './services/playlistService';
 import { FocusContext, type FocusZone } from './contexts/FocusContext';
+import { useTVNavigation } from './hooks/useTVNavigation';
 import { themeService } from './services/themeService';
 import './index.css';
+import './App.css';
 
 type Page = 'home' | 'live' | 'movies' | 'series' | 'mylist' | 'favorites' | 'settings';
-type AuthState = 'loading' | 'languageSelection' | 'welcome' | 'login' | 'authenticated';
+type AuthState = 'loading' | 'languageSelection' | 'welcome' | 'login' | 'authenticated' | 'offline';
 
 // No Tizen real, teclas além de setas/OK/Back (CH±, dígitos, color keys,
 // media keys) só chegam ao web app se registradas via tvinputdevice.
@@ -43,6 +45,55 @@ function registerTizenKeys() {
       // Tecla não suportada nesse modelo — segue o baile
     }
   }
+}
+
+function OfflineRetry({ onRetry, onOtherLogin }: { onRetry: () => void; onOtherLogin: () => void }) {
+  // 0 = tentar de novo, 1 = usar outro login (o erro pode ser do provedor,
+  // não da rede — sem esta saída a tela virava beco sem saída)
+  const [focusedIndex, setFocusedIndex] = useState(0);
+
+  useTVNavigation({
+    onNavigate: (direction) => {
+      if (direction === 'left' || direction === 'up') setFocusedIndex(0);
+      else if (direction === 'right' || direction === 'down') setFocusedIndex(1);
+    },
+    onEnter: () => {
+      if (focusedIndex === 0) onRetry();
+      else onOtherLogin();
+    },
+    onBack: onOtherLogin,
+  });
+
+  // Rede da TV voltou (evento do sistema) → tenta sozinho
+  useEffect(() => {
+    window.addEventListener('online', onRetry);
+    return () => window.removeEventListener('online', onRetry);
+  }, [onRetry]);
+
+  return (
+    <div className="app-loading">
+      <div className="app-loading-logo">📡</div>
+      <p className="app-loading-text">Sem conexão com o servidor</p>
+      <p className="app-offline-hint">
+        Suas credenciais foram mantidas. Verifique a rede da TV e pressione OK
+        para tentar de novo — ou use outro login se o problema for do provedor.
+      </p>
+      <div className="app-offline-actions">
+        <button
+          className={`app-offline-retry ${focusedIndex === 0 ? 'tv-focused' : ''}`}
+          onClick={onRetry}
+        >
+          🔄 Tentar novamente
+        </button>
+        <button
+          className={`app-offline-retry app-offline-secondary ${focusedIndex === 1 ? 'tv-focused' : ''}`}
+          onClick={onOtherLogin}
+        >
+          👤 Usar outro login
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function App() {
@@ -80,8 +131,16 @@ function App() {
       }
     } catch (err) {
       console.error('Auto-login failed:', err);
-      storage.clearCredentials();
-      setAuthState('welcome');
+      // Credencial INVÁLIDA → limpa e volta ao Welcome. Falha de REDE (Wi-Fi
+      // da TV ainda subindo no boot é comum) → mantém a credencial e oferece
+      // retry — apagar aqui obrigava a redigitar tudo no D-pad.
+      const message = err instanceof Error ? err.message : '';
+      if (message.includes('incorretos')) {
+        storage.clearCredentials();
+        setAuthState('welcome');
+      } else {
+        setAuthState('offline');
+      }
     }
   }, []);
 
@@ -128,6 +187,19 @@ function App() {
         <div className="app-loading-spinner" />
         <p className="app-loading-text">NeoStream</p>
       </div>
+    );
+  }
+
+  // Sem rede no boot: credencial preservada, retry por OK
+  if (authState === 'offline') {
+    return (
+      <OfflineRetry
+        onRetry={() => {
+          setAuthState('loading');
+          void checkAuth();
+        }}
+        onOtherLogin={() => setAuthState('welcome')}
+      />
     );
   }
 

@@ -10,11 +10,13 @@ export interface QualityLevel {
     label: string;
 }
 
+export type StreamErrorCause = 'notfound' | 'network' | 'media' | 'fatal';
+
 interface UseHlsOptions {
     src: string;
     videoRef: RefObject<HTMLVideoElement | null>;
-    onError?: () => void;
-    onStreamError?: () => void; // For live TV fallback
+    onError?: (cause?: StreamErrorCause) => void;
+    onStreamError?: (cause?: StreamErrorCause) => void; // For live TV fallback
     autoPlay?: boolean;
     /** Live usa buffers menores — TVs Tizen antigas têm ~1GB de RAM */
     isLive?: boolean;
@@ -23,6 +25,8 @@ interface UseHlsOptions {
 interface UseHlsReturn {
     hlsRef: MutableRefObject<Hls | null>;
     cleanup: () => void;
+    /** Re-inicializa o pipeline do zero (mesmo src) — usado pelo retry */
+    reload: () => void;
     qualityLevels: QualityLevel[];
     currentQualityIndex: number;
     setQuality: (index: number) => void;
@@ -43,6 +47,9 @@ export function useHls({
     const onErrorRef = useRef(onError);
     const onStreamErrorRef = useRef(onStreamError);
     const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Re-init sob demanda (retry/watchdog): bump re-roda o effect principal
+    const [reloadTick, setReloadTick] = useState(0);
 
     // Quality state
     const [qualityLevels, setQualityLevels] = useState<QualityLevel[]>([]);
@@ -71,6 +78,11 @@ export function useHls({
         setCurrentQualityIndex(-1);
         setIsAutoQuality(true);
     }, [destroyHlsInstance]);
+
+    const reload = useCallback(() => {
+        srcRef.current = ''; // fura o guard de mesmo-src
+        setReloadTick(t => t + 1);
+    }, []);
 
     // Set quality level
     const setQuality = useCallback((index: number) => {
@@ -133,6 +145,9 @@ export function useHls({
                     backBufferLength: isLive ? 30 : 90,
                     maxBufferLength: isLive ? 30 : 60,
                     maxMaxBufferLength: isLive ? 60 : 600,
+                    // Teto em BYTES além dos segundos: stream 4K de bitrate
+                    // alto estourava a RAM de TVs de 1GB só com o buffer
+                    maxBufferSize: isLive ? 30 * 1000 * 1000 : 60 * 1000 * 1000,
                     startLevel: -1, // Auto quality selection
                 });
 
@@ -163,18 +178,43 @@ export function useHls({
                     setCurrentQualityIndex(data.level);
                 });
 
+                // Falhas fatais de rede consecutivas: sinal de recuperação
+                // (fragmento carregado) zera o contador
+                let networkFatalCount = 0;
+                hls.on(Hls.Events.FRAG_LOADED, () => {
+                    networkFatalCount = 0;
+                });
+
                 hls.on(Hls.Events.ERROR, (_event, data) => {
                     if (data.fatal) {
+                        // Causa granular pro player mostrar mensagem acionável
+                        const status = (data.response as { code?: number } | undefined)?.code;
+                        const cause: StreamErrorCause =
+                            data.type === Hls.ErrorTypes.NETWORK_ERROR
+                                ? (status === 404 || status === 403 ? 'notfound' : 'network')
+                                : data.type === Hls.ErrorTypes.MEDIA_ERROR ? 'media' : 'fatal';
                         switch (data.type) {
                             case Hls.ErrorTypes.NETWORK_ERROR:
                                 console.error('[HLS] Network error, trying to recover...');
+                                networkFatalCount++;
+                                // 404/403 não se recupera com retry; e com MSE o
+                                // video.error NUNCA seta em erro de rede — o
+                                // callback tem que ser entregue diretamente
+                                if (cause === 'notfound' || networkFatalCount >= 2) {
+                                    if (retryTimeoutRef.current) {
+                                        clearTimeout(retryTimeoutRef.current);
+                                        retryTimeoutRef.current = null;
+                                    }
+                                    onStreamErrorRef.current?.(cause);
+                                    break;
+                                }
                                 hls.startLoad();
-                                // If network error persists, call stream error callback
+                                // Persistiu sem novo fragmento? Entrega o erro
                                 if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
                                 retryTimeoutRef.current = setTimeout(() => {
                                     retryTimeoutRef.current = null;
-                                    if (hlsRef.current === hls && hls.media?.error) {
-                                        onStreamErrorRef.current?.();
+                                    if (hlsRef.current === hls && networkFatalCount > 0) {
+                                        onStreamErrorRef.current?.(cause);
                                     }
                                 }, 5000);
                                 break;
@@ -185,8 +225,8 @@ export function useHls({
                             default:
                                 console.error('[HLS] Fatal error:', data);
                                 cleanup();
-                                onErrorRef.current?.();
-                                onStreamErrorRef.current?.();
+                                onErrorRef.current?.(cause);
+                                onStreamErrorRef.current?.(cause);
                                 break;
                         }
                     }
@@ -216,11 +256,13 @@ export function useHls({
             cleanup();
             srcRef.current = '';
         };
-    }, [src, autoPlay, isLive, cleanup, destroyHlsInstance, videoRef]);
+     
+    }, [src, autoPlay, isLive, cleanup, destroyHlsInstance, videoRef, reloadTick]);
 
     return {
         hlsRef,
         cleanup,
+        reload,
         qualityLevels,
         currentQualityIndex,
         setQuality,

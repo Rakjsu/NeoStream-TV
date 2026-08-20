@@ -5,6 +5,9 @@
     <name>NeoStreamTV</name>
     <access origin="*" subdomains="true"/>
     <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <!-- Sem este privilégio o tvinputdevice.registerKey é NO-OP na TV real:
+         CH+/-, dígitos e color keys nunca chegam ao app -->
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
     <tizen:profile name="tv-samsung"/>
     <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
 </widget>
