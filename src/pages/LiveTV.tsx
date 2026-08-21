@@ -17,6 +17,7 @@ import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
 import { ChannelAgendaOverlay } from '../components/ChannelAgendaOverlay';
+import { EpgGrid } from '../components/EpgGrid';
 import { FavoritesNowPanel, SportsPanel } from '../components/LivePanels';
 import { reminderService } from '../services/reminderService';
 import { favoriteOrder, isRadioChannel, isSportsCategory, type SportsEvent } from '../services/liveDiscovery';
@@ -74,6 +75,8 @@ export function LiveTV() {
         index: number;
     } | null>(null);
     const [showAgenda, setShowAgenda] = useState(false);
+    // Guia multi-canal (item 1): canais nas linhas, tempo nas colunas
+    const [showGuide, setShowGuide] = useState(false);
 
     // Categorias inteiras ocultas (item 16)
     const [hiddenCatIds, setHiddenCatIds] = useState<Set<string>>(() => hiddenCategories.get());
@@ -345,9 +348,10 @@ export function LiveTV() {
 
     // Botões da toolbar na ordem do JSX — vira a extensão da zona do header
     // (sem isso, ⭐ Agora e ⚽ Jogos só abriam por mouse)
-    const toolbarItems: Array<'variants' | 'onlyepg' | 'random' | 'hidden' | 'favpanel' | 'sports'> = [
+    const toolbarItems: Array<'variants' | 'onlyepg' | 'guide' | 'random' | 'hidden' | 'favpanel' | 'sports'> = [
         'variants',
         'onlyepg',
+        'guide',
         'random',
         // O botão 🙈 também precisa existir ENQUANTO o modo está ligado: era
         // ele que desligava o modo, e ao desocultar o último canal ele sumia,
@@ -685,6 +689,7 @@ export function LiveTV() {
                 const item = toolbarItems[focusedCategoryIndex - HEADER_BASE];
                 if (item === 'variants') toggleGroupVariants();
                 else if (item === 'onlyepg') toggleOnlyEpg();
+                else if (item === 'guide') setShowGuide(true);
                 else if (item === 'random') randomZap();
                 else if (item === 'hidden') setShowOnlyHidden(prev => !prev);
                 else if (item === 'favpanel') setShowFavoritesPanel(true);
@@ -746,7 +751,7 @@ export function LiveTV() {
         onEnter: handleEnter,
         onBack: handleBack,
         onAction: handleAction,
-        enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel,
+        enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !showGuide && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel,
     });
 
     const handleImageError = (streamId: number) => {
@@ -851,6 +856,13 @@ export function LiveTV() {
                     title="Só canais com EPG (🔴)"
                 >
                     📅
+                </button>
+                <button
+                    className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('guide') ? 'tv-focused' : ''}`}
+                    onClick={() => setShowGuide(true)}
+                    title="Guia de programação (grade multi-canal)"
+                >
+                    📊
                 </button>
                 <button
                     className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('random') ? 'tv-focused' : ''}`}
@@ -1110,6 +1122,25 @@ export function LiveTV() {
                     />
                 );
             })()}
+
+            {/* Guia de programação multi-canal (item 1) */}
+            {showGuide && (
+                <EpgGrid
+                    channels={filteredStreams}
+                    initialChannelId={selectedChannel?.stream_id ?? filteredStreams[safeChannelIndex]?.stream_id}
+                    onClose={() => setShowGuide(false)}
+                    onPlay={(canal) => {
+                        setShowGuide(false);
+                        playChannel(canal);
+                    }}
+                    onPlayArchive={(canal, programas, index) => {
+                        setShowGuide(false);
+                        playArchive(canal, programas, index);
+                    }}
+                    onToggleReminder={(canal, programa) => toggleReminder(canal, programa)}
+                    isReminded={(canal, programa) => reminderService.has(canal.stream_id, programa.start)}
+                />
+            )}
 
             {/* Agora nos favoritos (item 7) + reordenar (item 17) */}
             {showFavoritesPanel && (
