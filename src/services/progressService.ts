@@ -8,6 +8,22 @@ const SERIES_KEY = 'neostream_series_progress';
 const MAX_ENTRIES = 50;
 const COMPLETED_RATIO = 0.95;
 const MIN_SECONDS = 30; // abaixo disso não vale salvar
+// "Chegou aos créditos" conta como assistido (item 50). Exigir 95% cravado
+// prendia filme longo em "Continuar Assistindo" pra sempre: num filme de 2h
+// os créditos ocupam quase 10 min e ninguém assiste até o último frame.
+const CREDITS_TAIL_RATIO = 0.10;
+const CREDITS_TAIL_MAX = 900;
+
+function reachedEnd(time: number, duration: number): boolean {
+    if (!Number.isFinite(duration) || duration <= 0) return false;
+    if (time / duration >= COMPLETED_RATIO) return true;
+    // Sem piso em segundos: um piso de 60s num episódio infantil de 5 min
+    // marcaria como assistido faltando 1/3 do vídeo. O corte proporcional
+    // (92%) vale pra qualquer duração; o teto só evita esperar 10 min de
+    // créditos num filme muito longo.
+    const tail = Math.min(CREDITS_TAIL_MAX, duration * CREDITS_TAIL_RATIO);
+    return duration - time <= tail;
+}
 
 export interface MovieProgress {
     id: string;
@@ -63,7 +79,7 @@ export const progressService = {
     saveMovie(item: Omit<MovieProgress, 'completed' | 'updatedAt'>): void {
         if (!item.duration || item.time < MIN_SECONDS) return;
         const map = readMap<MovieProgress>(MOVIE_KEY);
-        const completed = item.time / item.duration >= COMPLETED_RATIO;
+        const completed = reachedEnd(item.time, item.duration);
         map[item.id] = { ...item, completed, updatedAt: Date.now() };
         writeMap(MOVIE_KEY, map);
     },
@@ -88,7 +104,7 @@ export const progressService = {
     saveSeries(item: Omit<SeriesProgress, 'completed' | 'seriesCompleted' | 'updatedAt'> & { isLastEpisode?: boolean }): void {
         if (!item.duration || item.time < MIN_SECONDS) return;
         const map = readMap<SeriesProgress>(SERIES_KEY);
-        const completed = item.time / item.duration >= COMPLETED_RATIO;
+        const completed = reachedEnd(item.time, item.duration);
         const { isLastEpisode, ...rest } = item;
         map[item.seriesId] = {
             ...rest,

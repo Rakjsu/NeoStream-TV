@@ -897,3 +897,136 @@
     color: rgba(255, 255, 255, 0.4);
     font-size: 15px;
 }
+
+/* ===== R5: legendas pra 3 metros (item 41) ===== */
+/* O padrão do navegador é dimensionado pra monitor a 60 cm — na TV vira
+   formiga. Fundo sólido porque legenda branca sobre cena clara some. */
+.video-element::cue {
+    background-color: rgba(0, 0, 0, 0.75);
+    color: #fff;
+    line-height: 1.35;
+}
+
+/* Referência: o padrão do Chromium é ~5% da ALTURA do vídeo (~54px em 1080p,
+   ou 2.8vw num 16:9 cheio). Os valores abaixo partem daí e sobem — a versão
+   anterior desta regra ficava ABAIXO do padrão e encolhia a legenda. */
+.video-element.sub-normal::cue {
+    font-size: 2.8vw;
+}
+
+.video-element.sub-grande::cue {
+    font-size: 3.6vw;
+}
+
+.video-element.sub-enorme::cue {
+    font-size: 4.6vw;
+}
+
+/* ===== R5: OSD do seek acelerado (item 37) ===== */
+.seek-osd {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.82);
+    border: 2px solid var(--ns-accent);
+    border-radius: 14px;
+    padding: 18px 34px;
+    text-align: center;
+    z-index: 60;
+}
+
+.seek-osd-target {
+    display: block;
+    color: #fff;
+    font-size: 44px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.seek-osd-step {
+    display: block;
+    margin-top: 6px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 16px;
+}
+
+.progress-container.seek-focused .progress-bar {
+    box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.9);
+    transform: scaleY(1.6);
+}
+
+.seek-hint {
+    position: absolute;
+    top: -26px;
+    left: 0;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 14px;
+}
+
+/* ===== R5: estatísticas do stream (item 48) ===== */
+.stats-overlay {
+    position: absolute;
+    top: 90px;
+    right: 32px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: #9ae6b4;
+    font-family: monospace;
+    font-size: 15px;
+    line-height: 1.7;
+    z-index: 55;
+}
+
+/* ===== R5: menu de opções ===== */
+.quality-menu-hint {
+    padding: 10px 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
+    text-align: center;
+}
+
+/* ===== R5: ainda está assistindo? (item 51) ===== */
+.still-watching {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.88);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 90;
+}
+
+.still-watching-title {
+    color: #fff;
+    font-size: 42px;
+    font-weight: 800;
+}
+
+.still-watching-sub {
+    margin-top: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 19px;
+}
+
+.still-watching-btn {
+    margin-top: 32px;
+    background: var(--ns-accent);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 16px 40px;
+    font-size: 22px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.5);
+}
+
+.still-watching-hint {
+    margin-top: 20px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 15px;
+}

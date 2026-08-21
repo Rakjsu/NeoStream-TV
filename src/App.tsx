@@ -36,6 +36,9 @@ const TIZEN_KEYS = [
   'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue',
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
   'MediaPlayPause', 'MediaPause', 'MediaPlay', 'MediaStop',
+  // O player trata estas no seek/troca de episódio (item 38) — sem registrar
+  // aqui, o pressionamento nunca chega ao web app na TV real
+  'MediaRewind', 'MediaFastForward', 'MediaTrackPrevious', 'MediaTrackNext',
 ];
 
 function registerTizenKeys() {

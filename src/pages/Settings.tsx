@@ -5,14 +5,15 @@ import { usageStats, type UsageSummary } from '../services/usageStats';
 import { playlistService, type PlaylistEntry } from '../services/playlistService';
 import { epgOffset } from '../services/epgService';
 import { bootLastChannel } from '../services/liveExtras';
+import { qualityCap, QUALITY_CAPS, type QualityCap } from '../services/playerPrefs';
 import { WrappedOverlay } from '../components/WrappedOverlay';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
 import './Settings.css';
 
-type FocusZone = 'bg' | 'accent' | 'lang' | 'playlists' | 'epgoffset' | 'bootlast' | 'wrapped' | 'input' | 'save' | 'clear';
+type FocusZone = 'bg' | 'accent' | 'lang' | 'playlists' | 'epgoffset' | 'bootlast' | 'qualitycap' | 'wrapped' | 'input' | 'save' | 'clear';
 
-const ZONES: FocusZone[] = ['bg', 'accent', 'lang', 'playlists', 'epgoffset', 'bootlast', 'wrapped', 'input', 'save', 'clear'];
+const ZONES: FocusZone[] = ['bg', 'accent', 'lang', 'playlists', 'epgoffset', 'bootlast', 'qualitycap', 'wrapped', 'input', 'save', 'clear'];
 
 type LanguageId = 'pt' | 'en' | 'es';
 const LANGUAGES: Array<{ id: LanguageId; label: string }> = [
@@ -54,6 +55,8 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     // TV ao vivo: fuso do EPG (item 15) + boot no último canal (item 14)
     const [epgOffsetHours, setEpgOffsetHours] = useState(() => epgOffset.get());
     const [bootLast, setBootLast] = useState(() => bootLastChannel.get());
+    // Teto global de qualidade (item 47): rede fraca não aguenta 1080p
+    const [cap, setCap] = useState<QualityCap>(() => qualityCap.get());
 
     // Estatísticas (lidas 1x ao abrir a página) + Wrapped
     const [usage] = useState<UsageSummary>(() => usageStats.summary());
@@ -165,6 +168,16 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 const next = direction === 'right';
                 bootLastChannel.set(next);
                 setBootLast(next);
+            } else if (focusZone === 'qualitycap') {
+                setCap(prev => {
+                    const idx = Math.max(0, QUALITY_CAPS.indexOf(prev));
+                    const nextIdx = direction === 'left'
+                        ? Math.max(0, idx - 1)
+                        : Math.min(QUALITY_CAPS.length - 1, idx + 1);
+                    const next = QUALITY_CAPS[nextIdx];
+                    qualityCap.set(next);
+                    return next;
+                });
             } else if (focusZone === 'save' && direction === 'right') {
                 setFocusZone('clear');
             } else if (focusZone === 'clear' && direction === 'left') {
@@ -193,6 +206,11 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     return !prev;
                 });
             }
+            else if (focusZone === 'qualitycap') {
+                qualityCap.set(0);
+                setCap(0);
+                setMessage('Teto de qualidade removido. Vale no próximo play.');
+            }
             else if (focusZone === 'wrapped') setShowWrapped(true);
             else if (focusZone === 'input') {
                 setEditing(true);
@@ -219,6 +237,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             playlists: 'sec-playlists',
             epgoffset: 'sec-tv',
             bootlast: 'sec-tv',
+            qualitycap: 'sec-player',
             wrapped: 'sec-uso',
             input: 'sec-tmdb',
             save: 'sec-tmdb',
@@ -341,6 +360,20 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                             {bootLast ? 'Ligado' : 'Desligado'}
                         </span>
                     </div>
+                </section>
+
+                {/* Reprodução */}
+                <section id="sec-player" className="settings-section">
+                    <h2 className="settings-section-title">▶️ Reprodução</h2>
+                    <div className="settings-row">
+                        <span className="settings-label">Qualidade máxima (←→ muda, OK remove o limite)</span>
+                        <span className={`settings-value ${focusZone === 'qualitycap' ? 'focused' : ''}`}>
+                            {qualityCap.label(cap)}
+                        </span>
+                    </div>
+                    <p className="settings-muted">
+                        Vale pra rede fraca: o player nunca sobe além disso. Aplica no próximo play.
+                    </p>
                 </section>
 
                 {/* Seu uso */}

@@ -428,7 +428,12 @@ export function LiveTV() {
     // Tocar programas do arquivo como FILA (agenda ou reiniciar): no fim de
     // cada um, avança pro próximo — e ao alcançar o programa no ar, volta ao
     // vivo (item 10)
+    // Programas de catch-up emendados sozinhos (item 51) — a contagem tem que
+    // sobreviver ao remount do player, que troca de key a cada programa
+    const archiveAutoAdvanceRef = useRef(0);
+
     const playArchive = (channel: LiveStream, programs: EpgProgram[], index: number) => {
+        archiveAutoAdvanceRef.current = 0;
         setShowAgenda(false);
         setPlayingChannel(null);
         setArchivePlayback({ channel, programs, index });
@@ -1031,6 +1036,7 @@ export function LiveTV() {
                 return (
                     <VideoPlayer
                         key={`${archivePlayback.channel.stream_id}-${program.start}`}
+                        autoAdvanceCountRef={archiveAutoAdvanceRef}
                         src={api.getTimeshiftUrl(archivePlayback.channel.stream_id, realStart, durationMin)}
                         title={`⏮ ${program.title} — ${archivePlayback.channel.name}`}
                         poster={archivePlayback.channel.stream_icon || undefined}

@@ -2,7 +2,7 @@
 // e progresso salvo (continuar assistindo). Usado por Series, MyList,
 // Favorites e Home.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { VideoPlayer } from './VideoPlayer';
 import { progressService } from '../services/progressService';
 import { useWatchSession } from '../hooks/useWatchSession';
@@ -22,6 +22,9 @@ interface SeriesQueuePlayerProps {
 
 export function SeriesQueuePlayer({ queue: initialQueue, onClose }: SeriesQueuePlayerProps) {
     const [queue, setQueue] = useState(initialQueue);
+    // Vive aqui porque o VideoPlayer é remontado a cada episódio (key={ep.id});
+    // dentro dele o contador voltaria a zero e o item 51 nunca dispararia
+    const autoAdvanceCountRef = useRef(0);
     const ep = currentEpisode(queue);
     useWatchSession('series', queue.seriesName);
     const resumeTime = progressService.getSeriesResumeTime(queue.seriesId, ep.season, ep.episode);
@@ -29,6 +32,7 @@ export function SeriesQueuePlayer({ queue: initialQueue, onClose }: SeriesQueueP
     return (
         <VideoPlayer
             key={ep.id}
+            autoAdvanceCountRef={autoAdvanceCountRef}
             src={playbackUrl(queue)}
             title={playbackTitle(queue)}
             poster={queue.poster}

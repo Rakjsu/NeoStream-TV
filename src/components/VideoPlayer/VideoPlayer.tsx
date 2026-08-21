@@ -5,6 +5,15 @@ import { useHls, type StreamErrorCause } from '../../hooks/useHls';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
 import { epgService, type EpgProgram } from '../../services/epgService';
 import { aspectPrefs, ASPECT_MODES, ASPECT_LABELS, type AspectMode } from '../../services/liveExtras';
+import {
+    qualityByContent,
+    qualityCap,
+    subtitleSize as subtitleSizePref,
+    statsOverlay,
+    SUBTITLE_SIZES,
+    SUBTITLE_SIZE_LABELS,
+    type SubtitleSize,
+} from '../../services/playerPrefs';
 import './VideoPlayer.css';
 
 export interface PlayerChannel {
@@ -45,13 +54,38 @@ export interface VideoPlayerProps {
     onRequestPauseLive?: (pausedAtMs: number) => string | null;
     /** Canal de rádio (item 13): UI de áudio, sem vídeo */
     isRadio?: boolean;
+    /**
+     * Contador de episódios emendados sozinhos (item 51). Precisa vir do PAI:
+     * quem usa fila de episódios remonta o player a cada avanço (key por
+     * episódio), e um contador interno voltaria a zero toda vez.
+     */
+    autoAdvanceCountRef?: React.MutableRefObject<number>;
 }
 
-// Control buttons: close, prev, play, next, quality, channels, sleep, aspect
-type ControlButton = 'close' | 'prev' | 'play' | 'golive' | 'next' | 'quality' | 'channels' | 'sleep' | 'aspect';
-type PlayerFocus = 'controls' | 'quality-menu' | 'zap-list';
+// Control buttons: close, prev, play, next, options, channels, sleep, aspect
+type ControlButton = 'close' | 'prev' | 'play' | 'golive' | 'next' | 'options' | 'channels' | 'sleep' | 'aspect';
+// 'seekbar' = barra de progresso focada (seek por D-pad, item 37)
+type PlayerFocus = 'controls' | 'menu' | 'zap-list' | 'seekbar';
+// Uma tela por vez; 'root' lista as seções (item 39/40/41/48)
+type MenuId = 'root' | 'quality' | 'audio' | 'subs' | 'subsize';
+
+interface MenuEntry {
+    label: string;
+    hint?: string;
+    selected?: boolean;
+    run: () => void;
+}
 
 const SLEEP_CHOICES = [null, 30, 60, 90] as const;
+// Seek por D-pad (item 37): passo cresce enquanto a tecla é martelada
+const SEEK_REPEAT_MS = 500;   // acima disso o contador de aceleração zera
+const SEEK_COMMIT_MS = 450;   // pulos são acumulados e aplicados de uma vez
+const SEEK_STEPS = [10, 30, 60];
+// Retomar recuando um pouco reancora o contexto da cena (item 49)
+const RESUME_REWIND_SECONDS = 5;
+// Episódios emendados sem NENHUM toque no controle antes de perguntar (item 51)
+const AUTO_EPISODE_LIMIT = 3;
+const STILL_WATCHING_TIMEOUT_MS = 90000;
 const DIGIT_TIMEOUT_MS = 1400;
 const ZAP_WINDOW = 9; // linhas visíveis no overlay de zapping
 const MAX_RECONNECT_ATTEMPTS = 4;
@@ -132,7 +166,8 @@ export function VideoPlayer({
     contentKey,
     onStreamFailed,
     onRequestPauseLive,
-    isRadio = false
+    isRadio = false,
+    autoAdvanceCountRef
 }: VideoPlayerProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -156,10 +191,31 @@ export function VideoPlayer({
     const [hoverPosition, setHoverPosition] = useState(0);
 
     // Focus management
-    const [showQualityMenu, setShowQualityMenu] = useState(false);
-    const [qualityMenuIndex, setQualityMenuIndex] = useState(0);
+    const [menu, setMenu] = useState<MenuId | null>(null);
+    const [menuIndex, setMenuIndex] = useState(0);
     const [playerFocus, setPlayerFocus] = useState<PlayerFocus>('controls');
     const [focusedControl, setFocusedControl] = useState<ControlButton>('play');
+
+    // Preferências persistidas do player (itens 41 e 48)
+    const [subSize, setSubSize] = useState<SubtitleSize>(() => subtitleSizePref.get());
+    const [showStats, setShowStats] = useState(() => statsOverlay.get());
+    const [stats, setStats] = useState<{
+        bitrate: number; width: number; height: number; dropped: number; buffer: number;
+    } | null>(null);
+
+    // Seek acelerado por D-pad (item 37): alvo em ref (o commit roda num
+    // timeout e precisa do valor mais recente), display em estado
+    const seekTargetRef = useRef<number | null>(null);
+    const seekCommitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const seekAccelRef = useRef({ last: 0, count: 0 });
+    const [seekDisplay, setSeekDisplay] = useState<{ target: number; step: number } | null>(null);
+
+    // "Ainda está assistindo?" (item 51): conta episódios emendados sozinhos.
+    // Qualquer interação com o controle zera a contagem — quem está ali
+    // assistindo de verdade não precisa levar pergunta na cara.
+    const localAutoAdvanceRef = useRef(0);
+    const autoAdvanceRef = autoAdvanceCountRef ?? localAutoAdvanceRef;
+    const [stillWatching, setStillWatching] = useState(false);
 
     // Zapping (live)
     const [digitBuffer, setDigitBuffer] = useState('');
@@ -268,7 +324,13 @@ export function VideoPlayer({
         currentQualityIndex,
         setQuality,
         isAutoQuality,
-        setAutoQuality
+        setAutoQuality,
+        audioTracks,
+        currentAudioTrack,
+        setAudioTrack,
+        subtitleTracks,
+        currentSubtitleTrack,
+        setSubtitleTrack
     } = useHls({
         src: effectiveSrc,
         videoRef,
@@ -279,6 +341,81 @@ export function VideoPlayer({
         onError: (cause) => setError(CAUSE_MESSAGES[cause || 'fatal']),
         onStreamError: (cause) => scheduleReconnect(cause || 'fatal'),
     });
+
+    // Qualidade manual lembrada por conteúdo (item 46). Guardada por ALTURA:
+    // o índice do nível muda entre variantes do mesmo canal.
+    const qualityAppliedRef = useRef<string>('');
+    useEffect(() => {
+        // reload() (retry/watchdog/standby) zera os níveis sem trocar o src:
+        // liberar a trava aqui é o que faz a preferência voltar depois dele
+        if (qualityLevels.length === 0) {
+            qualityAppliedRef.current = '';
+            return;
+        }
+        if (qualityAppliedRef.current === effectiveSrc) return;
+        qualityAppliedRef.current = effectiveSrc;
+        const savedHeight = qualityByContent.get(contentKey);
+        if (savedHeight == null) return;
+        // O teto global ganha da preferência por canal: quem limitou a
+        // qualidade fez isso por causa da rede, não por causa deste canal
+        const cap = qualityCap.get();
+        if (cap > 0 && savedHeight > cap) return;
+        const match = qualityLevels.find(level => level.height === savedHeight);
+        if (match) setQuality(match.index);
+    }, [qualityLevels, effectiveSrc, contentKey, setQuality]);
+
+    // Estatísticas do stream (item 48) — só roda com o overlay ligado
+    useEffect(() => {
+        if (!showStats) return;
+        const interval = setInterval(() => {
+            const video = videoRef.current;
+            if (!video) return;
+            const hls = hlsRef.current;
+            const level = hls && hls.currentLevel >= 0 ? hls.levels[hls.currentLevel] : null;
+            const quality = typeof video.getVideoPlaybackQuality === 'function'
+                ? video.getVideoPlaybackQuality()
+                : null;
+            const bufferEnd = video.buffered.length > 0
+                ? video.buffered.end(video.buffered.length - 1)
+                : video.currentTime;
+            setStats({
+                bitrate: level?.bitrate || 0,
+                width: level?.width || video.videoWidth || 0,
+                height: level?.height || video.videoHeight || 0,
+                dropped: quality?.droppedVideoFrames ?? 0,
+                buffer: Math.max(0, bufferEnd - video.currentTime),
+            });
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [showStats, hlsRef]);
+
+    // Volta do standby / troca de fonte da TV (item 52): o pipeline do MSE
+    // morre em silêncio enquanto a página fica escondida — o vídeo volta
+    // congelado sem disparar nenhum erro. Re-inicializa se a ausência foi longa.
+    useEffect(() => {
+        let hiddenAt = 0;
+        let hiddenWhilePlaying = false;
+        const handleVisibility = () => {
+            if (document.hidden) {
+                hiddenAt = Date.now();
+                hiddenWhilePlaying = !!videoRef.current && !videoRef.current.paused;
+                return;
+            }
+            const away = hiddenAt ? Date.now() - hiddenAt : 0;
+            hiddenAt = 0;
+            if (away < 20000) return;
+            // Pausado antes do standby → o usuário quis parar; re-inicializar
+            // aqui faria o vídeo voltar a tocar sozinho
+            if (!hiddenWhilePlaying) return;
+            const video = videoRef.current;
+            if (!isLiveContent && video && video.currentTime > 5) {
+                reloadResumeRef.current = video.currentTime;
+            }
+            reload();
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => document.removeEventListener('visibilitychange', handleVisibility);
+    }, [reload, isLiveContent]);
 
     // onStreamFailed via ref: o watchdog roda num effect de deps vazias e não
     // pode capturar a closure do primeiro render (variantes do LiveTV mudam)
@@ -418,12 +555,14 @@ export function VideoPlayer({
         buttons.push('play');
         if (isLiveContent && isBehindLive) buttons.push('golive');
         if (canGoNext && onNextEpisode) buttons.push('next');
-        if (qualityLevels.length > 0) buttons.push('quality');
+        // ⚙ sempre aparece: mesmo sem níveis de qualidade ele dá acesso a
+        // áudio, legenda e estatísticas
+        buttons.push('options');
         if (canZap) buttons.push('channels');
         buttons.push('sleep');
         buttons.push('aspect');
         return buttons;
-    }, [canGoPrevious, canGoNext, onPreviousEpisode, onNextEpisode, qualityLevels.length, canZap, isLiveContent, isBehindLive]);
+    }, [canGoPrevious, canGoNext, onPreviousEpisode, onNextEpisode, canZap, isLiveContent, isBehindLive]);
 
     // ----- Zapping helpers (live) -----
     const currentChannelIndex = useMemo(() => {
@@ -560,8 +699,10 @@ export function VideoPlayer({
 
         const applyResumeTime = () => {
             if (video && resumeTime && !resumeAppliedRef.current) {
-                if (Math.abs(video.currentTime - resumeTime) > 5) {
-                    video.currentTime = resumeTime;
+                // Recuar alguns segundos reancora a cena (item 49)
+                const target = Math.max(0, resumeTime - RESUME_REWIND_SECONDS);
+                if (Math.abs(video.currentTime - target) > 5) {
+                    video.currentTime = target;
                 }
                 resumeAppliedRef.current = true;
             }
@@ -594,16 +735,44 @@ export function VideoPlayer({
         return () => video.removeEventListener('timeupdate', handleTimeUpdate);
     }, [onTimeUpdate]);
 
+    // Fim do vídeo = assistido (item 50). Sem isso, o último timeupdate podia
+    // ficar 5s antes do fim e o título nunca saía de "Continuar assistindo".
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video || !onTimeUpdate) return;
+        const handleEnded = () => {
+            const total = video.duration || 0;
+            if (total > 0) onTimeUpdate(total, total);
+        };
+        video.addEventListener('ended', handleEnded);
+        return () => video.removeEventListener('ended', handleEnded);
+    }, [onTimeUpdate]);
+
     // Auto go to next episode when video ends
     useEffect(() => {
         if (!videoRef.current || !onNextEpisode || !canGoNext) return;
 
         const video = videoRef.current;
-        const handleEnded = () => onNextEpisode();
+        const handleEnded = () => {
+            autoAdvanceRef.current += 1;
+            if (autoAdvanceRef.current >= AUTO_EPISODE_LIMIT) {
+                // Não emenda: pergunta e para de consumir banda até responder
+                setStillWatching(true);
+                return;
+            }
+            onNextEpisode();
+        };
 
         video.addEventListener('ended', handleEnded);
         return () => video.removeEventListener('ended', handleEnded);
-    }, [onNextEpisode, canGoNext]);
+    }, [onNextEpisode, canGoNext, autoAdvanceRef]);
+
+    // Sem resposta = a TV ficou ligada sozinha: fecha o player
+    useEffect(() => {
+        if (!stillWatching) return;
+        const timeout = setTimeout(() => handleCloseRef.current?.(), STILL_WATCHING_TIMEOUT_MS);
+        return () => clearTimeout(timeout);
+    }, [stillWatching]);
 
     // Cleanup on unmount
     useEffect(() => {
@@ -618,18 +787,25 @@ export function VideoPlayer({
         };
     }, [cleanup]);
 
+    // handleClose é declarado depois; o timeout do "ainda está assistindo"
+    // precisa da versão mais recente sem virar dependência circular
+    const handleCloseRef = useRef<(() => void) | null>(null);
+
     // Auto-hide controls
     const resetHideControlsTimer = useCallback(() => {
+        // Qualquer sinal de vida zera a contagem de episódios emendados
+        autoAdvanceRef.current = 0;
         setShowControls(true);
         if (hideControlsTimeoutRef.current) {
             clearTimeout(hideControlsTimeoutRef.current);
         }
         hideControlsTimeoutRef.current = setTimeout(() => {
-            if (playing && !showQualityMenu) {
+            // Esconder a barra com ela FOCADA deixaria o seek às cegas
+            if (playing && !menu && playerFocusRef.current !== 'seekbar') {
                 setShowControls(false);
             }
         }, 3000);
-    }, [playing, showQualityMenu]);
+    }, [playing, menu, autoAdvanceRef]);
 
     // Video event handlers
     useEffect(() => {
@@ -639,7 +815,10 @@ export function VideoPlayer({
         const handlePlay = () => setPlaying(true);
         const handlePause = () => setPlaying(false);
         const handleTimeUpdateLocal = () => setCurrentTime(video.currentTime);
-        const handleDurationChange = () => setDuration(video.duration || 0);
+        // Stream sem duração conhecida chega como Infinity: deixar isso passar
+        // habilitava a barra de seek com ←→ que não faziam nada
+        const handleDurationChange = () =>
+            setDuration(Number.isFinite(video.duration) ? video.duration : 0);
         const handleProgress = () => {
             if (video.buffered.length > 0) {
                 setBuffered(video.buffered.end(video.buffered.length - 1));
@@ -699,6 +878,17 @@ export function VideoPlayer({
         onClose?.();
     }, [cleanup, onClose, onTimeUpdate]);
 
+    useEffect(() => {
+        handleCloseRef.current = handleClose;
+    }, [handleClose]);
+
+    /** Confirma que ainda há alguém assistindo e emenda o próximo episódio. */
+    const confirmStillWatching = useCallback(() => {
+        autoAdvanceRef.current = 0;
+        setStillWatching(false);
+        onNextEpisode?.();
+    }, [onNextEpisode, autoAdvanceRef]);
+
     // Controls
     const togglePlay = useCallback(() => {
         const video = videoRef.current;
@@ -727,26 +917,234 @@ export function VideoPlayer({
         }
     }, []);
 
-    // Quality menu handlers
-    const openQualityMenu = useCallback(() => {
-        setShowQualityMenu(true);
-        setPlayerFocus('quality-menu');
-        setQualityMenuIndex(0);
+    // Aplica de uma vez o pulo acumulado. Cada tecla mexer no currentTime
+    // faria o HLS re-buscar segmento a segmento e travar a TV.
+    const commitSeek = useCallback(() => {
+        const video = videoRef.current;
+        const target = seekTargetRef.current;
+        seekTargetRef.current = null;
+        if (seekCommitRef.current) {
+            clearTimeout(seekCommitRef.current);
+            seekCommitRef.current = null;
+        }
+        setSeekDisplay(null);
+        if (video && target != null) {
+            video.currentTime = target;
+        }
     }, []);
 
-    const closeQualityMenu = useCallback(() => {
-        setShowQualityMenu(false);
+    /** Um passo de seek; martelar a tecla acelera 10s → 30s → 1min (item 37). */
+    const nudgeSeek = useCallback((direction: -1 | 1) => {
+        const video = videoRef.current;
+        if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
+        const now = Date.now();
+        const accel = seekAccelRef.current;
+        accel.count = now - accel.last < SEEK_REPEAT_MS ? accel.count + 1 : 1;
+        accel.last = now;
+        const step = accel.count > 10 ? SEEK_STEPS[2] : accel.count > 4 ? SEEK_STEPS[1] : SEEK_STEPS[0];
+        const base = seekTargetRef.current ?? video.currentTime;
+        const target = Math.max(0, Math.min(video.duration, base + direction * step));
+        seekTargetRef.current = target;
+        setSeekDisplay({ target, step });
+        if (seekCommitRef.current) clearTimeout(seekCommitRef.current);
+        seekCommitRef.current = setTimeout(commitSeek, SEEK_COMMIT_MS);
+    }, [commitSeek]);
+
+    // Sair do player no meio de um seek deixaria o timeout pendente
+    useEffect(() => {
+        return () => {
+            if (seekCommitRef.current) clearTimeout(seekCommitRef.current);
+        };
+    }, []);
+
+    // Teclas de mídia do controle (item 38). Registradas no boot do App via
+    // tvinputdevice; sem este listener elas não faziam nada no player.
+    useEffect(() => {
+        const handleMediaKeys = (event: KeyboardEvent) => {
+            const video = videoRef.current;
+            if (!video) return;
+            const key = event.key || '';
+            const code = event.keyCode;
+
+            if (key === 'MediaPlayPause' || code === 10252) {
+                event.preventDefault();
+                togglePlay();
+            } else if (key === 'MediaPlay' || code === 415) {
+                event.preventDefault();
+                if (video.paused) togglePlay();
+            } else if (key === 'MediaPause' || code === 19) {
+                event.preventDefault();
+                if (!video.paused) togglePlay();
+            } else if (key === 'MediaStop' || code === 413) {
+                event.preventDefault();
+                handleClose();
+            } else if (key === 'MediaRewind' || code === 412) {
+                event.preventDefault();
+                if (!isLiveContent) nudgeSeek(-1);
+            } else if (key === 'MediaFastForward' || code === 417) {
+                event.preventDefault();
+                if (!isLiveContent) nudgeSeek(1);
+            } else if (key === 'MediaTrackNext' || code === 10233) {
+                event.preventDefault();
+                if (canGoNext) onNextEpisode?.();
+            } else if (key === 'MediaTrackPrevious' || code === 10232) {
+                event.preventDefault();
+                if (canGoPrevious) onPreviousEpisode?.();
+            }
+        };
+        window.addEventListener('keydown', handleMediaKeys);
+        return () => window.removeEventListener('keydown', handleMediaKeys);
+    }, [togglePlay, handleClose, nudgeSeek, isLiveContent, canGoNext, canGoPrevious, onNextEpisode, onPreviousEpisode]);
+
+    // ----- Menu de opções (qualidade / áudio / legenda / stats) -----
+    const openMenu = useCallback((id: MenuId) => {
+        setMenu(id);
+        setMenuIndex(0);
+        setPlayerFocus('menu');
+    }, []);
+
+    const closeMenu = useCallback(() => {
+        setMenu(null);
         setPlayerFocus('controls');
     }, []);
 
     const selectQuality = useCallback((index: number) => {
         if (index === -1) {
             setAutoQuality();
+            qualityByContent.set(contentKey, null);
         } else {
             setQuality(index);
+            // Lembra por ALTURA pra sobreviver à troca de variante (item 46)
+            const level = qualityLevels.find(entry => entry.index === index);
+            if (level) qualityByContent.set(contentKey, level.height);
         }
-        closeQualityMenu();
-    }, [setQuality, setAutoQuality, closeQualityMenu]);
+        closeMenu();
+    }, [setQuality, setAutoQuality, closeMenu, contentKey, qualityLevels]);
+
+    const toggleStats = useCallback(() => {
+        setShowStats(prev => {
+            statsOverlay.set(!prev);
+            return !prev;
+        });
+    }, []);
+
+    const currentAudioLabel = audioTracks.find(track => track.id === currentAudioTrack)?.label || '—';
+    const currentSubLabel = currentSubtitleTrack >= 0
+        ? (subtitleTracks.find(track => track.id === currentSubtitleTrack)?.label || 'Ligada')
+        : 'Desligadas';
+
+    // Itens do menu aberto. A raiz só mostra o que o stream realmente oferece —
+    // linha morta em menu de TV é pior que ausência.
+    const menuEntries = useMemo<MenuEntry[]>(() => {
+        if (menu === 'root') {
+            const entries: MenuEntry[] = [];
+            if (qualityLevels.length > 0) {
+                entries.push({
+                    label: 'Qualidade',
+                    hint: isAutoQuality ? 'Auto' : (qualityLevels.find(l => l.index === currentQualityIndex)?.label || 'Auto'),
+                    run: () => openMenu('quality'),
+                });
+            }
+            if (audioTracks.length > 1) {
+                entries.push({ label: 'Áudio', hint: currentAudioLabel, run: () => openMenu('audio') });
+            }
+            if (subtitleTracks.length > 0) {
+                entries.push({ label: 'Legendas', hint: currentSubLabel, run: () => openMenu('subs') });
+                entries.push({
+                    label: 'Tamanho da legenda',
+                    hint: SUBTITLE_SIZE_LABELS[subSize],
+                    run: () => openMenu('subsize'),
+                });
+            }
+            entries.push({
+                label: 'Estatísticas do stream',
+                hint: showStats ? 'Ligadas' : 'Desligadas',
+                run: toggleStats,
+            });
+            return entries;
+        }
+        if (menu === 'quality') {
+            return [
+                {
+                    label: 'Auto',
+                    hint: isAutoQuality && currentQualityIndex >= 0
+                        ? qualityLevels.find(l => l.index === currentQualityIndex)?.label
+                        : undefined,
+                    selected: isAutoQuality,
+                    run: () => selectQuality(-1),
+                },
+                ...qualityLevels.map(level => ({
+                    label: level.label,
+                    hint: `${Math.round(level.bitrate / 1000)} kbps`,
+                    selected: !isAutoQuality && currentQualityIndex === level.index,
+                    run: () => selectQuality(level.index),
+                })),
+            ];
+        }
+        if (menu === 'audio') {
+            return audioTracks.map(track => ({
+                label: track.label,
+                hint: track.lang,
+                selected: track.id === currentAudioTrack,
+                run: () => { setAudioTrack(track.id); closeMenu(); },
+            }));
+        }
+        if (menu === 'subs') {
+            return [
+                {
+                    label: 'Desligadas',
+                    selected: currentSubtitleTrack < 0,
+                    run: () => { setSubtitleTrack(-1); closeMenu(); },
+                },
+                ...subtitleTracks.map(track => ({
+                    label: track.label,
+                    hint: track.lang,
+                    selected: track.id === currentSubtitleTrack,
+                    run: () => { setSubtitleTrack(track.id); closeMenu(); },
+                })),
+            ];
+        }
+        if (menu === 'subsize') {
+            return SUBTITLE_SIZES.map(size => ({
+                label: SUBTITLE_SIZE_LABELS[size],
+                selected: size === subSize,
+                run: () => {
+                    subtitleSizePref.set(size);
+                    setSubSize(size);
+                    closeMenu();
+                },
+            }));
+        }
+        return [];
+    }, [menu, qualityLevels, isAutoQuality, currentQualityIndex, audioTracks, currentAudioTrack,
+        subtitleTracks, currentSubtitleTrack, subSize, showStats, currentAudioLabel, currentSubLabel,
+        openMenu, selectQuality, setAudioTrack, setSubtitleTrack, closeMenu, toggleStats]);
+
+    // As listas vêm do useHls, que as ESVAZIA em todo reload() (retry,
+    // watchdog de travamento, volta do standby) — não só na troca de canal.
+    // Sem isto, o foco continuava em 'menu' com o overlay já fora da tela:
+    // ↑↓ e OK mortos, e Voltar abrindo menu em vez de fechar o player.
+    // Ajuste durante o render (mesmo padrão do lastSrc); effect com setState
+    // é proibido pela regra react-hooks/set-state-in-effect.
+    const [lastEntryCount, setLastEntryCount] = useState(menuEntries.length);
+    if (menuEntries.length !== lastEntryCount) {
+        setLastEntryCount(menuEntries.length);
+        if (menuEntries.length === 0) {
+            setMenu(null);
+            setMenuIndex(0);
+            if (playerFocus === 'menu') setPlayerFocus('controls');
+        } else if (menuIndex > menuEntries.length - 1) {
+            setMenuIndex(menuEntries.length - 1);
+        }
+    }
+
+    const MENU_TITLES: Record<MenuId, string> = {
+        root: 'Opções',
+        quality: 'Qualidade',
+        audio: 'Áudio',
+        subs: 'Legendas',
+        subsize: 'Tamanho da legenda',
+    };
 
     // Execute focused control action
     const executeControlAction = useCallback(() => {
@@ -763,8 +1161,8 @@ export function VideoPlayer({
             case 'next':
                 onNextEpisode?.();
                 break;
-            case 'quality':
-                openQualityMenu();
+            case 'options':
+                openMenu('root');
                 break;
             case 'golive':
                 seekToLive();
@@ -779,10 +1177,11 @@ export function VideoPlayer({
                 cycleAspect();
                 break;
         }
-    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openQualityMenu, openZapList, cycleSleep, cycleAspect, seekToLive]);
+    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openMenu, openZapList, cycleSleep, cycleAspect, seekToLive]);
 
     // TV Navigation handler
     const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
+        if (stillWatching) return; // só OK (continuar) ou Voltar (sair)
         resetHideControlsTimer();
 
         if (playerFocus === 'zap-list') {
@@ -794,14 +1193,30 @@ export function VideoPlayer({
             } else if (direction === 'left') {
                 closeZapList();
             }
-        } else if (playerFocus === 'quality-menu') {
-            const totalItems = qualityLevels.length + 1;
+        } else if (playerFocus === 'menu') {
+            const total = menuEntries.length;
             if (direction === 'up') {
-                setQualityMenuIndex(prev => Math.max(0, prev - 1));
+                setMenuIndex(prev => Math.max(0, prev - 1));
             } else if (direction === 'down') {
-                setQualityMenuIndex(prev => Math.min(totalItems - 1, prev + 1));
+                setMenuIndex(prev => Math.min(total - 1, prev + 1));
+            } else if (direction === 'left') {
+                // ← volta pra raiz (ou fecha, se já está nela)
+                if (menu && menu !== 'root') openMenu('root'); else closeMenu();
+            }
+        } else if (playerFocus === 'seekbar') {
+            // Barra focada: ←→ pulam com aceleração, ↓ volta pros botões
+            if (direction === 'left') nudgeSeek(-1);
+            else if (direction === 'right') nudgeSeek(1);
+            else if (direction === 'down') {
+                commitSeek();
+                setPlayerFocus('controls');
             }
         } else {
+            // ↑ sobe pra barra de progresso (só VOD tem barra)
+            if (direction === 'up' && !isLiveContent && duration > 0) {
+                setPlayerFocus('seekbar');
+                return;
+            }
             // Navigate controls with left/right
             if (direction === 'left' || direction === 'right') {
                 const buttons = getControlButtons();
@@ -831,9 +1246,15 @@ export function VideoPlayer({
                 }
             }
         }
-    }, [playerFocus, qualityLevels.length, channelList?.length, focusedControl, getControlButtons, resetHideControlsTimer, closeZapList]);
+    }, [playerFocus, menu, menuEntries.length, channelList?.length, focusedControl, getControlButtons,
+        resetHideControlsTimer, closeZapList, openMenu, closeMenu, nudgeSeek, commitSeek, isLiveContent,
+        duration, stillWatching]);
 
     const handleEnter = useCallback(() => {
+        if (stillWatching) {
+            confirmStillWatching();
+            return;
+        }
         resetHideControlsTimer();
 
         if (playerFocus === 'zap-list') {
@@ -842,27 +1263,38 @@ export function VideoPlayer({
                 onSwitchChannel?.(channel.stream_id);
                 closeZapList();
             }
-        } else if (playerFocus === 'quality-menu') {
-            if (qualityMenuIndex === 0) {
-                selectQuality(-1);
-            } else {
-                const level = qualityLevels[qualityMenuIndex - 1];
-                if (level) selectQuality(level.index);
-            }
+        } else if (playerFocus === 'menu') {
+            menuEntries[menuIndex]?.run();
+        } else if (playerFocus === 'seekbar') {
+            // OK confirma o pulo pendente; sem pulo, é play/pause
+            if (seekTargetRef.current != null) commitSeek();
+            else togglePlay();
         } else {
             executeControlAction();
         }
-    }, [playerFocus, qualityMenuIndex, qualityLevels, selectQuality, executeControlAction, resetHideControlsTimer, channelList, zapIndex, onSwitchChannel, closeZapList]);
+    }, [playerFocus, menuIndex, menuEntries, executeControlAction, resetHideControlsTimer,
+        channelList, zapIndex, onSwitchChannel, closeZapList, commitSeek, togglePlay,
+        stillWatching, confirmStillWatching]);
 
     const handleBack = useCallback(() => {
+        if (stillWatching) {
+            handleClose();
+            return;
+        }
         if (playerFocus === 'zap-list') {
             closeZapList();
-        } else if (playerFocus === 'quality-menu') {
-            closeQualityMenu();
+        } else if (playerFocus === 'menu') {
+            // Voltar sobe um nível antes de fechar — submenu não pode
+            // jogar o usuário direto pra fora do player
+            if (menu && menu !== 'root') openMenu('root');
+            else closeMenu();
+        } else if (playerFocus === 'seekbar') {
+            commitSeek();
+            setPlayerFocus('controls');
         } else if (onClose) {
             handleClose();
         }
-    }, [playerFocus, closeZapList, closeQualityMenu, handleClose, onClose]);
+    }, [playerFocus, closeZapList, closeMenu, openMenu, menu, commitSeek, handleClose, onClose, stillWatching]);
 
     // TV Navigation hook
     useTVNavigation({
@@ -939,7 +1371,7 @@ export function VideoPlayer({
                     inline sem !important perderia — achado da revisão) */}
                 <video
                     ref={videoRef}
-                    className={`video-element aspect-${aspectMode} ${isRadio ? 'radio-hidden' : ''}`}
+                    className={`video-element aspect-${aspectMode} sub-${subSize} ${isRadio ? 'radio-hidden' : ''}`}
                     poster={isRadio ? undefined : poster}
                     onClick={togglePlay}
                     playsInline
@@ -1006,6 +1438,38 @@ export function VideoPlayer({
                 );
             })()}
 
+            {/* Ainda está assistindo? (item 51) */}
+            {stillWatching && (
+                <div className="still-watching">
+                    <div className="still-watching-title">Ainda está assistindo?</div>
+                    <div className="still-watching-sub">
+                        {AUTO_EPISODE_LIMIT} episódios seguidos sem toque no controle.
+                    </div>
+                    <button className="still-watching-btn" onClick={confirmStillWatching}>
+                        ▶ Continuar
+                    </button>
+                    <div className="still-watching-hint">OK continua · Voltar sai</div>
+                </div>
+            )}
+
+            {/* Pulo acumulado do seek por D-pad (item 37) */}
+            {seekDisplay && (
+                <div className="seek-osd">
+                    <span className="seek-osd-target">{formatTime(seekDisplay.target)}</span>
+                    <span className="seek-osd-step">passo de {seekDisplay.step}s</span>
+                </div>
+            )}
+
+            {/* Estatísticas do stream (item 48) */}
+            {showStats && stats && (
+                <div className="stats-overlay">
+                    <div>{stats.width}×{stats.height}</div>
+                    <div>{stats.bitrate > 0 ? `${Math.round(stats.bitrate / 1000)} kbps` : '— kbps'}</div>
+                    <div>buffer {stats.buffer.toFixed(1)}s</div>
+                    <div>drops {stats.dropped}</div>
+                </div>
+            )}
+
             {/* Central Play Button */}
             {!playing && !loading && !error && (
                 <div className="central-play-button" onClick={togglePlay}>
@@ -1049,32 +1513,25 @@ export function VideoPlayer({
                 </div>
             )}
 
-            {/* Quality Menu */}
-            {showQualityMenu && qualityLevels.length > 0 && (
+            {/* Menu de opções (qualidade / áudio / legendas / stats) */}
+            {menu && menuEntries.length > 0 && (
                 <div className="quality-menu">
                     <div className="quality-menu-header">
-                        <FaCog /> Qualidade
+                        <FaCog /> {MENU_TITLES[menu]}
                     </div>
                     <div className="quality-menu-items">
-                        <div
-                            className={`quality-menu-item ${qualityMenuIndex === 0 ? 'focused' : ''} ${isAutoQuality ? 'selected' : ''}`}
-                            onClick={() => selectQuality(-1)}
-                        >
-                            Auto {isAutoQuality && currentQualityIndex >= 0 && `(${qualityLevels.find(l => l.index === currentQualityIndex)?.label})`}
-                        </div>
-                        {qualityLevels.map((level, idx) => (
+                        {menuEntries.map((entry, index) => (
                             <div
-                                key={level.index}
-                                className={`quality-menu-item ${qualityMenuIndex === idx + 1 ? 'focused' : ''} ${!isAutoQuality && currentQualityIndex === level.index ? 'selected' : ''}`}
-                                onClick={() => selectQuality(level.index)}
+                                key={`${entry.label}-${index}`}
+                                className={`quality-menu-item ${menuIndex === index ? 'focused' : ''} ${entry.selected ? 'selected' : ''}`}
+                                onClick={entry.run}
                             >
-                                {level.label}
-                                <span className="quality-bitrate">
-                                    {Math.round(level.bitrate / 1000)} kbps
-                                </span>
+                                {entry.label}
+                                {entry.hint && <span className="quality-bitrate">{entry.hint}</span>}
                             </div>
                         ))}
                     </div>
+                    <div className="quality-menu-hint">OK escolhe · ← Voltar</div>
                 </div>
             )}
 
@@ -1105,11 +1562,14 @@ export function VideoPlayer({
                 {!isLive && contentType !== 'live' && (
                     <div
                         ref={progressRef}
-                        className="progress-container"
+                        className={`progress-container ${playerFocus === 'seekbar' ? 'seek-focused' : ''}`}
                         onClick={handleProgressClick}
                         onMouseMove={handleProgressHover}
                         onMouseLeave={() => setHoverTime(null)}
                     >
+                        {playerFocus === 'seekbar' && (
+                            <div className="seek-hint">← → pulam · OK confirma · ↓ volta</div>
+                        )}
                         {hoverTime !== null && (
                             <div
                                 className="time-preview-tooltip"
@@ -1125,11 +1585,11 @@ export function VideoPlayer({
                             />
                             <div
                                 className="progress-played"
-                                style={{ width: `${percentage(currentTime, duration)}%` }}
+                                style={{ width: `${percentage(seekDisplay?.target ?? currentTime, duration)}%` }}
                             />
                             <div
                                 className="progress-handle"
-                                style={{ left: `${percentage(currentTime, duration)}%` }}
+                                style={{ left: `${percentage(seekDisplay?.target ?? currentTime, duration)}%` }}
                             />
                         </div>
                     </div>
@@ -1190,17 +1650,17 @@ export function VideoPlayer({
                     </div>
 
                     <div className="controls-right">
-                        {/* Quality Button */}
-                        {qualityLevels.length > 0 && (
-                            <button
-                                className={`control-btn quality-btn ${focusedControl === 'quality' && playerFocus === 'controls' ? 'focused' : ''}`}
-                                onClick={openQualityMenu}
-                                title="Qualidade"
-                            >
-                                <FaCog />
+                        {/* Options Button (qualidade, áudio, legendas, stats) */}
+                        <button
+                            className={`control-btn quality-btn ${focusedControl === 'options' && playerFocus === 'controls' ? 'focused' : ''}`}
+                            onClick={() => openMenu('root')}
+                            title="Opções"
+                        >
+                            <FaCog />
+                            {qualityLevels.length > 0 && (
                                 <span className="quality-label">{getCurrentQualityLabel()}</span>
-                            </button>
-                        )}
+                            )}
+                        </button>
 
                         {/* Channel List Button (live) */}
                         {canZap && (
