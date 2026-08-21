@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FaPlay, FaPause, FaCog, FaStepForward, FaStepBackward, FaListUl, FaMoon, FaExpand } from 'react-icons/fa';
 import { useHls, type StreamErrorCause } from '../../hooks/useHls';
+import { playbackPrefs } from '../../services/playbackPrefs';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
 import { epgService, type EpgProgram } from '../../services/epgService';
 import { aspectPrefs, ASPECT_MODES, ASPECT_LABELS, type AspectMode } from '../../services/liveExtras';
@@ -693,6 +694,9 @@ export function VideoPlayer({
 
     // Resume time - apply once when video is ready
     useEffect(() => {
+        // "Retomar de onde parou" é opcional (item 66): quem prefere sempre
+        // do começo não quer ser jogado no meio do filme
+        if (!playbackPrefs.get().resume) return;
         if (!resumeTime || !videoRef.current || resumeAppliedRef.current) return;
 
         const video = videoRef.current;
@@ -754,6 +758,8 @@ export function VideoPlayer({
 
         const video = videoRef.current;
         const handleEnded = () => {
+            // Emendar o próximo é opcional (item 66); o botão ⏭ continua valendo
+            if (!playbackPrefs.get().autoNextEpisode) return;
             autoAdvanceRef.current += 1;
             if (autoAdvanceRef.current >= AUTO_EPISODE_LIMIT) {
                 // Não emenda: pergunta e para de consumir banda até responder

@@ -5,6 +5,7 @@
 
 import type { EpgProgram } from './epgService';
 import type { LiveStream } from '../types';
+import { scopedKey } from './profileScope';
 
 // ---- Jogos de hoje (item 12) ----
 
@@ -83,11 +84,12 @@ export function isRadioChannel(channel: LiveStream, categoryName?: string): bool
 
 // ---- Ordem manual dos favoritos (item 17) ----
 
-const ORDER_KEY = 'neostream_fav_channel_order';
+// Ordem dos favoritos segue o perfil (item 54)
+const ORDER_KEY = () => scopedKey('neostream_fav_channel_order');
 
 function readOrder(): number[] {
     try {
-        const raw = localStorage.getItem(ORDER_KEY);
+        const raw = localStorage.getItem(ORDER_KEY());
         const parsed: unknown = raw ? JSON.parse(raw) : [];
         return Array.isArray(parsed) ? (parsed as unknown[]).map(Number).filter(Number.isFinite) : [];
     } catch {
@@ -97,7 +99,7 @@ function readOrder(): number[] {
 
 function writeOrder(order: number[]): void {
     try {
-        localStorage.setItem(ORDER_KEY, JSON.stringify(order));
+        localStorage.setItem(ORDER_KEY(), JSON.stringify(order));
     } catch {
         // quota
     }
@@ -139,7 +141,7 @@ export const favoriteOrder = {
 
     reset(): void {
         try {
-            localStorage.removeItem(ORDER_KEY);
+            localStorage.removeItem(ORDER_KEY());
         } catch {
             // sem drama
         }

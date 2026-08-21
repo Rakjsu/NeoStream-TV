@@ -1,0 +1,110 @@
+/* Entrada de PIN por D-pad (item 55) */
+
+.pin-overlay {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: rgba(5, 5, 15, 0.94);
+    z-index: 6000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pin-panel {
+    width: 460px;
+    max-width: calc(90 * var(--ns-vw));
+    background: rgba(20, 20, 35, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 18px;
+    padding: 32px;
+    text-align: center;
+}
+
+.pin-title {
+    color: #fff;
+    font-size: 26px;
+    font-weight: 800;
+}
+
+.pin-hint {
+    margin-top: 10px;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 16px;
+    line-height: 1.4;
+}
+
+.pin-dots {
+    display: flex;
+    justify-content: center;
+    margin: 26px 0 8px;
+}
+
+.pin-dots > * + * {
+    margin-left: 16px;
+}
+
+.pin-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+}
+
+.pin-dot.filled {
+    background: var(--ns-accent);
+    border-color: var(--ns-accent);
+}
+
+.pin-error {
+    color: #f87171;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.pin-pad {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 14px;
+}
+
+.pin-key {
+    width: 96px;
+    height: 64px;
+    margin: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 26px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.pin-key-ok {
+    background: rgba(var(--ns-accent-rgb), 0.35);
+}
+
+.pin-key.tv-focused {
+    background: var(--ns-accent);
+    box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.6);
+    transform: scale(1.06);
+}
+
+.pin-footer {
+    margin-top: 20px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.pin-confirm-label {
+    display: block;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 15px;
+    margin-bottom: 4px;
+}

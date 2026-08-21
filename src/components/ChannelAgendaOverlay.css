@@ -15,8 +15,8 @@
 
 .agenda-panel {
     width: 760px;
-    max-width: 92vw;
-    max-height: 84vh;
+    max-width: calc(92 * var(--ns-vw));
+    max-height: calc(84 * var(--ns-vh));
     display: flex;
     flex-direction: column;
     background: rgba(20, 20, 35, 0.98);

@@ -3,8 +3,11 @@
 // filmes guardam a posição por id; séries guardam o ÚLTIMO episódio visto
 // por série (suficiente pra fileira "Continuar Assistindo" e pro auto-resume).
 
-const MOVIE_KEY = 'neostream_movie_progress';
-const SERIES_KEY = 'neostream_series_progress';
+import { scopedKey } from './profileScope';
+
+// Progresso é dado de QUEM assiste: cada perfil tem o seu (item 54)
+const MOVIE_KEY = () => scopedKey('neostream_movie_progress');
+const SERIES_KEY = () => scopedKey('neostream_series_progress');
 const MAX_ENTRIES = 50;
 const COMPLETED_RATIO = 0.95;
 const MIN_SECONDS = 30; // abaixo disso não vale salvar
@@ -78,14 +81,14 @@ function writeMap<T extends { updatedAt: number }>(key: string, map: Record<stri
 export const progressService = {
     saveMovie(item: Omit<MovieProgress, 'completed' | 'updatedAt'>): void {
         if (!item.duration || item.time < MIN_SECONDS) return;
-        const map = readMap<MovieProgress>(MOVIE_KEY);
+        const map = readMap<MovieProgress>(MOVIE_KEY());
         const completed = reachedEnd(item.time, item.duration);
         map[item.id] = { ...item, completed, updatedAt: Date.now() };
-        writeMap(MOVIE_KEY, map);
+        writeMap(MOVIE_KEY(), map);
     },
 
     getMovie(id: string): MovieProgress | null {
-        return readMap<MovieProgress>(MOVIE_KEY)[id] || null;
+        return readMap<MovieProgress>(MOVIE_KEY())[id] || null;
     },
 
     /** Tempo de retomada (null se não há progresso útil ou já concluiu). */
@@ -96,14 +99,14 @@ export const progressService = {
     },
 
     removeMovie(id: string): void {
-        const map = readMap<MovieProgress>(MOVIE_KEY);
+        const map = readMap<MovieProgress>(MOVIE_KEY());
         delete map[id];
-        writeMap(MOVIE_KEY, map);
+        writeMap(MOVIE_KEY(), map);
     },
 
     saveSeries(item: Omit<SeriesProgress, 'completed' | 'seriesCompleted' | 'updatedAt'> & { isLastEpisode?: boolean }): void {
         if (!item.duration || item.time < MIN_SECONDS) return;
-        const map = readMap<SeriesProgress>(SERIES_KEY);
+        const map = readMap<SeriesProgress>(SERIES_KEY());
         const completed = reachedEnd(item.time, item.duration);
         const { isLastEpisode, ...rest } = item;
         map[item.seriesId] = {
@@ -112,11 +115,11 @@ export const progressService = {
             seriesCompleted: completed && !!isLastEpisode,
             updatedAt: Date.now(),
         };
-        writeMap(SERIES_KEY, map);
+        writeMap(SERIES_KEY(), map);
     },
 
     getSeries(seriesId: string): SeriesProgress | null {
-        return readMap<SeriesProgress>(SERIES_KEY)[seriesId] || null;
+        return readMap<SeriesProgress>(SERIES_KEY())[seriesId] || null;
     },
 
     getSeriesResumeTime(seriesId: string, season: number, episode: number): number | null {
@@ -127,15 +130,15 @@ export const progressService = {
     },
 
     removeSeries(seriesId: string): void {
-        const map = readMap<SeriesProgress>(SERIES_KEY);
+        const map = readMap<SeriesProgress>(SERIES_KEY());
         delete map[seriesId];
-        writeMap(SERIES_KEY, map);
+        writeMap(SERIES_KEY(), map);
     },
 
     /** Ids de filmes já concluídos (>=95%) — pro filtro "esconder assistidos". */
     getCompletedMovieIds(): Set<string> {
         return new Set(
-            Object.values(readMap<MovieProgress>(MOVIE_KEY))
+            Object.values(readMap<MovieProgress>(MOVIE_KEY()))
                 .filter(p => p.completed)
                 .map(p => p.id)
         );
@@ -144,7 +147,7 @@ export const progressService = {
     /** Ids de séries TERMINADAS (último episódio concluído). */
     getFinishedSeriesIds(): Set<string> {
         return new Set(
-            Object.values(readMap<SeriesProgress>(SERIES_KEY))
+            Object.values(readMap<SeriesProgress>(SERIES_KEY()))
                 .filter(p => p.seriesCompleted)
                 .map(p => p.seriesId)
         );
@@ -152,12 +155,12 @@ export const progressService = {
 
     /** Séries "seguidas" (com progresso salvo) — pra detecção de novos episódios. */
     getSeriesIdsWithProgress(): Set<string> {
-        return new Set(Object.keys(readMap<SeriesProgress>(SERIES_KEY)));
+        return new Set(Object.keys(readMap<SeriesProgress>(SERIES_KEY())));
     },
 
     /** Filmes com qualquer progresso — alimenta a afinidade das recomendações. */
     getMovieIdsWithProgress(): Set<string> {
-        return new Set(Object.keys(readMap<MovieProgress>(MOVIE_KEY)));
+        return new Set(Object.keys(readMap<MovieProgress>(MOVIE_KEY())));
     },
 
     /** Itens pra fileira "Continuar Assistindo", mais recentes primeiro. */
@@ -165,12 +168,12 @@ export const progressService = {
         | { kind: 'movie'; progress: MovieProgress }
         | { kind: 'series'; progress: SeriesProgress }
     > {
-        const movies = Object.values(readMap<MovieProgress>(MOVIE_KEY))
+        const movies = Object.values(readMap<MovieProgress>(MOVIE_KEY()))
             .filter(p => !p.completed && p.time >= MIN_SECONDS)
             .map(progress => ({ kind: 'movie' as const, progress }));
         // Série concluída no meio da temporada ainda é "continuável" (próximo ep),
         // mas sem saber o total de episódios aqui, só mostramos as não-concluídas.
-        const series = Object.values(readMap<SeriesProgress>(SERIES_KEY))
+        const series = Object.values(readMap<SeriesProgress>(SERIES_KEY()))
             .filter(p => !p.completed && p.time >= MIN_SECONDS)
             .map(progress => ({ kind: 'series' as const, progress }));
         return [...movies, ...series].sort((a, b) => b.progress.updatedAt - a.progress.updatedAt);

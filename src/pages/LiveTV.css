@@ -2,7 +2,7 @@
 
 .livetv-page {
     position: relative;
-    height: 100vh;
+    height: calc(100 * var(--ns-vh));
     overflow: hidden;
     margin-left: 80px;
 }
@@ -322,7 +322,7 @@
 .livetv-content {
     position: relative;
     z-index: 5;
-    height: calc(100vh - 200px);
+    height: calc(calc(100 * var(--ns-vh)) - 200px);
     overflow-y: auto;
     padding: 0 16px 80px;
     scrollbar-width: thin;
@@ -487,7 +487,7 @@
 /* Loading State */
 .livetv-loading-container {
     position: relative;
-    height: 100vh;
+    height: calc(100 * var(--ns-vh));
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -647,7 +647,7 @@
 /* Error State */
 .livetv-error-container {
     position: relative;
-    height: 100vh;
+    height: calc(100 * var(--ns-vh));
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -867,7 +867,7 @@
     padding: 12px 24px;
     border-radius: 12px;
     z-index: 10000;
-    max-width: 70vw;
+    max-width: calc(70 * var(--ns-vw));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

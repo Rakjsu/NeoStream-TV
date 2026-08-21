@@ -2,7 +2,7 @@
 
 .app {
   display: flex;
-  min-height: 100vh;
+  min-height: calc(100 * var(--ns-vh));
   background: var(--bg-primary);
 }
 
@@ -10,7 +10,7 @@
   flex: 1;
   margin-left: 80px;
   /* Sidebar width */
-  min-height: 100vh;
+  min-height: calc(100 * var(--ns-vh));
   overflow-y: auto;
 }
 
@@ -20,7 +20,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
+  min-height: calc(100 * var(--ns-vh));
   background: var(--bg-primary);
   gap: var(--spacing-lg);
 }
@@ -51,7 +51,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
+  min-height: calc(100 * var(--ns-vh));
   gap: var(--spacing-md);
 }
 

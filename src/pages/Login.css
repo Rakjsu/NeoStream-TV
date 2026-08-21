@@ -1,7 +1,7 @@
 /* Login Page - Premium Design from Original App */
 
 .login-container {
-    min-height: 100vh;
+    min-height: calc(100 * var(--ns-vh));
     display: flex;
     align-items: center;
     justify-content: center;

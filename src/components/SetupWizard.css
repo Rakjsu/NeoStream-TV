@@ -1,0 +1,106 @@
+/* Assistente de primeira configuração (item 60) */
+
+.wizard-overlay {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: radial-gradient(circle at 50% 30%, #1b1b30, #05050f 70%);
+    z-index: 7000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wizard-panel {
+    width: 900px;
+    max-width: calc(92 * var(--ns-vw));
+    text-align: center;
+}
+
+.wizard-steps {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 40px;
+}
+
+.wizard-steps > * {
+    margin: 4px 10px;
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.wizard-done,
+.wizard-step.past {
+    color: rgba(134, 239, 172, 0.8);
+}
+
+.wizard-step.current {
+    color: var(--ns-accent);
+    font-weight: 800;
+}
+
+.wizard-title {
+    margin: 0;
+    color: #fff;
+    font-size: 46px;
+    font-weight: 800;
+}
+
+.wizard-help {
+    margin: 14px auto 0;
+    max-width: 640px;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 19px;
+    line-height: 1.5;
+}
+
+.wizard-options {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 44px;
+}
+
+.wizard-option {
+    display: flex;
+    align-items: center;
+    margin: 8px;
+    padding: 18px 30px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 2px solid transparent;
+    border-radius: 14px;
+    color: #fff;
+    font-size: 21px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.wizard-option > * + * {
+    margin-left: 12px;
+}
+
+.wizard-option.selected {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.wizard-option.tv-focused {
+    background: var(--ns-accent);
+    box-shadow: 0 0 0 4px rgba(var(--ns-accent-rgb), 0.5);
+    transform: scale(1.05);
+}
+
+.wizard-swatch {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.wizard-footer {
+    margin-top: 46px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 16px;
+}

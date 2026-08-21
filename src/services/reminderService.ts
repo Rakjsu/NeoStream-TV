@@ -4,7 +4,10 @@
 // é reidratado no boot, então lembrete perdido com o app fechado não some —
 // só não dispara notificação.
 
-const KEY = 'neostream_reminders';
+import { scopedKey } from './profileScope';
+
+// Lembretes seguem o perfil (item 54)
+const KEY = () => scopedKey('neostream_reminders');
 const LEAD_MS = 60 * 1000; // avisa 1 min antes
 const KEEP_AFTER_MS = 10 * 60 * 1000; // guarda 10 min após o início (limpeza)
 
@@ -24,7 +27,7 @@ const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function read(): Reminder[] {
     try {
-        const raw = localStorage.getItem(KEY);
+        const raw = localStorage.getItem(KEY());
         const parsed: unknown = raw ? JSON.parse(raw) : [];
         return Array.isArray(parsed) ? (parsed as Reminder[]).filter(r => r && r.id && r.startMs) : [];
     } catch {
@@ -34,7 +37,7 @@ function read(): Reminder[] {
 
 function write(list: Reminder[]): void {
     try {
-        localStorage.setItem(KEY, JSON.stringify(list));
+        localStorage.setItem(KEY(), JSON.stringify(list));
     } catch {
         // Quota — perder o lembrete é melhor que quebrar o app
     }
@@ -114,6 +117,17 @@ export const reminderService = {
     },
 
     /** Reidrata os timers no boot e limpa os vencidos. */
+    /**
+     * Troca de perfil: mata os timers do perfil ANTERIOR e reidrata os do
+     * perfil que acabou de entrar. Sem isto o aviso de um perfil disparava
+     * dentro de outro — e os lembretes do novo perfil nunca eram agendados.
+     */
+    reset(): void {
+        for (const timer of timers.values()) clearTimeout(timer);
+        timers.clear();
+        reminderService.init();
+    },
+
     init(): void {
         const now = Date.now();
         const alive = read().filter(r => r.startMs > now - KEEP_AFTER_MS);

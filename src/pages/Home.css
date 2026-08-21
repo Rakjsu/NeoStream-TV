@@ -2,7 +2,7 @@
 
 .home-page {
     height: 100%;
-    max-height: 100vh;
+    max-height: calc(100 * var(--ns-vh));
     background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
     padding: 40px;
     padding-left: 52px;
@@ -397,4 +397,36 @@
     z-index: 3;
     line-height: 1;
     pointer-events: none;
+}
+
+/* Aviso de validade da lista (item 68) */
+.home-expiry {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 48px 8px;
+    padding: 14px 22px;
+    background: rgba(234, 179, 8, 0.16);
+    border: 1px solid rgba(234, 179, 8, 0.45);
+    border-radius: 12px;
+}
+
+.home-expiry.expired {
+    background: rgba(220, 38, 38, 0.18);
+    border-color: rgba(220, 38, 38, 0.5);
+}
+
+.home-expiry-text {
+    color: #fff;
+    font-size: 19px;
+    font-weight: 700;
+}
+
+.home-expiry-hint {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 14px;
+    white-space: nowrap;
+    margin-left: 18px;
 }

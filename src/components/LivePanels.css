@@ -15,8 +15,8 @@
 
 .live-panel {
     width: 900px;
-    max-width: 94vw;
-    max-height: 86vh;
+    max-width: calc(94 * var(--ns-vw));
+    max-height: calc(86 * var(--ns-vh));
     display: flex;
     flex-direction: column;
     background: rgba(20, 20, 35, 0.98);
@@ -223,7 +223,7 @@
     z-index: 12000;
     display: flex;
     align-items: center;
-    max-width: 80vw;
+    max-width: calc(80 * var(--ns-vw));
 }
 
 .reminder-toast > * + * {

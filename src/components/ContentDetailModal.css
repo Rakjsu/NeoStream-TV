@@ -142,7 +142,7 @@
     position: relative;
     width: 90%;
     max-width: 920px;
-    max-height: 90vh;
+    max-height: calc(90 * var(--ns-vh));
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f1a 100%);
     border-radius: 24px;
     overflow: hidden;
@@ -309,7 +309,7 @@
     flex: 1;
     padding: 36px;
     overflow-y: auto;
-    max-height: 90vh;
+    max-height: calc(90 * var(--ns-vh));
     animation: contentFadeIn 0.5s ease 0.15s both;
 }
 
@@ -655,7 +655,7 @@
 @media (max-width: 768px) {
     .modal-container {
         flex-direction: column;
-        max-height: 95vh;
+        max-height: calc(95 * var(--ns-vh));
     }
 
     .modal-poster {

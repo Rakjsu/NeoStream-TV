@@ -1,5 +1,6 @@
 // Profile Service for NeoStream TV
 import type { Profile, ProfilesData, CreateProfileData, UpdateProfileData } from '../types/profile';
+import { purgeProfileData } from './profileScope';
 
 const STORAGE_KEY = 'neostream_tv_profiles';
 const MAX_PROFILES = 5;
@@ -163,8 +164,12 @@ export const profileService = {
             return false;
         }
 
+        const removedId = data.profiles[index].id;
         data.profiles.splice(index, 1);
         saveStorageData(data);
+        // Sem isto, favoritos/progresso do perfil excluido ficariam orfaos no
+        // localStorage e voltariam se alguem recriasse um perfil com o mesmo id
+        purgeProfileData(removedId);
         return true;
     },
 
@@ -174,7 +179,9 @@ export const profileService = {
         const profile = data.profiles.find(p => p.id === profileId);
         if (!profile) return false;
 
-        if (!profile.pin) return true;
+        // Perfil sem PIN nao "aceita qualquer PIN": quem chama pergunta antes
+        // com hasPin(). O fail-open aqui fazia o modo Kids ser contornavel.
+        if (!profile.pin) return false;
 
         const hashedPin = await hashPin(pin);
         return hashedPin === profile.pin;

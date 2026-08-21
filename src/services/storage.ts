@@ -1,6 +1,7 @@
 // Storage service for TV platforms (localStorage-based)
 
 import type { Credentials } from '../types';
+import { scopedKey } from './profileScope';
 
 export interface SavedContentItem {
     id: string;
@@ -27,6 +28,12 @@ const STORAGE_KEYS = {
     SETTINGS: 'neostream_settings',
     TMDB_API_KEY: 'neostream_tmdb_api_key',
 };
+
+// Chaves de DADO do usuário: cada perfil tem as suas (item 54). Credencial,
+// idioma e chave TMDB continuam globais — são do aparelho, não de quem assiste.
+const favoritesKey = () => scopedKey(STORAGE_KEYS.FAVORITES);
+const watchLaterKey = () => scopedKey(STORAGE_KEYS.WATCH_LATER);
+const lastChannelKey = () => scopedKey(STORAGE_KEYS.LAST_CHANNEL);
 
 interface Settings {
     language: 'pt' | 'en' | 'es';
@@ -84,20 +91,20 @@ class StorageService {
     // Favorites (item completo; id pode colidir entre filme/série, então
     // toda operação é chaveada por id+type)
     getFavorites(): FavoriteItem[] {
-        return this.readContentList(STORAGE_KEYS.FAVORITES);
+        return this.readContentList(favoritesKey());
     }
 
     addFavorite(item: SavedContentInput): void {
         const favorites = this.getFavorites();
         if (!favorites.some(f => f.id === item.id && f.type === item.type)) {
             favorites.push({ ...item, addedAt: Date.now() });
-            localStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(favorites));
+            localStorage.setItem(favoritesKey(), JSON.stringify(favorites));
         }
     }
 
     removeFavorite(id: string, type: SavedContentItem['type']): void {
         const favorites = this.getFavorites().filter(f => !(f.id === id && f.type === type));
-        localStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(favorites));
+        localStorage.setItem(favoritesKey(), JSON.stringify(favorites));
     }
 
     isFavorite(id: string, type: SavedContentItem['type']): boolean {
@@ -114,25 +121,25 @@ class StorageService {
     }
 
     clearFavorites(): void {
-        localStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify([]));
+        localStorage.setItem(favoritesKey(), JSON.stringify([]));
     }
 
     // Watch Later (Minha Lista)
     getWatchLater(): WatchLaterItem[] {
-        return this.readContentList(STORAGE_KEYS.WATCH_LATER);
+        return this.readContentList(watchLaterKey());
     }
 
     addWatchLater(item: SavedContentInput): void {
         const items = this.getWatchLater();
         if (!items.some(i => i.id === item.id && i.type === item.type)) {
             items.push({ ...item, addedAt: Date.now() });
-            localStorage.setItem(STORAGE_KEYS.WATCH_LATER, JSON.stringify(items));
+            localStorage.setItem(watchLaterKey(), JSON.stringify(items));
         }
     }
 
     removeWatchLater(id: string, type: SavedContentItem['type']): void {
         const items = this.getWatchLater().filter(i => !(i.id === id && i.type === type));
-        localStorage.setItem(STORAGE_KEYS.WATCH_LATER, JSON.stringify(items));
+        localStorage.setItem(watchLaterKey(), JSON.stringify(items));
     }
 
     isInWatchLater(id: string, type: SavedContentItem['type']): boolean {
@@ -149,16 +156,16 @@ class StorageService {
     }
 
     clearWatchLater(): void {
-        localStorage.setItem(STORAGE_KEYS.WATCH_LATER, JSON.stringify([]));
+        localStorage.setItem(watchLaterKey(), JSON.stringify([]));
     }
 
     // Last channel
     setLastChannel(streamId: number): void {
-        localStorage.setItem(STORAGE_KEYS.LAST_CHANNEL, String(streamId));
+        localStorage.setItem(lastChannelKey(), String(streamId));
     }
 
     getLastChannel(): number | null {
-        const data = localStorage.getItem(STORAGE_KEYS.LAST_CHANNEL);
+        const data = localStorage.getItem(lastChannelKey());
         return data ? parseInt(data, 10) : null;
     }
 

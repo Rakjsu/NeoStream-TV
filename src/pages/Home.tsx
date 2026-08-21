@@ -14,6 +14,7 @@ import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
 import './Home.css';
+import { accountService } from '../services/accountService';
 
 type ContinueItem =
     | { kind: 'movie'; progress: MovieProgress }
@@ -328,10 +329,22 @@ export function Home({ onNavigate }: HomeProps) {
         }
     };
 
+    // Aviso de validade da lista (item 68). Adiável: 🔴 some por 24h — a Home
+    // é a primeira tela do app e um aviso que não some vira ruído permanente.
+    const [expiryWarning, setExpiryWarning] = useState(() =>
+        accountService.shouldWarnExpiry() ? accountService.daysUntilExpiry() : null
+    );
+
     // Only enable navigation when content is focused and no player is open
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
+        onAction: (action) => {
+            if (action === 'red' && expiryWarning !== null) {
+                accountService.snoozeExpiry();
+                setExpiryWarning(null);
+            }
+        },
         enabled: focusZone === 'content' && !playingMovie && !seriesQueue,
     });
 
@@ -366,6 +379,20 @@ export function Home({ onNavigate }: HomeProps) {
             {/* Background decorations */}
             <div className="home-bg-decoration home-bg-decoration-1" />
             <div className="home-bg-decoration home-bg-decoration-2" />
+
+            {/* Validade da lista (item 68) */}
+            {expiryWarning !== null && (
+                <div className={`home-expiry ${expiryWarning < 0 ? 'expired' : ''}`}>
+                    <span className="home-expiry-text">
+                        {expiryWarning < 0
+                            ? '⚠️ Sua lista venceu — fale com o provedor pra renovar.'
+                            : expiryWarning === 0
+                                ? '⚠️ Sua lista vence hoje.'
+                                : `⚠️ Sua lista vence em ${expiryWarning} dia(s).`}
+                    </span>
+                    <span className="home-expiry-hint">🔴 lembrar depois</span>
+                </div>
+            )}
 
             {/* Header */}
             <header className="home-header">

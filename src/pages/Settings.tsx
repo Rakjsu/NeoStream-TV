@@ -6,14 +6,46 @@ import { playlistService, type PlaylistEntry } from '../services/playlistService
 import { epgOffset } from '../services/epgService';
 import { bootLastChannel } from '../services/liveExtras';
 import { qualityCap, QUALITY_CAPS, type QualityCap } from '../services/playerPrefs';
+import { playbackPrefs, BUFFER_PROFILES, BUFFER_LABELS, type BufferProfile } from '../services/playbackPrefs';
+import { a11yService, TEXT_SCALES, type ContrastMode, type TextScale } from '../services/a11yService';
+import { accountService, EXPIRY_WARN_DAYS } from '../services/accountService';
+import { parentalService } from '../services/parentalService';
+import { configSnapshot } from '../services/configSnapshot';
+import { DATA_GROUPS, DATA_GROUP_IDS, resetGroup, groupSizeKb } from '../services/dataReset';
+import { PinPrompt } from '../components/PinPrompt';
+import { RemoteGuide } from '../components/RemoteGuide';
+import { DiagnosticsOverlay, QrBackupOverlay } from '../components/SystemOverlays';
 import { WrappedOverlay } from '../components/WrappedOverlay';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
 import './Settings.css';
 
-type FocusZone = 'bg' | 'accent' | 'lang' | 'playlists' | 'epgoffset' | 'bootlast' | 'qualitycap' | 'wrapped' | 'input' | 'save' | 'clear';
+type FocusZone =
+    | 'bg' | 'accent' | 'lang' | 'playlists'
+    | 'epgoffset' | 'bootlast'
+    | 'qualitycap' | 'autonext' | 'resume' | 'buffer'
+    | 'contrast' | 'textscale' | 'motion'
+    | 'account'
+    | 'parentalpin' | 'gatesettings' | 'gatekids'
+    | 'guide' | 'diag' | 'qrbackup' | 'snapshot' | 'reset'
+    | 'wrapped' | 'input' | 'save' | 'clear';
 
-const ZONES: FocusZone[] = ['bg', 'accent', 'lang', 'playlists', 'epgoffset', 'bootlast', 'qualitycap', 'wrapped', 'input', 'save', 'clear'];
+// A ORDEM aqui é a navegação vertical da página inteira
+const ZONES: FocusZone[] = [
+    'bg', 'accent', 'lang', 'playlists',
+    'epgoffset', 'bootlast',
+    'qualitycap', 'autonext', 'resume', 'buffer',
+    'contrast', 'textscale', 'motion',
+    'account',
+    'parentalpin', 'gatesettings', 'gatekids',
+    'guide', 'diag', 'qrbackup', 'snapshot', 'reset',
+    'wrapped', 'input', 'save', 'clear',
+];
+
+function formatDate(epochMs: number | null): string {
+    if (!epochMs) return '—';
+    return new Date(epochMs).toLocaleDateString('pt-BR');
+}
 
 type LanguageId = 'pt' | 'en' | 'es';
 const LANGUAGES: Array<{ id: LanguageId; label: string }> = [
@@ -34,7 +66,7 @@ function formatHours(seconds: number): string {
 }
 
 export function Settings({ onAddPlaylist }: SettingsProps) {
-    const { focusZone: appFocusZone } = useFocusZone();
+    const { focusZone: appFocusZone, setFocusZone: setAppFocusZone } = useFocusZone();
     const [tmdbKey, setTmdbKey] = useState(() => storage.getTmdbApiKey());
     const [savedKey, setSavedKey] = useState(() => storage.getTmdbApiKey());
     const [message, setMessage] = useState('');
@@ -58,15 +90,51 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     // Teto global de qualidade (item 47): rede fraca não aguenta 1080p
     const [cap, setCap] = useState<QualityCap>(() => qualityCap.get());
 
+    // Reprodução (item 66)
+    const [playback, setPlayback] = useState(() => playbackPrefs.get());
+    // Acessibilidade (itens 58, 64, 65)
+    const [contrast, setContrast] = useState<ContrastMode>(() => a11yService.getContrast());
+    const [textScale, setTextScale] = useState<TextScale>(() => a11yService.getTextScale());
+    const [reduceMotion, setReduceMotion] = useState(() => a11yService.getReduceMotion());
+    // Minha conta (item 56)
+    const [account] = useState(() => accountService.get());
+    // Controle parental (item 55)
+    const [pinSet, setPinSet] = useState(() => parentalService.isSet());
+    const [gates, setGates] = useState(() => parentalService.getGates());
+    // 'entry'  = trava de ENTRADA da página (cancelar NÃO destranca)
+    // 'unlock' = destravar as opções parentais (cancelar só fecha o diálogo)
+    // 'define' = criar um PIN novo
+    const [pinMode, setPinMode] = useState<'none' | 'entry' | 'unlock' | 'define'>(
+        () => (parentalService.requires('settings') ? 'entry' : 'none')
+    );
+    // O que fazer depois de um 'unlock' bem-sucedido
+    const [afterUnlock, setAfterUnlock] = useState<null | { kind: 'removepin' } | { kind: 'gate'; gate: 'settings' | 'leaveKids'; value: boolean }>(null);
+    // Mexer nas travas exige ter provado o PIN nesta visita. Sem PIN definido,
+    // não há o que destravar.
+    const [parentalUnlocked, setParentalUnlocked] = useState(() => !parentalService.isSet());
+    // Sistema (itens 57, 59, 61, 62, 63)
+    const [showGuide, setShowGuide] = useState(false);
+    const [showDiag, setShowDiag] = useState(false);
+    const [showQr, setShowQr] = useState(false);
+    const [snapshots] = useState(() => configSnapshot.list());
+    const [snapshotIndex, setSnapshotIndex] = useState(0);
+    const [resetIndex, setResetIndex] = useState(0);
+    // Apagar dado é irreversível: o primeiro OK só arma, o segundo executa
+    const [resetArmed, setResetArmed] = useState(false);
+
     // Estatísticas (lidas 1x ao abrir a página) + Wrapped
     const [usage] = useState<UsageSummary>(() => usageStats.summary());
     const [showWrapped, setShowWrapped] = useState(false);
 
     // Zonas ativas: 'wrapped' só existe quando há estatística (o botão só
     // renderiza nesse caso — zona invisível virava parada morta do D-pad)
-    const zones: FocusZone[] = usage.totalSeconds > 0
-        ? ZONES
-        : ZONES.filter(zone => zone !== 'wrapped');
+    // Zona sem elemento na tela vira parada morta do D-pad: 'wrapped' só
+    // existe com estatística e 'account' só com dados de conta salvos
+    const zones: FocusZone[] = ZONES.filter(zone => {
+        if (zone === 'wrapped') return usage.totalSeconds > 0;
+        if (zone === 'account') return !!account;
+        return true;
+    });
 
     // Foco por zona + índice horizontal dentro da zona
     const [focusZone, setFocusZone] = useState<FocusZone>('bg');
@@ -139,9 +207,11 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     const safePlaylistIndex = Math.min(playlistIndex, playlistSlots - 1);
 
     useTVNavigation({
-        enabled: appFocusZone === 'content' && !editing && !showWrapped,
+        enabled: appFocusZone === 'content' && !editing && !showWrapped
+            && pinMode === 'none' && !showGuide && !showDiag && !showQr,
         onNavigate: (direction) => {
             if (direction === 'up' || direction === 'down') {
+                setResetArmed(false); // sair da linha cancela a confirmação
                 setFocusZone((current) => {
                     const idx = Math.max(0, zones.indexOf(current));
                     const next = direction === 'up' ? Math.max(0, idx - 1) : Math.min(zones.length - 1, idx + 1);
@@ -168,6 +238,63 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 const next = direction === 'right';
                 bootLastChannel.set(next);
                 setBootLast(next);
+            } else if (focusZone === 'autonext') {
+                const next = direction === 'right';
+                playbackPrefs.set({ autoNextEpisode: next });
+                setPlayback(prev => ({ ...prev, autoNextEpisode: next }));
+            } else if (focusZone === 'resume') {
+                const next = direction === 'right';
+                playbackPrefs.set({ resume: next });
+                setPlayback(prev => ({ ...prev, resume: next }));
+            } else if (focusZone === 'buffer') {
+                setPlayback(prev => {
+                    const idx = Math.max(0, BUFFER_PROFILES.indexOf(prev.bufferProfile));
+                    const nextIdx = direction === 'left'
+                        ? Math.max(0, idx - 1)
+                        : Math.min(BUFFER_PROFILES.length - 1, idx + 1);
+                    const bufferProfile: BufferProfile = BUFFER_PROFILES[nextIdx];
+                    playbackPrefs.set({ bufferProfile });
+                    return { ...prev, bufferProfile };
+                });
+            } else if (focusZone === 'contrast') {
+                const next: ContrastMode = direction === 'right' ? 'alto' : 'normal';
+                a11yService.setContrast(next);
+                setContrast(next);
+            } else if (focusZone === 'textscale') {
+                setTextScale(prev => {
+                    const idx = Math.max(0, TEXT_SCALES.indexOf(prev));
+                    const nextIdx = direction === 'left'
+                        ? Math.max(0, idx - 1)
+                        : Math.min(TEXT_SCALES.length - 1, idx + 1);
+                    const next = TEXT_SCALES[nextIdx];
+                    a11yService.setTextScale(next);
+                    return next;
+                });
+            } else if (focusZone === 'motion') {
+                const next = direction === 'right';
+                a11yService.setReduceMotion(next);
+                setReduceMotion(next);
+            } else if (focusZone === 'gatesettings' || focusZone === 'gatekids') {
+                const gate = focusZone === 'gatesettings' ? 'settings' as const : 'leaveKids' as const;
+                const value = direction === 'right';
+                if (!parentalUnlocked) {
+                    // Desligar a trava sem provar o PIN esvaziava o controle
+                    // parental inteiro em duas teclas
+                    setAfterUnlock({ kind: 'gate', gate, value });
+                    setPinMode('unlock');
+                    return;
+                }
+                parentalService.setGates({ [gate]: value });
+                setGates(prev => ({ ...prev, [gate]: value }));
+            } else if (focusZone === 'snapshot') {
+                setSnapshotIndex(prev => direction === 'left'
+                    ? Math.max(0, prev - 1)
+                    : Math.min(Math.max(0, snapshots.length - 1), prev + 1));
+            } else if (focusZone === 'reset') {
+                setResetArmed(false); // trocou de grupo: desarma
+                setResetIndex(prev => direction === 'left'
+                    ? Math.max(0, prev - 1)
+                    : Math.min(DATA_GROUP_IDS.length - 1, prev + 1));
             } else if (focusZone === 'qualitycap') {
                 setCap(prev => {
                     const idx = Math.max(0, QUALITY_CAPS.indexOf(prev));
@@ -211,6 +338,40 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 setCap(0);
                 setMessage('Teto de qualidade removido. Vale no próximo play.');
             }
+            else if (focusZone === 'parentalpin') {
+                if (pinSet) {
+                    // Remover o PIN exige o próprio PIN
+                    setAfterUnlock({ kind: 'removepin' });
+                    setPinMode('unlock');
+                } else {
+                    setPinMode('define');
+                }
+            }
+            else if (focusZone === 'guide') setShowGuide(true);
+            else if (focusZone === 'diag') setShowDiag(true);
+            else if (focusZone === 'qrbackup') setShowQr(true);
+            else if (focusZone === 'snapshot') {
+                if (snapshots.length === 0) {
+                    setMessage('Nenhum ponto de restauração ainda.');
+                } else if (configSnapshot.restore(snapshotIndex)) {
+                    themeService.apply();
+                    a11yService.apply();
+                    setMessage('Preferências restauradas. Recarregando…');
+                    setTimeout(() => window.location.reload(), 900);
+                }
+            }
+            else if (focusZone === 'reset') {
+                const group = DATA_GROUP_IDS[resetIndex];
+                if (!resetArmed) {
+                    setResetArmed(true);
+                    setMessage(`OK de novo apaga: ${DATA_GROUPS[group].label}.`);
+                } else {
+                    const result = resetGroup(group);
+                    setResetArmed(false);
+                    setMessage(`${result.removed} registro(s) apagados. Recarregando…`);
+                    setTimeout(() => window.location.reload(), 900);
+                }
+            }
             else if (focusZone === 'wrapped') setShowWrapped(true);
             else if (focusZone === 'input') {
                 setEditing(true);
@@ -218,6 +379,10 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             }
             else if (focusZone === 'save') saveKey();
             else if (focusZone === 'clear') clearKey();
+        },
+        onBack: () => {
+            setResetArmed(false); // confirmação pendente não pode sobreviver à saída
+            setAppFocusZone('sidebar');
         },
         onAction: (action) => {
             // 🔴 remove a playlist focada (não-ativa)
@@ -238,6 +403,21 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             epgoffset: 'sec-tv',
             bootlast: 'sec-tv',
             qualitycap: 'sec-player',
+            autonext: 'sec-player',
+            resume: 'sec-player',
+            buffer: 'sec-player',
+            contrast: 'sec-a11y',
+            textscale: 'sec-a11y',
+            motion: 'sec-a11y',
+            account: 'sec-conta',
+            parentalpin: 'sec-parental',
+            gatesettings: 'sec-parental',
+            gatekids: 'sec-parental',
+            guide: 'sec-sistema',
+            diag: 'sec-sistema',
+            qrbackup: 'sec-sistema',
+            snapshot: 'sec-sistema',
+            reset: 'sec-sistema',
             wrapped: 'sec-uso',
             input: 'sec-tmdb',
             save: 'sec-tmdb',
@@ -247,6 +427,90 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     }, [focusZone]);
 
     const hasSavedKey = savedKey.length > 0;
+    const expiryDays = accountService.daysUntilExpiry(account);
+
+    // Porta de entrada: com PIN parental exigido, a página não renderiza nada
+    // antes de o PIN ser aceito (item 55). Cancelar devolve o foco à sidebar —
+    // a Settings não tinha caminho de volta por D-pad nenhum.
+    if (pinMode === 'entry') {
+        return (
+            <PinPrompt
+                title="Configurações protegidas"
+                hint="Digite o PIN parental para continuar."
+                // Cancelar devolve o foco pra sidebar mas a trava CONTINUA na
+                // tela: sem isto os dois receberiam a mesma tecla
+                enabled={appFocusZone === 'content'}
+                onSubmit={async (pin) => {
+                    const ok = await parentalService.verify(pin);
+                    if (!ok) return false;
+                    setParentalUnlocked(true);
+                    setPinMode('none');
+                    return true;
+                }}
+                onCancel={() => {
+                    // NÃO destranca: só devolve o foco pra sidebar. Fazer
+                    // setPinMode('none') aqui abria a página inteira com um
+                    // toque em Voltar — o gate virava decoração.
+                    setAppFocusZone('sidebar');
+                }}
+            />
+        );
+    }
+
+    if (pinMode === 'unlock') {
+        return (
+            <PinPrompt
+                title="Confirmar com o PIN"
+                hint={afterUnlock?.kind === 'removepin'
+                    ? 'Digite o PIN atual para removê-lo.'
+                    : 'Digite o PIN para mudar as travas do controle parental.'}
+                onSubmit={async (pin) => {
+                    const ok = await parentalService.verify(pin);
+                    if (!ok) return false;
+                    setParentalUnlocked(true);
+                    const action = afterUnlock;
+                    setAfterUnlock(null);
+                    setPinMode('none');
+                    if (action?.kind === 'removepin') {
+                        parentalService.clear();
+                        setPinSet(false);
+                        setParentalUnlocked(true);
+                        setMessage('PIN parental removido.');
+                    } else if (action?.kind === 'gate') {
+                        parentalService.setGates({ [action.gate]: action.value });
+                        setGates(prev => ({ ...prev, [action.gate]: action.value }));
+                    }
+                    return true;
+                }}
+                onCancel={() => {
+                    // Aqui a página já está destravada: cancelar só descarta a
+                    // ação pendente, sem mexer no gate de entrada
+                    setAfterUnlock(null);
+                    setPinMode('none');
+                }}
+            />
+        );
+    }
+
+    if (pinMode === 'define') {
+        return (
+            <PinPrompt
+                title="Criar PIN parental"
+                hint="4 dígitos. Vale pra abrir as Configurações e pra sair do modo Kids."
+                onSubmit={async (pin) => {
+                    const ok = await parentalService.set(pin);
+                    if (!ok) return false;
+                    setPinSet(true);
+                    // Quem acabou de criar o PIN já o provou
+                    setParentalUnlocked(true);
+                    setPinMode('none');
+                    setMessage('PIN parental criado.');
+                    return true;
+                }}
+                onCancel={() => setPinMode('none')}
+            />
+        );
+    }
 
     return (
         <div className="settings-page">
@@ -374,6 +638,188 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     <p className="settings-muted">
                         Vale pra rede fraca: o player nunca sobe além disso. Aplica no próximo play.
                     </p>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Emendar o próximo episódio</span>
+                        <span className={`settings-value ${focusZone === 'autonext' ? 'focused' : ''}`}>
+                            {playback.autoNextEpisode ? 'Ligado' : 'Desligado'}
+                        </span>
+                    </div>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Retomar de onde parou</span>
+                        <span className={`settings-value ${focusZone === 'resume' ? 'focused' : ''}`}>
+                            {playback.resume ? 'Ligado' : 'Desligado'}
+                        </span>
+                    </div>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Buffer (←→ muda)</span>
+                        <span className={`settings-value ${focusZone === 'buffer' ? 'focused' : ''}`}>
+                            {BUFFER_LABELS[playback.bufferProfile]}
+                        </span>
+                    </div>
+                    <p className="settings-muted">
+                        Buffer maior aguenta rede instável e gasta mais memória. Aplica no próximo play.
+                    </p>
+                </section>
+
+                {/* Acessibilidade (itens 58, 64, 65) */}
+                <section id="sec-a11y" className="settings-section">
+                    <h2 className="settings-section-title">♿ Acessibilidade</h2>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Alto contraste</span>
+                        <span className={`settings-value ${focusZone === 'contrast' ? 'focused' : ''}`}>
+                            {contrast === 'alto' ? 'Ligado' : 'Desligado'}
+                        </span>
+                    </div>
+                    <p className="settings-muted">
+                        Fundo preto, texto mais claro e anel de foco amarelo bem mais grosso.
+                    </p>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Tamanho da interface (←→ muda)</span>
+                        <span className={`settings-value ${focusZone === 'textscale' ? 'focused' : ''}`}>
+                            {textScale}%
+                        </span>
+                    </div>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Reduzir animações</span>
+                        <span className={`settings-value ${focusZone === 'motion' ? 'focused' : ''}`}>
+                            {reduceMotion ? 'Ligado' : 'Desligado'}
+                        </span>
+                    </div>
+                    <p className="settings-muted">
+                        Deixa a navegação mais responsiva em TVs antigas.
+                    </p>
+                </section>
+
+                {/* Minha conta (item 56) */}
+                <section id="sec-conta" className="settings-section">
+                    <h2 className="settings-section-title">👤 Minha conta</h2>
+                    {!account ? (
+                        <p className="settings-muted">
+                            Os dados da conta aparecem depois do próximo login.
+                        </p>
+                    ) : (
+                        <>
+                            <div className="settings-row">
+                                <span className="settings-label">Usuário</span>
+                                <span className={`settings-value ${focusZone === 'account' ? 'focused' : ''}`}>
+                                    {account.username || '—'}
+                                </span>
+                            </div>
+                            <div className="settings-row">
+                                <span className="settings-label">Situação</span>
+                                <span className="settings-value">
+                                    {account.status || '—'}{account.isTrial ? ' (teste)' : ''}
+                                </span>
+                            </div>
+                            <div className="settings-row">
+                                <span className="settings-label">Validade</span>
+                                <span className="settings-value">
+                                    {account.expiresAt ? formatDate(account.expiresAt) : 'sem data'}
+                                    {expiryDays != null && expiryDays >= 0 && ` · ${expiryDays} dia(s)`}
+                                    {expiryDays != null && expiryDays < 0 && ' · vencida'}
+                                </span>
+                            </div>
+                            <div className="settings-row">
+                                <span className="settings-label">Conexões</span>
+                                <span className="settings-value">
+                                    {account.activeConnections ?? '?'} de {account.maxConnections ?? '?'} em uso
+                                </span>
+                            </div>
+                            <div className="settings-row">
+                                <span className="settings-label">Cliente desde</span>
+                                <span className="settings-value">{formatDate(account.createdAt)}</span>
+                            </div>
+                            <p className="settings-muted">
+                                Lido do provedor no último login — atualiza sozinho ao entrar de novo.
+                                {expiryDays != null && expiryDays <= EXPIRY_WARN_DAYS && expiryDays >= 0 &&
+                                    ' A Home avisa quando estiver perto de vencer.'}
+                            </p>
+                        </>
+                    )}
+                </section>
+
+                {/* Controle parental (item 55) */}
+                <section id="sec-parental" className="settings-section">
+                    <h2 className="settings-section-title">🔒 Controle parental</h2>
+                    <div className="settings-row">
+                        <span className="settings-label">
+                            PIN de 4 dígitos (OK {pinSet ? 'remove' : 'define'})
+                        </span>
+                        <span className={`settings-value ${focusZone === 'parentalpin' ? 'focused' : ''}`}>
+                            {pinSet ? 'Definido' : 'Não definido'}
+                        </span>
+                    </div>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Pedir PIN pra abrir Configurações</span>
+                        <span className={`settings-value ${focusZone === 'gatesettings' ? 'focused' : ''} ${pinSet ? '' : 'settings-value-off'}`}>
+                            {gates.settings ? 'Ligado' : 'Desligado'}
+                        </span>
+                    </div>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Pedir PIN pra sair de um perfil Kids</span>
+                        <span className={`settings-value ${focusZone === 'gatekids' ? 'focused' : ''} ${pinSet ? '' : 'settings-value-off'}`}>
+                            {gates.leaveKids ? 'Ligado' : 'Desligado'}
+                        </span>
+                    </div>
+                    <p className="settings-muted">
+                        {pinSet
+                            ? 'Sem o PIN não dá pra sair do modo Kids nem mexer aqui.'
+                            : 'Enquanto não houver PIN, estas travas ficam inativas — o modo Kids é contornável em dois cliques.'}
+                    </p>
+                </section>
+
+                {/* Sistema (itens 57, 59, 61, 62, 63) */}
+                <section id="sec-sistema" className="settings-section">
+                    <h2 className="settings-section-title">🛠 Sistema</h2>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Guia do controle remoto</span>
+                        <span className={`settings-value ${focusZone === 'guide' ? 'focused' : ''}`}>OK abre</span>
+                    </div>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Diagnóstico e testes de rede</span>
+                        <span className={`settings-value ${focusZone === 'diag' ? 'focused' : ''}`}>OK abre</span>
+                    </div>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Backup das preferências por QR</span>
+                        <span className={`settings-value ${focusZone === 'qrbackup' ? 'focused' : ''}`}>OK abre</span>
+                    </div>
+
+                    <div className="settings-row">
+                        <span className="settings-label">
+                            Ponto de restauração {snapshots.length > 0 ? '(←→ escolhe, OK restaura)' : ''}
+                        </span>
+                        <span className={`settings-value ${focusZone === 'snapshot' ? 'focused' : ''}`}>
+                            {snapshots.length === 0
+                                ? 'nenhum ainda'
+                                : `${snapshotIndex + 1}/${snapshots.length} · ${formatDate(snapshots[snapshotIndex]?.at ?? null)}`}
+                        </span>
+                    </div>
+                    <p className="settings-muted">
+                        Um retrato das preferências é guardado por semana. Restaurar recarrega o app.
+                    </p>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Apagar dados (←→ escolhe o grupo)</span>
+                        <span className={`settings-value ${focusZone === 'reset' ? 'focused' : ''} ${resetArmed ? 'settings-value-danger' : ''}`}>
+                            {DATA_GROUPS[DATA_GROUP_IDS[resetIndex]].label} · {groupSizeKb(DATA_GROUP_IDS[resetIndex])} KB
+                        </span>
+                    </div>
+                    <p className="settings-muted">
+                        {resetArmed
+                            ? '⚠️ Pressione OK de novo para apagar. Sair da linha cancela.'
+                            : DATA_GROUPS[DATA_GROUP_IDS[resetIndex]].description}
+                    </p>
                 </section>
 
                 {/* Seu uso */}
@@ -483,6 +929,15 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             {showWrapped && (
                 <WrappedOverlay onClose={() => setShowWrapped(false)} />
             )}
+
+            {showGuide && <RemoteGuide onClose={() => setShowGuide(false)} />}
+            {showDiag && (
+                <DiagnosticsOverlay
+                    onClose={() => setShowDiag(false)}
+                    speedTestStreamId={storage.getLastChannel()}
+                />
+            )}
+            {showQr && <QrBackupOverlay onClose={() => setShowQr(false)} />}
         </div>
     );
 }

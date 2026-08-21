@@ -1,10 +1,13 @@
+import { scopedKey } from './profileScope';
 // Extras da TV ao vivo (port do NeoStream desktop, tudo localStorage):
 // - zapHistory: MRU de canais zapeados (chips "Recentes")
 // - hiddenChannels: canais ocultos pelo usuário
 // - aspectPrefs: proporção/zoom lembrada por conteúdo
 // - liveToggles: filtros persistidos da página (só-EPG, agrupar variantes)
 
-const ZAP_KEY = 'neostream_zap_history';
+const ZAP_KEY_BASE = 'neostream_zap_history';
+// Histórico de zapping é por perfil (item 54)
+const ZAP_KEY = () => scopedKey(ZAP_KEY_BASE);
 const HIDDEN_KEY = 'neostream_hidden_channels';
 const ASPECT_KEY = 'neostream_aspect_prefs';
 const ONLY_EPG_KEY = 'neostream_live_only_epg';
@@ -42,12 +45,12 @@ function writeRaw(key: string, value: string | null): void {
 
 export const zapHistory = {
     get(): number[] {
-        return readJson<number[]>(ZAP_KEY, []);
+        return readJson<number[]>(ZAP_KEY(), []);
     },
     push(streamId: number): void {
         const list = this.get().filter(id => id !== streamId);
         list.unshift(streamId);
-        writeJson(ZAP_KEY, list.slice(0, ZAP_MAX));
+        writeJson(ZAP_KEY(), list.slice(0, ZAP_MAX));
     },
 };
 

@@ -16,12 +16,20 @@ import { LanguageSelection } from './pages/LanguageSelection';
 import { Sidebar } from './components/Sidebar';
 import { ProfileManager } from './components/ProfileManager';
 import { GlobalSearch } from './components/GlobalSearch';
+import { SetupWizard } from './components/SetupWizard';
+import { setupWizard } from './services/wizardState';
 import { playlistService } from './services/playlistService';
+import { profileService } from './services/profileService';
+import { migrateScopeOnce } from './services/profileScope';
+import { accountService } from './services/accountService';
 import { bootLastChannel } from './services/liveExtras';
 import { reminderService, type Reminder } from './services/reminderService';
 import { FocusContext, type FocusZone } from './contexts/FocusContext';
 import { useTVNavigation } from './hooks/useTVNavigation';
 import { themeService } from './services/themeService';
+import { a11yService } from './services/a11yService';
+import { configSnapshot } from './services/configSnapshot';
+import { installErrorCapture } from './services/diagnostics';
 import './index.css';
 import './App.css';
 import './components/LivePanels.css';
@@ -135,11 +143,25 @@ function App() {
   // Lembretes vivem no App: disparam em QUALQUER página (na LiveTV só,
   // o aviso morria ao sair da página e o timer era recriado a cada volta)
   const [activeReminder, setActiveReminder] = useState<Reminder | null>(null);
+  // Assistente de primeira configuração (item 60): só depois do primeiro login
+  const [showWizard, setShowWizard] = useState(false);
+
 
   useEffect(() => {
     registerTizenKeys();
+    // Antes só o ProfileManager inicializava: até o usuário abrir o
+    // gerenciador não havia perfil ativo e o gate Kids ficava inerte
+    profileService.initialize();
+    // Precisa rodar logo depois do initialize e ANTES de qualquer leitura de
+    // dado escopado (checkAuth já lê o último canal)
+    migrateScopeOnce();
     playlistService.migrate();
     themeService.apply();
+    a11yService.apply();
+    // Sem console aberto numa TV, o anel de erros é a única testemunha
+    installErrorCapture();
+    // Retrato semanal das preferências (item 62)
+    configSnapshot.maybeTake();
     reminderService.init();
     return reminderService.subscribe(reminder => setActiveReminder(reminder));
   }, []);
@@ -151,6 +173,19 @@ function App() {
     return () => clearTimeout(timeout);
   }, [activeReminder]);
 
+  // O wizard cobre a tela inteira: sem mudar a zona de foco, a página por
+  // baixo (que só testa `=== 'content'`) continuaria recebendo as MESMAS
+  // teclas e cada OK dispararia duas ações
+  const openWizard = useCallback(() => {
+    setShowWizard(true);
+    setFocusZone('overlay');
+  }, []);
+
+  const closeWizard = useCallback(() => {
+    setShowWizard(false);
+    setFocusZone('content');
+  }, []);
+
   const checkAuth = useCallback(async () => {
     if (!storage.hasSettings()) {
       setAuthState('languageSelection');
@@ -161,13 +196,16 @@ function App() {
       const credentials = storage.getCredentials();
       if (credentials) {
         // Try to authenticate with saved credentials
-        await api.authenticate(credentials.url, credentials.username, credentials.password);
+        // O payload traz validade, conexões e status da conta — era descartado
+        const auth = await api.authenticate(credentials.url, credentials.username, credentials.password);
+        accountService.save(auth);
         // "Ligar e assistir": abre direto na TV ao vivo tocando o último canal
         if (bootLastChannel.get() && storage.getLastChannel()) {
           sessionStorage.setItem('neostream_autoplay_last', '1');
           setCurrentPage('live');
         }
         setAuthState('authenticated');
+        if (!setupWizard.isDone()) openWizard();
       } else {
         // No credentials saved - show welcome screen
         setAuthState('welcome');
@@ -185,7 +223,7 @@ function App() {
         setAuthState('offline');
       }
     }
-  }, []);
+  }, [openWizard]);
 
   useEffect(() => {
     void Promise.resolve().then(checkAuth);
@@ -198,6 +236,9 @@ function App() {
   const handleLoginSuccess = () => {
     setAddingPlaylist(false);
     setAuthState('authenticated');
+    // Primeira vez: fecha o fluxo de configuração (tema, tamanho, TMDB).
+    // Ao ADICIONAR uma playlist extra o assistente não volta.
+    if (!setupWizard.isDone() && !addingPlaylist) openWizard();
   };
 
   const handleLogout = () => {
@@ -299,6 +340,8 @@ function App() {
           />
         )}
 
+        {showWizard && <SetupWizard onFinish={closeWizard} />}
+
         {showGlobalSearch && (
           <GlobalSearch
             onClose={() => {
@@ -311,7 +354,14 @@ function App() {
         {showProfileManager && (
           <ProfileManager
             onClose={() => setShowProfileManager(false)}
-            onProfileSwitched={() => setProfileTick(t => t + 1)}
+            onProfileSwitched={() => {
+              // Timers e toast de lembrete são estado EM MEMÓRIA amarrado à
+              // chave do perfil anterior: sem re-armar, o aviso de um perfil
+              // aparece dentro do outro
+              reminderService.reset();
+              setActiveReminder(null);
+              setProfileTick(t => t + 1);
+            }}
           />
         )}
       </div>

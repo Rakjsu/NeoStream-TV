@@ -30,3 +30,113 @@ html[data-bg="amoled"] .mylist-backdrop,
 html[data-bg="amoled"] .favorites-backdrop {
     display: none !important;
 }
+
+/* ===================================================================
+   Acessibilidade (itens 58, 64, 65) — a11yService seta os atributos
+   =================================================================== */
+
+/* --- Alto contraste (item 58) ---
+   A 3 m, com baixa visão, o problema não é a cor: é texto cinza sobre fundo
+   escuro e um anel de foco fino demais pra saber ONDE se está. */
+html[data-contrast="alto"] body {
+    background: #000;
+}
+
+html[data-contrast="alto"] .app,
+html[data-contrast="alto"] .app-content {
+    background: #000;
+}
+
+/* Cada página tem gradiente próprio e cobre o body inteiro: pintar só o body
+   deixava o alto contraste sem efeito nenhum na tela. Mesma lista que o AMOLED
+   já usa acima. */
+html[data-contrast="alto"] .home-page,
+html[data-contrast="alto"] .livetv-page,
+html[data-contrast="alto"] .movies-page,
+html[data-contrast="alto"] .series-page,
+html[data-contrast="alto"] .mylist-page,
+html[data-contrast="alto"] .favorites-page,
+html[data-contrast="alto"] .settings-page,
+html[data-contrast="alto"] .livetv-loading-container {
+    background: #000;
+}
+
+html[data-contrast="alto"] .home-bg-decoration,
+html[data-contrast="alto"] .livetv-bg-gradient,
+html[data-contrast="alto"] .livetv-bg-glow,
+html[data-contrast="alto"] .movies-bg-gradient,
+html[data-contrast="alto"] .series-bg-gradient,
+html[data-contrast="alto"] .mylist-backdrop,
+html[data-contrast="alto"] .favorites-backdrop {
+    display: none;
+}
+
+/* Texto secundário do app inteiro sobe pra branco quase puro */
+html[data-contrast="alto"] .settings-muted,
+html[data-contrast="alto"] .settings-label,
+html[data-contrast="alto"] .agenda-time,
+html[data-contrast="alto"] .zap-epg-now,
+html[data-contrast="alto"] .pin-hint,
+html[data-contrast="alto"] .pin-footer,
+html[data-contrast="alto"] .mini-epg-next {
+    color: #f2f2f2;
+}
+
+/* Anel de foco muito mais grosso e sem depender de cor de fundo.
+   As duas convenções de foco do app (.focused e .tv-focused) recebem igual. */
+/* !important porque regras de página como `.mylist-page .card.tv-focused` têm
+   especificidade MAIOR que esta e venciam o anel de alto contraste.
+   `.seek-focused` é a terceira convenção de foco do app (barra do player). */
+html[data-contrast="alto"] .focused,
+html[data-contrast="alto"] .tv-focused,
+html[data-contrast="alto"] .seek-focused .progress-bar {
+    outline: 5px solid #ffe600 !important;
+    outline-offset: 3px !important;
+    box-shadow: none !important;
+}
+
+html[data-contrast="alto"] .settings-option.selected,
+html[data-contrast="alto"] .quality-menu-item.selected {
+    border-bottom: 4px solid #ffe600;
+}
+
+/* --- Escala de texto (item 64) ---
+   O app é dimensionado em px (padrão de TV, onde o layout é fixo em 1920x1080),
+   então mudar a font-size do <html> não escalaria nada. `zoom` no body escala
+   layout e tipografia juntos e é suportado pelo Blink desde sempre — inclusive
+   no Chromium 69 do Tizen 5.5. */
+html[data-textscale="115"] {
+    --ns-vh: calc(1vh / 1.15);
+    --ns-vw: calc(1vw / 1.15);
+}
+
+html[data-textscale="115"] body {
+    zoom: 1.15;
+}
+
+html[data-textscale="130"] {
+    --ns-vh: calc(1vh / 1.3);
+    --ns-vw: calc(1vw / 1.3);
+}
+
+html[data-textscale="130"] body {
+    zoom: 1.3;
+}
+
+/* --- Reduzir animações (item 65) ---
+   TVs antigas engasgam em transição de escala; e há quem simplesmente passe
+   mal com movimento. Zerar a duração mantém o estado final de cada regra. */
+html[data-motion="reduzido"] *,
+html[data-motion="reduzido"] *::before,
+html[data-motion="reduzido"] *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+}
+
+/* O foco ainda precisa ser visível sem o "crescer" animado */
+html[data-motion="reduzido"] .focused,
+html[data-motion="reduzido"] .tv-focused {
+    transform: none !important;
+}

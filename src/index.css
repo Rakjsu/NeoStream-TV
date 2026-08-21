@@ -1,6 +1,13 @@
 /* NeoStream TV - Global Styles */
 
 :root {
+  /* Unidade de viewport do app. Com a escala de texto (item 64) o `zoom` no
+     body multiplica TODA medida da subárvore — inclusive 100vh, que passaria a
+     valer mais que a tela e cortaria o rodapé de cada página. Estas variáveis
+     já descontam o zoom, então todo CSS usa `calc(N * var(--ns-vh))`. */
+  --ns-vh: 1vh;
+  --ns-vw: 1vw;
+
   /* Tema: cor de destaque (trocável em Configurações → Aparência).
      O themeService sobrescreve estas vars em runtime. */
   --ns-accent: #a855f7;
@@ -91,7 +98,7 @@ body {
   font-family: var(--font-family);
   background: var(--bg-primary);
   color: var(--text-primary);
-  min-height: 100vh;
+  min-height: calc(100 * var(--ns-vh));
   overflow-x: hidden;
   line-height: 1.5;
 }

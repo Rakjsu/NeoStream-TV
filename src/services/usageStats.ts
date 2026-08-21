@@ -2,7 +2,11 @@
 // sessões agregadas por dia e por conteúdo em localStorage.
 // Registrado pelos players via hook useWatchSession.
 
-const KEY = 'neostream_usage_stats';
+import { scopedKey } from './profileScope';
+
+// Estatística de uso é por perfil (item 54): a retrospectiva do Kids
+// não pode contar as horas de quem assiste no perfil principal
+const KEY = () => scopedKey('neostream_usage_stats');
 const MAX_DAYS = 60;
 const MAX_TOP = 100;
 const MIN_SESSION_SECONDS = 15;
@@ -16,7 +20,7 @@ interface UsageData {
 
 function read(): UsageData {
     try {
-        const parsed = JSON.parse(localStorage.getItem(KEY) || '{}');
+        const parsed = JSON.parse(localStorage.getItem(KEY()) || '{}');
         return { days: parsed.days || {}, top: parsed.top || {} };
     } catch {
         return { days: {}, top: {} };
@@ -25,7 +29,7 @@ function read(): UsageData {
 
 function write(data: UsageData): void {
     try {
-        localStorage.setItem(KEY, JSON.stringify(data));
+        localStorage.setItem(KEY(), JSON.stringify(data));
     } catch {
         // Quota cheia — melhor perder estatística do que quebrar o app
     }
@@ -95,7 +99,7 @@ export const usageStats = {
 
     clear(): void {
         try {
-            localStorage.removeItem(KEY);
+            localStorage.removeItem(KEY());
         } catch {
             // sem drama
         }

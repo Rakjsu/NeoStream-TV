@@ -11,13 +11,13 @@
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    padding-top: 8vh;
+    padding-top: calc(8 * var(--ns-vh));
 }
 
 .gs-panel {
     width: 720px;
-    max-width: 90vw;
-    max-height: 80vh;
+    max-width: calc(90 * var(--ns-vw));
+    max-height: calc(80 * var(--ns-vh));
     display: flex;
     flex-direction: column;
     background: rgba(20, 20, 35, 0.98);

@@ -654,7 +654,7 @@
     left: 0;
     bottom: 0;
     width: 380px;
-    max-width: 40vw;
+    max-width: calc(40 * var(--ns-vw));
     background: rgba(10, 10, 20, 0.92);
     display: flex;
     flex-direction: column;
@@ -824,7 +824,7 @@
     font-size: 16px;
     padding: 10px 18px;
     border-radius: 10px;
-    max-width: 44vw;
+    max-width: calc(44 * var(--ns-vw));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -889,7 +889,7 @@
     color: #fff;
     font-size: 30px;
     font-weight: 700;
-    max-width: 70vw;
+    max-width: calc(70 * var(--ns-vw));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -917,18 +917,18 @@
 }
 
 /* Referência: o padrão do Chromium é ~5% da ALTURA do vídeo (~54px em 1080p,
-   ou 2.8vw num 16:9 cheio). Os valores abaixo partem daí e sobem — a versão
+   ou calc(2.8 * var(--ns-vw)) num 16:9 cheio). Os valores abaixo partem daí e sobem — a versão
    anterior desta regra ficava ABAIXO do padrão e encolhia a legenda. */
 .video-element.sub-normal::cue {
-    font-size: 2.8vw;
+    font-size: calc(2.8 * var(--ns-vw));
 }
 
 .video-element.sub-grande::cue {
-    font-size: 3.6vw;
+    font-size: calc(3.6 * var(--ns-vw));
 }
 
 .video-element.sub-enorme::cue {
-    font-size: 4.6vw;
+    font-size: calc(4.6 * var(--ns-vw));
 }
 
 /* ===== R5: OSD do seek acelerado (item 37) ===== */

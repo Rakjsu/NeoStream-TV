@@ -2,6 +2,7 @@
 import { useEffect, useRef, useCallback, useState, type MutableRefObject, type RefObject } from 'react';
 import Hls from 'hls.js';
 import { qualityCap } from '../services/playerPrefs';
+import { playbackPrefs } from '../services/playbackPrefs';
 
 export interface QualityLevel {
     index: number;
@@ -199,15 +200,20 @@ export function useHls({
             if (Hls.isSupported()) {
                 // Live usa buffers curtos: 90s de back-buffer em RAM derruba
                 // TVs Tizen antigas (OOM). VOD mantém buffer maior pra seek.
+                // O perfil de buffer é escolhido nas Configurações (item 66);
+                // 'equilibrado' reproduz exatamente os valores anteriores
+                const buffers = playbackPrefs.buffers();
+                const seconds = isLive ? buffers.live : buffers.vod;
+                const maxSeconds = isLive ? buffers.maxLive : buffers.maxVod;
                 const hls = new Hls({
                     enableWorker: true,
                     lowLatencyMode: false,
-                    backBufferLength: isLive ? 30 : 90,
-                    maxBufferLength: isLive ? 30 : 60,
-                    maxMaxBufferLength: isLive ? 60 : 600,
+                    backBufferLength: isLive ? seconds : seconds + 30,
+                    maxBufferLength: seconds,
+                    maxMaxBufferLength: maxSeconds,
                     // Teto em BYTES além dos segundos: stream 4K de bitrate
                     // alto estourava a RAM de TVs de 1GB só com o buffer
-                    maxBufferSize: isLive ? 30 * 1000 * 1000 : 60 * 1000 * 1000,
+                    maxBufferSize: seconds * 1000 * 1000,
                     startLevel: -1, // Auto quality selection
                 });
 

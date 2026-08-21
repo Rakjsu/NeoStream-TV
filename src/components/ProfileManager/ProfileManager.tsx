@@ -4,6 +4,8 @@ import { profileService } from '../../services/profileService';
 import type { Profile } from '../../types/profile';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
 import './ProfileManager.css';
+import { parentalService } from '../../services/parentalService';
+import { PinPrompt } from '../PinPrompt';
 
 interface ProfileManagerProps {
     onClose: () => void;
@@ -37,6 +39,8 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
 
     // PIN states
     const [pendingProfile, setPendingProfile] = useState<Profile | null>(null);
+    // Perfil que só entra depois do PIN PARENTAL (saída do modo Kids, item 55)
+    const [parentalTarget, setParentalTarget] = useState<Profile | null>(null);
     const [pinInput, setPinInput] = useState('');
     const [pinError, setPinError] = useState('');
 
@@ -50,6 +54,34 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         setProfiles(profileService.getAllProfiles());
         setActiveProfile(profileService.getActiveProfile());
     }, []);
+
+    const commitSwitch = useCallback((profile: Profile) => {
+        profileService.setActiveProfile(profile.id);
+        refreshProfiles();
+        onProfileSwitched?.();
+        onClose();
+    }, [refreshProfiles, onProfileSwitched, onClose]);
+
+    /**
+     * Caminho ÚNICO de troca de perfil. Havia dois (tecla OK e clique no card)
+     * com a mesma lógica duplicada — e a trava do modo Kids precisa valer nos
+     * dois, senão sair do Kids por clique burlava o controle parental.
+     */
+    const requestSwitch = useCallback((profile: Profile) => {
+        const leavingKids = !!activeProfile?.isKids && !profile.isKids;
+        if (leavingKids && parentalService.requires('leaveKids')) {
+            setParentalTarget(profile);
+            return;
+        }
+        if (profile.pin) {
+            setPendingProfile(profile);
+            setPinInput('');
+            setPinError('');
+            setMode('pin-verify');
+            return;
+        }
+        commitSwitch(profile);
+    }, [activeProfile, commitSwitch]);
 
     // Load profiles
     useEffect(() => {
@@ -195,20 +227,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                         startEdit(profile);
                     }
                 } else {
-                    // Non-active profile - switch to it
-                    if (profile.pin) {
-                        // Has PIN - verify first
-                        setPendingProfile(profile);
-                        setPinInput('');
-                        setPinError('');
-                        setMode('pin-verify');
-                    } else {
-                        // No PIN - activate directly
-                        profileService.setActiveProfile(profile.id);
-                        refreshProfiles();
-                        onProfileSwitched?.();
-                        onClose();
-                    }
+                    requestSwitch(profile);
                 }
             } else {
                 // Add new profile
@@ -249,7 +268,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                 }
             }
         }
-    }, [mode, closeButtonFocused, focusedIndex, profiles, activeProfile, onClose, onProfileSwitched, editFocusZone, buttonFocusIndex, avatarFocusIndex, startEdit, refreshProfiles, handleCreateProfile, handleEditProfile]);
+    }, [mode, closeButtonFocused, focusedIndex, profiles, activeProfile, onClose, editFocusZone, buttonFocusIndex, avatarFocusIndex, startEdit, handleCreateProfile, handleEditProfile, requestSwitch]);
 
     const handleBack = useCallback(() => {
         if (mode === 'list') {
@@ -266,7 +285,9 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         onNavigate: handleNavigate,
         onEnter: handleEnter,
         onBack: handleBack,
-        enabled: true
+        // Com o PIN parental na tela, o OK aqui embaixo trocava o perfil
+        // focado por trás do diálogo
+        enabled: !parentalTarget,
     });
 
     // Handle PIN verification
@@ -350,18 +371,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                                             startEdit(profile);
                                         }
                                     } else {
-                                        // Non-active - switch profile
-                                        if (profile.pin) {
-                                            setPendingProfile(profile);
-                                            setPinInput('');
-                                            setPinError('');
-                                            setMode('pin-verify');
-                                        } else {
-                                            profileService.setActiveProfile(profile.id);
-                                            refreshProfiles();
-                                            onProfileSwitched?.();
-                                            onClose();
-                                        }
+                                        requestSwitch(profile);
                                     }
                                 }}
                             >
@@ -593,6 +603,30 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                         </button>
                     </div>
                 </div>
+            )}
+            {/* Sair do modo Kids exige o PIN parental (item 55) */}
+            {parentalTarget && (
+                <PinPrompt
+                    title="Sair do modo Kids"
+                    hint={`Digite o PIN parental para entrar em "${parentalTarget.name}".`}
+                    onSubmit={async (pin) => {
+                        const ok = await parentalService.verify(pin);
+                        if (!ok) return false;
+                        const target = parentalTarget;
+                        setParentalTarget(null);
+                        // O PIN do PRÓPRIO perfil ainda vale depois deste
+                        if (target.pin) {
+                            setPendingProfile(target);
+                            setPinInput('');
+                            setPinError('');
+                            setMode('pin-verify');
+                        } else {
+                            commitSwitch(target);
+                        }
+                        return true;
+                    }}
+                    onCancel={() => setParentalTarget(null)}
+                />
             )}
         </div>
     );

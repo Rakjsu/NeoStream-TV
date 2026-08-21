@@ -1,9 +1,16 @@
 import { defineConfig } from 'vite'
+import pkg from './package.json'
 import react from '@vitejs/plugin-react'
 import legacy from '@vitejs/plugin-legacy'
 
 // Samsung Tizen build: legacy browser support and a single app bundle.
 export default defineConfig({
+  // Versao exposta no bundle: a tela de diagnostico (item 59) precisa
+  // dizer qual build esta rodando na TV
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_TARGET__: JSON.stringify('tizen'),
+  },
   plugins: [
     react(),
     legacy({

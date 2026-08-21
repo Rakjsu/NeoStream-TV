@@ -1,5 +1,5 @@
 .settings-page {
-    min-height: 100vh;
+    min-height: calc(100 * var(--ns-vh));
     padding: 56px;
     background:
         radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.18), transparent 32%),
@@ -289,4 +289,18 @@
 
 .settings-value.focused {
     box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.8);
+}
+
+/* R6: estados especiais de valor */
+
+/* Trava parental ligada mas sem PIN definido = inativa */
+.settings-value.settings-value-off {
+    opacity: 0.45;
+    text-decoration: line-through;
+}
+
+/* Reset armado: o próximo OK apaga */
+.settings-value.settings-value-danger {
+    color: #fca5a5;
+    font-weight: 800;
 }

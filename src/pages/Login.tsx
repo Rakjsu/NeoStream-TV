@@ -9,6 +9,7 @@ import { playlistService } from '../services/playlistService';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useTranslation } from '../hooks/useTranslation';
 import './Login.css';
+import { accountService } from '../services/accountService';
 
 interface LoginProps {
     onLoginSuccess: () => void;
@@ -89,7 +90,8 @@ export function Login({ onLoginSuccess, onLanguageSelect, startBlank = false }: 
         setError('');
 
         try {
-            await api.authenticate(url, username, password);
+            const auth = await api.authenticate(url, username, password);
+            accountService.save(auth);
             localStorage.setItem('includeTV', includeTV.toString());
             localStorage.setItem('includeVOD', includeVOD.toString());
             storage.saveCredentials({ url, username, password });

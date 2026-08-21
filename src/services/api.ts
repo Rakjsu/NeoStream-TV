@@ -287,6 +287,14 @@ class XtreamAPI {
         return `${this.baseUrl}/live/${this.username}/${this.password}/${streamId}.m3u8`;
     }
 
+    /**
+     * URL do painel sem action: devolve só o bloco de autenticação. É a menor
+     * resposta útil do provedor — serve pra medir latência (item 59).
+     */
+    getAuthPingUrl(): string {
+        return buildApiUrl(this.baseUrl, this.username, this.password).toString();
+    }
+
     /** Aprende o fuso do provedor pelo par time_now/timestamp_now do auth. */
     private learnProviderOffset(data: AuthResponse): void {
         // Reset primeiro: re-login em outro provedor não pode herdar o offset velho
