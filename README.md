@@ -27,15 +27,46 @@ Use at your own risk. The creator and contributors are not responsible for how t
 
 ## Features
 
-- Live TV, movies, and series support through Xtream Codes.
-- HLS playback through HLS.js where supported.
-- TV-first navigation for D-pad and remote controls.
-- Dark interface optimized for large screens.
-- Local favorites and watch-later storage.
-- Multi-profile support.
-- Portuguese and English language resources.
+### Live TV
+- Channel grid with virtualized rendering, search, and category filtering.
+- **EPG on demand** (`get_short_epg`): now/next on the channel card and a mini guide inside the player.
+- **Full day agenda** (`get_simple_data_table`) per channel, navigable with the D-pad.
+- **Catch-up / replay**: restart the current program or play any archived program; the queue advances
+  to the next program and returns to live when it reaches the on-air show.
+- **Zapping**: CH+/CH- keys, channel number entry with on-screen display, channel list overlay with
+  EPG preview, recent-channel history, and resume of the last watched channel.
+- **Quality variants** (4K/FHD/HD/SD) grouped into a single card with per-variant buttons.
+- Favorite channels as a virtual category, hidden channels, hidden categories, EPG-only filter,
+  and random zap.
+- Color key shortcuts: red (EPG filter), green (random), yellow (favorite), blue (hide).
+- EPG timezone offset adjustment per playlist, for providers that report the wrong timezone.
+- Optional "power on and watch": boot straight into the last watched channel.
+
+### Movies and series
+- Catalog sorting (default, recent, name, rating), NEW badge, and hide-watched filter.
+- **Continue watching** with saved playback position for movies and episodes.
+- **Episode queue** with next/previous controls and automatic next episode.
+- New-episode detection for followed series, with badges and a dedicated Home row.
+- Local affinity-based recommendations and a weighted "surprise me" roulette.
+- Content detail modal with TMDB metadata, seasons, and episodes.
+
+### Player
+- HLS.js playback with quality selection and TV-tuned buffer limits.
+- **Resilience**: stall watchdog, exponential-backoff reconnection with visible attempts,
+  cause-specific error messages, automatic retry when the network returns, and automatic
+  failover between channel quality variants.
+- Sleep timer, aspect ratio and zoom modes remembered per content, and a back-to-live button.
+
+### System
+- Global search across channels, movies, and series from the sidebar.
+- Multi-playlist management: several Xtream accounts, switching, and removal.
+- Real Kids profile with adult-category filtering, PIN management, and profile switching.
+- Themes: AMOLED background plus six accent colors, applied through CSS variables.
+- Usage statistics with a Wrapped-style recap.
+- Portuguese, English, and Spanish language resources.
 - Optional TMDB metadata using a user-provided local API key.
-- Flexible Xtream server URL input, including bare domains, `http`, `https`, ports, and common Xtream endpoint paths.
+- Flexible Xtream server URL input, including bare domains, `http`, `https`, ports, and common
+  Xtream endpoint paths.
 - Samsung Tizen build support with Vite legacy output.
 
 ## Quick Start
@@ -58,6 +89,7 @@ npm run build:web    # Type-check and build the modern web app
 npm run build:tizen  # Type-check, build the Tizen bundle, and copy assets into tizen/
 npm run lint         # Run ESLint
 npm run preview      # Preview the production build locally
+npx tsc -b           # Type-check exactly like the build does
 ```
 
 ## TMDB API Key
@@ -87,12 +119,12 @@ Each user should use their own TMDB key. The key is saved only in the local stor
 
 ```text
 src/
-|-- components/          Reusable UI components
+|-- components/          Player, overlays (search, agenda, wrapped), and shared UI
 |-- contexts/            Shared focus/navigation context
-|-- hooks/               TV navigation, HLS, and app hooks
-|-- i18n/                Language resources
+|-- hooks/               TV navigation, HLS, watch session, and translation hooks
+|-- i18n/                Language resources (pt, en, es)
 |-- pages/               App screens
-|-- services/            Xtream, TMDB, profile, and storage services
+|-- services/            Xtream, EPG, TMDB, catalog, playlist, theme, and storage services
 `-- types/               TypeScript definitions
 
 tizen/
@@ -108,7 +140,17 @@ tizen/
 | Up / Down / Left / Right | Navigate |
 | Enter / OK | Select or finish editing an input |
 | Back / Return | Go back, close overlays, or leave an active input |
-| Play / Pause | Media control where supported |
+| Play / Pause / Stop | Media control where supported |
+| CH+ / CH- | Previous/next channel while watching live TV |
+| 0-9 | Jump to a channel by number while watching live TV |
+| Red | Toggle the EPG-only channel filter |
+| Green | Random channel |
+| Yellow | Favorite the focused channel |
+| Blue | Hide the focused channel or category |
+
+Keys beyond the arrows, OK, and Back are only delivered to the app on a real Samsung TV when the
+`http://tizen.org/privilege/tv.inputdevice` privilege is declared in `tizen/config.xml` and the keys
+are registered through `tizen.tvinputdevice.registerKey` at startup. Both are already configured.
 
 ## Samsung Tizen
 
@@ -143,16 +185,25 @@ If the Tizen CLI has trouble transferring `NeoStreamTV.wgt`, copy the same packa
 
 - Modern browser builds use `npm run build:web`.
 - Samsung Tizen builds use `npm run build:tizen` and copy generated assets into `tizen/assets/`.
+- Type-check with `npx tsc -b`: it is what the build runs, and `--noEmit` alone lets some errors through.
+- CSS `gap` in flex containers is not available on the Chromium version shipped with the minimum
+  supported Tizen release; use margins on children instead.
 - Some generated Tizen artifacts and install/debug logs may exist locally after packaging or device testing.
 
 ## Roadmap
 
-- Complete Live TV playback flow from channel selection.
-- Add EPG/program guide support.
-- Continue stricter TypeScript typing.
-- Harden Tizen packaging and ignored generated artifacts.
-- Improve remote-control navigation consistency across all screens.
-- Add LG webOS packaging.
+Delivered so far: live playback with zapping and EPG, catch-up, catalog browsing with continue
+watching, profiles with parental filtering, themes, global search, multi-playlist, and stream
+resilience.
+
+Next up:
+
+- Multi-channel program guide with a classic timeline.
+- Program reminders and a "now on favorites" panel.
+- Embedded audio and subtitle track selection from the HLS stream.
+- Per-profile data scoping for favorites, history, and progress.
+- Automated tests (Vitest) and continuous integration.
+- LG webOS packaging.
 
 ## License
 
