@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
-import { searchMovieByName, searchSeriesByName, getImageUrl, formatGenres, type TMDBMovieDetails, type TMDBSeriesDetails } from '../services/tmdb';
+import { searchMovieByName, searchSeriesByName, fetchMovieDetails, fetchSeriesDetails, getImageUrl, formatGenres, type TMDBMovieDetails, type TMDBSeriesDetails } from '../services/tmdb';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import type { Episode, SeriesInfo } from '../types';
 import './ContentDetailModal.css';
@@ -23,8 +23,27 @@ interface ContentDetailModalProps {
         director?: string;
         release_date?: string;
         container_extension?: string;
+        /** minutos (episode_run_time do provedor) — item 28 */
+        runtime?: string;
+        /** id TMDB do provedor: evita match errado por nome — item 20 */
+        tmdbId?: string;
     };
     onPlay: (season?: number, episode?: number) => void;
+    /** Versões do mesmo título (DUB/LEG/4K) — item 21 */
+    versions?: Array<{ id: string; label: string }>;
+    onSelectVersion?: (versionId: string) => void;
+}
+
+function formatRuntime(minutes: number): string {
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return hours > 0 ? `${hours}h ${rest}min` : `${rest}min`;
+}
+
+/** Hora em que o filme termina se começar agora (item 28). */
+function endsAtLabel(minutes: number): string {
+    const end = new Date(Date.now() + minutes * 60000);
+    return `${end.getHours().toString().padStart(2, '0')}:${end.getMinutes().toString().padStart(2, '0')}`;
 }
 
 export function ContentDetailModal({
@@ -33,7 +52,9 @@ export function ContentDetailModal({
     contentId,
     contentType,
     contentData,
-    onPlay
+    onPlay,
+    versions,
+    onSelectVersion
 }: ContentDetailModalProps) {
     const [seriesInfo, setSeriesInfo] = useState<SeriesInfo | null>(null);
     const [selectedSeason, setSelectedSeason] = useState(1);
@@ -48,10 +69,12 @@ export function ContentDetailModal({
     const [tmdbLoading, setTmdbLoading] = useState(false);
 
     // Focus management for TV navigation
-    type FocusZone = 'play' | 'watchLater' | 'favorite' | 'close' | 'season' | 'episode';
+    type FocusZone = 'play' | 'watchLater' | 'favorite' | 'close' | 'season' | 'episode' | 'version';
     const [focusZone, setFocusZone] = useState<FocusZone>('play');
     const [seasonFocusIndex, setSeasonFocusIndex] = useState(0);
     const [episodeFocusIndex, setEpisodeFocusIndex] = useState(0);
+    const [versionFocusIndex, setVersionFocusIndex] = useState(0);
+    const hasVersions = !!(versions && versions.length > 1 && onSelectVersion);
 
     // Reset focus when modal opens
     useEffect(() => {
@@ -59,6 +82,7 @@ export function ContentDetailModal({
             setFocusZone('play');
             setSeasonFocusIndex(0);
             setEpisodeFocusIndex(0);
+            setVersionFocusIndex(0);
         }
     }, [isOpen]);
 
@@ -90,11 +114,20 @@ export function ContentDetailModal({
                 // Extract year from release_date if available
                 const year = contentData.release_date?.split('-')[0];
 
+                // tmdb_id do provedor é match EXATO — busca por nome erra em
+                // títulos genéricos/traduzidos (item 20)
+                const providerTmdbId = contentData.tmdbId && Number(contentData.tmdbId) > 0
+                    ? String(contentData.tmdbId)
+                    : null;
                 if (contentType === 'movie') {
-                    const data = await searchMovieByName(contentData.name, year);
+                    const data = providerTmdbId
+                        ? (await fetchMovieDetails(providerTmdbId)) || (await searchMovieByName(contentData.name, year))
+                        : await searchMovieByName(contentData.name, year);
                     setTmdbData(data);
                 } else {
-                    const data = await searchSeriesByName(contentData.name, year);
+                    const data = providerTmdbId
+                        ? (await fetchSeriesDetails(providerTmdbId)) || (await searchSeriesByName(contentData.name, year))
+                        : await searchSeriesByName(contentData.name, year);
                     setTmdbData(data);
                 }
             } catch (err) {
@@ -106,7 +139,7 @@ export function ContentDetailModal({
         };
 
         fetchTMDB();
-    }, [isOpen, contentData.name, contentData.release_date, contentType]);
+    }, [isOpen, contentData.name, contentData.release_date, contentData.tmdbId, contentType]);
 
     // Close with animation
     const handleClose = useCallback(() => {
@@ -193,6 +226,11 @@ export function ContentDetailModal({
             // Movie modal navigation (simpler)
             if (focusZone === 'play') {
                 if (direction === 'right') setFocusZone('watchLater');
+                else if (direction === 'up') setFocusZone(hasVersions ? 'version' : 'close');
+            } else if (focusZone === 'version') {
+                if (direction === 'left') setVersionFocusIndex(prev => Math.max(0, prev - 1));
+                else if (direction === 'right') setVersionFocusIndex(prev => Math.min((versions?.length || 1) - 1, prev + 1));
+                else if (direction === 'down') setFocusZone('play');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'watchLater') {
                 if (direction === 'left') setFocusZone('play');
@@ -202,10 +240,10 @@ export function ContentDetailModal({
                 if (direction === 'left') setFocusZone('watchLater');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'close') {
-                if (direction === 'down') setFocusZone('play');
+                if (direction === 'down') setFocusZone(hasVersions ? 'version' : 'play');
             }
         }
-    }, [isOpen, focusZone, contentType, seasons.length, episodes.length, episodeFocusIndex]);
+    }, [isOpen, focusZone, contentType, seasons.length, episodes.length, episodeFocusIndex, hasVersions, versions?.length]);
 
     // Item completo pra salvar em Favoritos/Minha Lista (com pôster e título —
     // a página de listas depende desses campos pra renderizar o card)
@@ -233,6 +271,9 @@ export function ContentDetailModal({
         } else if (focusZone === 'favorite') {
             storage.toggleFavorite(buildSavedItem());
             setRefresh(r => r + 1);
+        } else if (focusZone === 'version') {
+            const version = versions?.[versionFocusIndex];
+            if (version && onSelectVersion) onSelectVersion(version.id);
         } else if (focusZone === 'close') {
             handleClose();
         } else if (focusZone === 'season') {
@@ -245,7 +286,7 @@ export function ContentDetailModal({
                 setSelectedEpisode(Number(ep.episode_num));
             }
         }
-    }, [isOpen, focusZone, contentType, selectedSeason, selectedEpisode, buildSavedItem, seasons, seasonFocusIndex, episodes, episodeFocusIndex, onPlay, handleClose]);
+    }, [isOpen, focusZone, contentType, selectedSeason, selectedEpisode, buildSavedItem, seasons, seasonFocusIndex, episodes, episodeFocusIndex, onPlay, handleClose, versions, versionFocusIndex, onSelectVersion]);
 
     const handleBack = useCallback(() => {
         handleClose();
@@ -281,6 +322,19 @@ export function ContentDetailModal({
         return isValidTitle ? cleanTitle : `Episódio ${epNum}`;
     };
     if (!isOpen) return null;
+
+    // Duração/termina às (item 28) e classificação indicativa (item 35)
+    const runtimeMinutes = (() => {
+        const fromTmdb = (tmdbData as { runtime?: number } | null)?.runtime;
+        if (typeof fromTmdb === 'number' && fromTmdb > 0) return fromTmdb;
+        const fromProvider = Number(contentData.runtime);
+        if (Number.isFinite(fromProvider) && fromProvider > 0) {
+            // Alguns painéis mandam segundos em vez de minutos
+            return fromProvider > 400 ? Math.round(fromProvider / 60) : Math.round(fromProvider);
+        }
+        return 0;
+    })();
+    const certification = (tmdbData as { certification?: string } | null)?.certification || null;
 
     // Use TMDB data if available, fallback to IPTV data
     const overview = tmdbData?.overview || contentData.plot || 'Sem descrição disponível.';
@@ -340,6 +394,15 @@ export function ContentDetailModal({
                         <span className={`meta-badge ${contentType === 'series' ? 'type-badge-series' : 'type-badge-movie'}`}>
                             {contentType === 'series' ? 'Série' : 'Filme'}
                         </span>
+                        {runtimeMinutes > 0 && (
+                            <span className="meta-badge">
+                                {formatRuntime(runtimeMinutes)}
+                                {contentType === 'movie' && ` · termina ${endsAtLabel(runtimeMinutes)}`}
+                            </span>
+                        )}
+                        {certification && (
+                            <span className="meta-badge cert-badge">{certification}</span>
+                        )}
                         {contentType === 'series' && seasons.length > 0 && (
                             <span className="meta-badge season-badge">
                                 {seasons.length} {seasons.length > 1 ? 'Temporadas' : 'Temporada'}
@@ -407,6 +470,22 @@ export function ContentDetailModal({
                         <div className="modal-loading">
                             <div className="loading-spinner" />
                             Carregando episódios...
+                        </div>
+                    )}
+
+                    {/* Versões do mesmo título (item 21) */}
+                    {versions && versions.length > 1 && onSelectVersion && (
+                        <div className="modal-versions">
+                            <span className="modal-versions-label">Versões:</span>
+                            {versions.map((version, index) => (
+                                <button
+                                    key={version.id}
+                                    className={`version-btn ${version.id === contentId ? 'active' : ''} ${focusZone === 'version' && versionFocusIndex === index ? 'tv-focused' : ''}`}
+                                    onClick={() => onSelectVersion(version.id)}
+                                >
+                                    {version.label}
+                                </button>
+                            ))}
                         </div>
                     )}
 

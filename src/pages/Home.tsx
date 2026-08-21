@@ -7,7 +7,8 @@ import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
 import { progressService, type MovieProgress, type SeriesProgress } from '../services/progressService';
 import { storage } from '../services/storage';
-import { categoryAffinity, scoreRecommendations, spinRoulette, newEpisodes } from '../services/catalogExtras';
+import { categoryAffinity, scoreRecommendations, spinRoulette, newEpisodes, normalizeSearch } from '../services/catalogExtras';
+import { usageStats } from '../services/usageStats';
 import { kidsFilter } from '../services/kidsFilter';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
@@ -56,6 +57,9 @@ export function Home({ onNavigate }: HomeProps) {
     );
     const [playingMovie, setPlayingMovie] = useState<PlayableMovie | null>(null);
     const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
+
+    // Top 10 pelos mais assistidos locais (item 33)
+    const [topItems, setTopItems] = useState<Array<VODStream | Series>>([]);
 
     // Novos episódios de séries seguidas + roleta 🎲
     const [newEpisodesList, setNewEpisodesList] = useState<Series[]>([]);
@@ -152,6 +156,28 @@ export function Home({ onNavigate }: HomeProps) {
                 }
                 setRecommendations(recommended);
 
+                // Top 10 (item 33): mais assistidos pelo tempo local, casados
+                // com o catálogo por nome normalizado
+                // Pede folga: entradas 'live' e sem match no catálogo comem vagas
+                const usage = usageStats.summary(40);
+                if (usage.topItems.length > 0) {
+                    const byName = new Map<string, VODStream | Series>();
+                    for (const movie of movies) byName.set(normalizeSearch(movie.name || ''), movie);
+                    for (const s of series) byName.set(normalizeSearch(s.name || ''), s);
+                    const top: Array<VODStream | Series> = [];
+                    for (const entry of usage.topItems) {
+                        if (entry.kind === 'live') continue;
+                        // Nome COMPLETO primeiro (é o que foi gravado); só cai
+                        // no prefixo pra episódio ("Série - T1 E2")
+                        const full = normalizeSearch(entry.name || '');
+                        const found = byName.get(full)
+                            || (full.includes(' - ') ? byName.get(full.split(' - ')[0]) : undefined);
+                        if (found && !top.includes(found)) top.push(found);
+                        if (top.length >= 10) break;
+                    }
+                    setTopItems(top);
+                }
+
                 // Pool da roleta 🎲 (filmes não vistos, ponderados pelo gosto)
                 rouletteRef.current = { pool: unwatchedMovies, affinity };
 
@@ -204,6 +230,7 @@ export function Home({ onNavigate }: HomeProps) {
         { id: 'stats', items: 3 },
         ...(continueItems.length > 0 ? [{ id: 'continue', items: continueItems.length }] : []),
         ...(newEpisodesList.length > 0 ? [{ id: 'newepisodes', items: newEpisodesList.length }] : []),
+        ...(topItems.length > 0 ? [{ id: 'top10', items: topItems.length }] : []),
         { id: 'recommendations', items: recommendations.length },
         { id: 'series', items: recentSeries.length },
         { id: 'movies', items: recentMovies.length },
@@ -279,6 +306,9 @@ export function Home({ onNavigate }: HomeProps) {
         } else if (section?.id === 'continue') {
             const item = continueItems[focusedItem];
             if (item) void playContinueItem(item);
+        } else if (section?.id === 'top10') {
+            const item = topItems[focusedItem];
+            if (item) onNavigate?.('stream_id' in item ? 'movies' : 'series');
         } else if (section?.id === 'newepisodes') {
             // Marca como visto (o selo some) antes de ir pro catálogo
             const s = newEpisodesList[focusedItem];
@@ -419,6 +449,32 @@ export function Home({ onNavigate }: HomeProps) {
                                     </button>
                                 );
                             })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Top 10 (item 33) */}
+                {topItems.length > 0 && (
+                    <div id="home-top10" className="content-section">
+                        <h2 className="section-title">🔟 Top 10 do seu aparelho</h2>
+                        <div className="content-row">
+                            {topItems.map((item, index) => (
+                                <button
+                                    key={getId(item)}
+                                    className={`content-card top10-card ${focusedSection === sectionIndex('top10') && focusedItem === index ? 'tv-focused' : ''}`}
+                                    onClick={() => onNavigate?.('stream_id' in item ? 'movies' : 'series')}
+                                >
+                                    <span className="top10-rank">{index + 1}</span>
+                                    <div className="card-image card-image-poster">
+                                        <img
+                                            src={getCover(item)}
+                                            alt={getName(item)}
+                                            onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/></svg>'; }}
+                                        />
+                                    </div>
+                                    <div className="card-title">{getName(item)}</div>
+                                </button>
+                            ))}
                         </div>
                     </div>
                 )}

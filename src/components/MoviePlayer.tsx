@@ -7,20 +7,23 @@ import { api } from '../services/api';
 import { useWatchSession } from '../hooks/useWatchSession';
 
 interface MoviePlayerProps {
+    /** Chave de progresso/favoritos (id do grupo de versões) */
     movieId: string;
     title: string;
     poster?: string;
     container?: string;
+    /** Stream a reproduzir de fato (versão escolhida); default = movieId */
+    streamId?: number;
     onClose: () => void;
 }
 
-export function MoviePlayer({ movieId, title, poster, container, onClose }: MoviePlayerProps) {
+export function MoviePlayer({ movieId, title, poster, container, streamId, onClose }: MoviePlayerProps) {
     const resumeTime = progressService.getMovieResumeTime(movieId);
     useWatchSession('movie', title);
 
     return (
         <VideoPlayer
-            src={api.getVodStreamUrl(Number(movieId), container || 'mp4')}
+            src={api.getVodStreamUrl(streamId ?? Number(movieId), container || 'mp4')}
             title={title}
             poster={poster}
             autoPlay

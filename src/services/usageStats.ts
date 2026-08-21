@@ -69,7 +69,7 @@ export const usageStats = {
         write(data);
     },
 
-    summary(): UsageSummary {
+    summary(topLimit = 5): UsageSummary {
         const data = read();
         const byKind: Record<UsageKind, number> = { live: 0, movie: 0, series: 0 };
         let totalSeconds = 0;
@@ -89,7 +89,7 @@ export const usageStats = {
                 return { kind: key.slice(0, sep) as UsageKind, name: key.slice(sep + 1), seconds };
             })
             .sort((a, b) => b.seconds - a.seconds)
-            .slice(0, 5);
+            .slice(0, topLimit);
         return { totalSeconds, byKind, topItems, last7Seconds };
     },
 

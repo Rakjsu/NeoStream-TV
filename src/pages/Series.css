@@ -608,3 +608,131 @@
 .new-badge-episodes {
     background: linear-gradient(135deg, #22c55e, #16a34a);
 }
+
+/* ===== R3: chips, filtros, A-Z, contexto, versões ===== */
+
+.alphabet-bar {
+    position: fixed;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    z-index: 30;
+    background: rgba(10, 10, 20, 0.7);
+    border-radius: 12px;
+    padding: 6px 2px;
+}
+
+.alphabet-letter {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 20px;
+    font-weight: 700;
+    padding: 2px 6px;
+    cursor: pointer;
+    line-height: 1.3;
+}
+
+.alphabet-letter:hover {
+    color: var(--ns-accent);
+}
+
+.alphabet-letter.tv-focused {
+    color: #fff;
+    background: rgba(var(--ns-accent-rgb), 0.5);
+    border-radius: 6px;
+}
+
+.version-badge {
+    position: absolute;
+    /* A nota (⭐) fica no topo-direita — empilhar abaixo evita a colisão */
+    top: 42px;
+    right: 8px;
+    background: rgba(10, 10, 20, 0.85);
+    border: 1px solid rgba(var(--ns-accent-rgb), 0.7);
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    z-index: 2;
+}
+
+.tag-badge {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background: rgba(10, 10, 20, 0.85);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 15px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    z-index: 2;
+}
+
+.catalog-toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10, 10, 20, 0.92);
+    border: 1px solid rgba(var(--ns-accent-rgb), 0.6);
+    color: #fff;
+    font-size: 17px;
+    padding: 12px 24px;
+    border-radius: 12px;
+    z-index: 10000;
+}
+
+.context-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 5, 15, 0.8);
+    z-index: 4500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.context-menu {
+    width: 460px;
+    max-width: 90vw;
+    background: rgba(20, 20, 35, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    overflow: hidden;
+    padding: 8px 0;
+}
+
+.context-title {
+    padding: 14px 22px;
+    color: #fff;
+    font-size: 19px;
+    font-weight: 700;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.context-item {
+    padding: 14px 22px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.context-item.tv-focused {
+    background: rgba(var(--ns-accent-rgb), 0.3);
+    box-shadow: inset 3px 0 0 var(--ns-accent);
+}
+
+.context-hint {
+    padding: 12px 22px 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
+}

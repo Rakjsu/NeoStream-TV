@@ -711,3 +711,44 @@
     transform: scale(1.02);
     box-shadow: 0 0 15px rgba(var(--ns-accent-rgb), 0.4);
 }
+
+/* Versões do mesmo título (item 21) + classificação (item 35) */
+.modal-versions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin: 14px 0;
+}
+
+.modal-versions-label {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 14px;
+    margin-right: 10px;
+}
+
+.modal-versions .version-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin: 0 8px 8px 0;
+}
+
+.modal-versions .version-btn.active {
+    background: rgba(var(--ns-accent-rgb), 0.35);
+    border-color: var(--ns-accent);
+}
+
+.meta-badge.cert-badge {
+    background: rgba(220, 38, 38, 0.25);
+    border: 1px solid rgba(220, 38, 38, 0.6);
+}
+
+.modal-versions .version-btn.tv-focused {
+    box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.85);
+    transform: scale(1.06);
+}

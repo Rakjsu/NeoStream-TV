@@ -5,7 +5,9 @@ const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p';
 
 // Cache settings
-const CACHE_EXPIRY_HOURS = 24;
+// 7 dias (item 19): metadados de filme mudam pouco e a ficha precisa abrir
+// instantânea na 2ª visita — poupa rede e RAM da TV
+const CACHE_EXPIRY_HOURS = 24 * 7;
 const CACHE_KEYS = {
     MOVIE_DETAILS: 'tmdb_movie_details',
     SERIES_DETAILS: 'tmdb_series_details',

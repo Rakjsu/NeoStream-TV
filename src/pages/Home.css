@@ -380,3 +380,21 @@
     z-index: 2;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
+
+/* Top 10 (item 33) */
+.top10-card {
+    position: relative;
+}
+
+.top10-rank {
+    position: absolute;
+    left: -6px;
+    bottom: 34px;
+    font-size: 54px;
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.85);
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
+    z-index: 3;
+    line-height: 1;
+    pointer-events: none;
+}

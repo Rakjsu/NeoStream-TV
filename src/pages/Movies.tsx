@@ -9,7 +9,14 @@ import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMen
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
-import { catalogSort, sortCatalog, hideWatched, isRecentlyAdded, SORT_LABELS, type CatalogSort } from '../services/catalogExtras';
+import {
+    catalogSort, sortCatalog, hideWatched, isRecentlyAdded, SORT_LABELS, type CatalogSort,
+    catalogFilters, matchesFilters, normalizeSearch, fuzzyMatches,
+    DECADES, type CatalogFilters,
+} from '../services/catalogExtras';
+import { groupVodVersions, tagsOf, hasTag, versionLabel, ALL_VOD_TAGS, type VodTag } from '../services/vodVariants';
+// versionLabel é usado nos botões de versão da ficha (abaixo)
+import { storage } from '../services/storage';
 import { kidsFilter } from '../services/kidsFilter';
 import { progressService } from '../services/progressService';
 import './Movies.css';
@@ -25,7 +32,9 @@ export function Movies() {
     const [selectedMovie, setSelectedMovie] = useState<VODStream | null>(null);
     const [showModal, setShowModal] = useState(false);
     const [showPlayer, setShowPlayer] = useState(false);
-    const [playingMovie, setPlayingMovie] = useState<VODStream | null>(null);
+    // playStreamId: id REAL do stream a tocar (versão escolhida); stream_id
+    // continua sendo o do grupo, que é a chave de progresso/favoritos
+    const [playingMovie, setPlayingMovie] = useState<(VODStream & { playStreamId?: number }) | null>(null);
     const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
     const [visibleCount, setVisibleCount] = useState(24); // Start with reasonable default
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -33,12 +42,19 @@ export function Movies() {
     // Ordenação / esconder assistidos / selo NOVO (Fase 3)
     const [sortMode, setSortMode] = useState<CatalogSort>(() => catalogSort.get('movies'));
     const [hideWatchedOn, setHideWatchedOn] = useState(() => hideWatched.get());
+    // R3: chips de tag, filtros, versões agrupadas, menu de contexto
+    const [activeTags, setActiveTags] = useState<VodTag[]>([]);
+    const [filters, setFilters] = useState<CatalogFilters>(() => catalogFilters.get('movies'));
+    const [contextItem, setContextItem] = useState<VODStream | null>(null);
+    const [contextIndex, setContextIndex] = useState(0);
+    const [toast, setToast] = useState<string | null>(null);
     // Congelado no mount: Date.now() no render viola a pureza do react-hooks
     const [nowMs] = useState(() => Date.now());
 
     // Focus states for TV navigation
     // 'categories' = zona do header: índice 0 é a busca, 1 é o menu de categorias
-    const [focusArea, setFocusArea] = useState<'categories' | 'movies'>('movies');
+    const [focusArea, setFocusArea] = useState<'categories' | 'movies' | 'alphabet'>('movies');
+    const [alphabetIndexFocus, setAlphabetIndexFocus] = useState(0);
     const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
     const [focusedMovieIndex, setFocusedMovieIndex] = useState(0);
     const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
@@ -94,6 +110,12 @@ export function Movies() {
         fetchData();
     }, []);
 
+    useEffect(() => {
+        if (!toast) return;
+        const timeout = setTimeout(() => setToast(null), 2200);
+        return () => clearTimeout(timeout);
+    }, [toast]);
+
     // Filmes concluídos (só relidos quando o toggle liga ou um player fecha —
     // showPlayer é gatilho intencional de refresh, não dependência de dado)
     const completedMovieIds = useMemo(() => {
@@ -101,24 +123,50 @@ export function Movies() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [hideWatchedOn, showPlayer]);
 
-    // Ordenação roda 1x por mudança de modo/dados; o filtro (que roda a cada
-    // tecla da busca) preserva a ordem — nunca re-ordenar por tecla
-    const sortedStreams = useMemo(() => sortCatalog(streams, sortMode), [streams, sortMode]);
-
-    // Filter streams (memoizado — recalcular a cada tecla do D-pad trava TVs antigas)
-    const filteredStreams = useMemo(() => {
-        const query = searchQuery.toLowerCase();
-        let list = sortedStreams.filter((stream) => {
-            const streamName = stream.name || '';
-            const matchesSearch = streamName.toLowerCase().includes(query);
+    // ORDEM IMPORTA: filtra PRIMEIRO, agrupa DEPOIS. Agrupar antes fazia o
+    // filtro olhar só o representante — o chip DUB escondia o filme inteiro
+    // mesmo existindo versão DUB no grupo, e categorias perdiam títulos.
+    const matchingStreams = useMemo(() => {
+        const query = normalizeSearch(searchQuery);
+        const hasFilters = filters.decade > 0 || filters.minRating > 0;
+        let list = streams.filter((stream) => {
+            const matchesSearch = !query || fuzzyMatches(stream.name || '', query);
             const matchesCategory = selectedCategory === 'all' || stream.category_id === selectedCategory;
-            return matchesSearch && matchesCategory;
+            if (!matchesSearch || !matchesCategory) return false;
+            // Chips de tag: item precisa ter TODAS as tags marcadas
+            if (activeTags.length > 0 && !activeTags.every(tag => hasTag(stream.name || '', tag))) return false;
+            if (hasFilters && !matchesFilters(stream, filters)) return false;
+            return true;
         });
         if (completedMovieIds) {
             list = list.filter(stream => !completedMovieIds.has(String(stream.stream_id)));
         }
         return list;
-    }, [sortedStreams, searchQuery, selectedCategory, completedMovieIds]);
+    }, [streams, searchQuery, selectedCategory, completedMovieIds, activeTags, filters]);
+
+    // Agrupa versões do mesmo filme (DUB/LEG/4K) sobre a lista JÁ filtrada
+    const { groups: groupedStreams, versionsOf } = useMemo(
+        () => groupVodVersions(matchingStreams),
+        [matchingStreams]
+    );
+
+    // Ordenação roda por mudança de modo/dados; o filtro já aconteceu acima
+    const filteredStreams = useMemo(
+        () => sortCatalog(groupedStreams, sortMode),
+        [groupedStreams, sortMode]
+    );
+
+    // Barra A-Z (item 23): navegável por D-pad (→ da última coluna entra)
+    const alphabetIndex = useMemo(() => {
+        if (sortMode !== 'name') return null;
+        const map = new Map<string, number>();
+        filteredStreams.forEach((stream, index) => {
+            const first = normalizeSearch(stream.name || '').charAt(0).toUpperCase();
+            const letter = /[A-Z]/.test(first) ? first : '#';
+            if (!map.has(letter)) map.set(letter, index);
+        });
+        return map;
+    }, [filteredStreams, sortMode]);
 
     // Índice focado sempre no range (lista encolhe ao esconder assistidos)
     const safeMovieIndex = Math.min(focusedMovieIndex, Math.max(0, filteredStreams.length - 1));
@@ -159,7 +207,7 @@ export function Movies() {
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
         if (focusArea === 'categories') {
-            // Header: 0 = busca, 1 = categorias, 2 = ordenar, 3 = esconder assistidos
+            // Header: 0 busca, 1 categorias, 2 ordenar, 3 assistidos, 4 tags, 5 filtros
             if (direction === 'left') {
                 if (focusedCategoryIndex === 0) {
                     // At search - go to sidebar
@@ -168,7 +216,7 @@ export function Movies() {
                     setFocusedCategoryIndex(prev => prev - 1);
                 }
             } else if (direction === 'right') {
-                setFocusedCategoryIndex(prev => Math.min(3, prev + 1));
+                setFocusedCategoryIndex(prev => Math.min(5, prev + 1));
             } else if (direction === 'down') {
                 setFocusArea('movies');
                 setFocusedMovieIndex(0);
@@ -201,6 +249,12 @@ export function Movies() {
                     setFocusedMovieIndex(prev => Math.max(0, prev - 1));
                 }
             } else if (direction === 'right') {
+                // Última coluna + barra A-Z visível → entra na barra
+                if (currentCol === cols - 1 && alphabetIndex && alphabetIndex.size > 1) {
+                    setFocusArea('alphabet');
+                    setAlphabetIndexFocus(0);
+                    return;
+                }
                 setFocusedMovieIndex(prev => {
                     const next = Math.min(totalMovies - 1, prev + 1);
                     if (next >= visibleCount - 5) {
@@ -209,6 +263,11 @@ export function Movies() {
                     return next;
                 });
             }
+        } else if (focusArea === 'alphabet') {
+            const letters = alphabetIndex ? [...alphabetIndex.keys()] : [];
+            if (direction === 'up') setAlphabetIndexFocus(prev => Math.max(0, prev - 1));
+            else if (direction === 'down') setAlphabetIndexFocus(prev => Math.min(letters.length - 1, prev + 1));
+            else if (direction === 'left') setFocusArea('movies');
         }
     };
 
@@ -249,6 +308,79 @@ export function Movies() {
         });
     };
 
+    // Salto da barra A-Z: garante que o alvo esteja RENDERIZADO antes de focar
+    const jumpToIndex = (index: number) => {
+        setVisibleCount(current => Math.max(current, Math.min(filteredStreams.length, index + 18)));
+        setFocusArea('movies');
+        setFocusedMovieIndex(index);
+    };
+
+    // Chips de tag (item 22): OK cicla nenhum → DUB → LEG → 4K → HD → nenhum
+    const cycleTagFilter = () => {
+        setActiveTags(prev => {
+            if (prev.length === 0) return ['DUB'];
+            const index = ALL_VOD_TAGS.indexOf(prev[0]);
+            const next = ALL_VOD_TAGS[index + 1];
+            return next && next !== 'H265' ? [next] : [];
+        });
+    };
+
+    // Filtros (item 32): OK cicla década; ← → ajustam nota mínima
+    const cycleFilters = () => {
+        setFilters(prev => {
+            const index = DECADES.indexOf(prev.decade);
+            const next = { ...prev, decade: DECADES[(index + 1) % DECADES.length] };
+            catalogFilters.set('movies', next);
+            return next;
+        });
+    };
+
+    // Menu de contexto no card (item 24): 🟡 abre sem entrar na ficha
+    const openContextMenu = () => {
+        const movie = filteredStreams[safeMovieIndex];
+        if (!movie) return;
+        setContextItem(movie);
+        setContextIndex(0);
+    };
+
+    const contextActions = contextItem ? [
+        {
+            label: storage.isFavorite(String(contextItem.stream_id), 'movie') ? '💔 Remover dos favoritos' : '❤️ Favoritar',
+            run: () => {
+                const added = storage.toggleFavorite({
+                    id: String(contextItem.stream_id),
+                    type: 'movie',
+                    title: contextItem.name,
+                    poster: contextItem.stream_icon || contextItem.cover,
+                    rating: contextItem.rating,
+                    container: contextItem.container_extension,
+                });
+                setToast(added ? '❤️ Adicionado aos favoritos' : '💔 Removido dos favoritos');
+            },
+        },
+        {
+            label: storage.isInWatchLater(String(contextItem.stream_id), 'movie') ? '➖ Tirar da Minha Lista' : '➕ Minha Lista',
+            run: () => {
+                const added = storage.toggleWatchLater({
+                    id: String(contextItem.stream_id),
+                    type: 'movie',
+                    title: contextItem.name,
+                    poster: contextItem.stream_icon || contextItem.cover,
+                    rating: contextItem.rating,
+                    container: contextItem.container_extension,
+                });
+                setToast(added ? '➕ Salvo na Minha Lista' : '➖ Removido da Minha Lista');
+            },
+        },
+        {
+            label: '▶ Assistir agora',
+            run: () => {
+                setPlayingMovie(contextItem);
+                setShowPlayer(true);
+            },
+        },
+    ] : [];
+
     const handleEnter = () => {
         if (focusArea === 'categories') {
             if (focusedCategoryIndex === 0) {
@@ -257,9 +389,17 @@ export function Movies() {
                 categoryMenuRef.current?.open();
             } else if (focusedCategoryIndex === 2) {
                 cycleSort();
-            } else {
+            } else if (focusedCategoryIndex === 3) {
                 toggleHideWatched();
+            } else if (focusedCategoryIndex === 4) {
+                cycleTagFilter();
+            } else {
+                cycleFilters();
             }
+        } else if (focusArea === 'alphabet') {
+            const entries = alphabetIndex ? [...alphabetIndex.entries()] : [];
+            const entry = entries[alphabetIndexFocus];
+            if (entry) jumpToIndex(entry[1]);
         } else if (focusArea === 'movies') {
             const movie = filteredStreams[safeMovieIndex];
             if (movie) {
@@ -270,11 +410,59 @@ export function Movies() {
     };
 
     // Only enable when content is focused and no modal/player/panel is open
+    const navEnabled = focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen && !contextItem;
+
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
-        enabled: focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen,
+        onAction: (action) => {
+            if (action === 'yellow' && focusArea === 'movies') openContextMenu();
+        },
+        enabled: navEnabled,
     });
+
+    // Menu de contexto: navegação própria
+    useTVNavigation({
+        enabled: !!contextItem,
+        onNavigate: (direction) => {
+            if (direction === 'up') setContextIndex(prev => Math.max(0, prev - 1));
+            else if (direction === 'down') setContextIndex(prev => Math.min(contextActions.length - 1, prev + 1));
+        },
+        onEnter: () => {
+            const action = contextActions[contextIndex];
+            if (action) {
+                action.run();
+                setContextItem(null);
+            }
+        },
+        onBack: () => setContextItem(null),
+    });
+
+    // CH+/CH- pulam uma página inteira da grade (item 25)
+    useEffect(() => {
+        if (!navEnabled || focusArea !== 'movies') return;
+        const cols = 6;
+        const pageSize = cols * 3;
+        const handlePageKeys = (event: KeyboardEvent) => {
+            const key = event.key || String(event.keyCode);
+            const code = event.keyCode;
+            const isUp = key === 'MediaChannelUp' || code === 427 || key === 'PageUp' || code === 33;
+            const isDown = key === 'MediaChannelDown' || code === 428 || key === 'PageDown' || code === 34;
+            if (!isUp && !isDown) return;
+            event.preventDefault();
+            setFocusedMovieIndex(prev => {
+                const next = isUp
+                    ? Math.max(0, prev - pageSize)
+                    : Math.min(filteredStreams.length - 1, prev + pageSize);
+                if (next >= visibleCount - cols) {
+                    setVisibleCount(current => Math.min(current + pageSize, filteredStreams.length));
+                }
+                return next;
+            });
+        };
+        window.addEventListener('keydown', handlePageKeys);
+        return () => window.removeEventListener('keydown', handlePageKeys);
+    }, [navEnabled, focusArea, filteredStreams.length, visibleCount]);
 
     const handleImageError = (streamId: number) => {
         setBrokenImages(prev => new Set(prev).add(streamId));
@@ -363,6 +551,20 @@ export function Movies() {
                 >
                     🙈
                 </button>
+                <button
+                    className={`toolbar-btn ${activeTags.length > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 4 ? 'tv-focused' : ''}`}
+                    onClick={cycleTagFilter}
+                    title="Filtrar por Dublado/Legendado/qualidade"
+                >
+                    {activeTags.length > 0 ? activeTags.join('+') : '🏷 Tags'}
+                </button>
+                <button
+                    className={`toolbar-btn ${filters.decade > 0 || filters.minRating > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 5 ? 'tv-focused' : ''}`}
+                    onClick={cycleFilters}
+                    title="Filtrar por década"
+                >
+                    {filters.decade > 0 ? `${filters.decade}s` : '📅 Década'}
+                </button>
             </div>
 
             {/* Content Detail Modal */}
@@ -385,12 +587,34 @@ export function Movies() {
                         director: selectedMovie.director,
                         release_date: selectedMovie.release_date,
                         container_extension: selectedMovie.container_extension,
+                        runtime: selectedMovie.episode_run_time,
+                        tmdbId: selectedMovie.tmdb_id,
                     }}
                     onPlay={() => {
                         // Start video playback
                         setPlayingMovie(selectedMovie);
                         setShowPlayer(true);
                         setShowModal(false);
+                    }}
+                    versions={(versionsOf.get(String(selectedMovie.stream_id)) || []).map(v => ({
+                        id: String(v.stream_id),
+                        label: versionLabel(v.name),
+                    }))}
+                    onSelectVersion={(versionId) => {
+                        const version = (versionsOf.get(String(selectedMovie.stream_id)) || [])
+                            .find(v => String(v.stream_id) === versionId);
+                        if (version) {
+                            // O progresso é do GRUPO (id do representante):
+                            // trocar de versão não pode zerar o "continuar
+                            // assistindo" nem o hide-watched do card
+                            setPlayingMovie({
+                                ...version,
+                                stream_id: selectedMovie.stream_id,
+                                playStreamId: Number(version.stream_id),
+                            });
+                            setShowPlayer(true);
+                            setShowModal(false);
+                        }
                     }}
                 />
             )}
@@ -402,6 +626,7 @@ export function Movies() {
                     title={playingMovie.name}
                     poster={playingMovie.stream_icon || playingMovie.cover}
                     container={playingMovie.container_extension}
+                    streamId={playingMovie.playStreamId ?? playingMovie.stream_id}
                     onClose={() => {
                         setShowPlayer(false);
                         setPlayingMovie(null);
@@ -443,6 +668,16 @@ export function Movies() {
                                     {isRecentlyAdded(movie, nowMs) && (
                                         <div className="new-badge">NOVO</div>
                                     )}
+                                    {(versionsOf.get(String(movie.stream_id))?.length ?? 0) > 1 && (
+                                        <div className="version-badge">
+                                            {versionsOf.get(String(movie.stream_id))!.length} versões
+                                        </div>
+                                    )}
+                                    {tagsOf(movie.name || '').filter(t => t !== 'H265').length > 0 && (
+                                        <div className="tag-badge">
+                                            {tagsOf(movie.name || '').filter(t => t !== 'H265').slice(0, 2).join(' ')}
+                                        </div>
+                                    )}
                                     {movie.rating && parseFloat(movie.rating) > 0 && (
                                         <div className="movie-rating">⭐ {movie.rating}</div>
                                     )}
@@ -454,11 +689,52 @@ export function Movies() {
                 )}
             </div>
 
+            {/* Barra A-Z (só com ordenação por nome) */}
+            {alphabetIndex && alphabetIndex.size > 1 && (
+                <div className="alphabet-bar">
+                    {[...alphabetIndex.entries()].map(([letter, index], position) => (
+                        <button
+                            key={letter}
+                            className={`alphabet-letter ${focusArea === 'alphabet' && alphabetIndexFocus === position ? 'tv-focused' : ''}`}
+                            onClick={() => jumpToIndex(index)}
+                        >
+                            {letter}
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {toast && <div className="catalog-toast">{toast}</div>}
+
+            {/* Menu de contexto do card (item 24) */}
+            {contextItem && (
+                <div className="context-overlay" onClick={() => setContextItem(null)}>
+                    <div className="context-menu" onClick={(e) => e.stopPropagation()}>
+                        <div className="context-title">{contextItem.name}</div>
+                        {contextActions.map((action, index) => (
+                            <div
+                                key={action.label}
+                                className={`context-item ${contextIndex === index ? 'tv-focused' : ''}`}
+                                onClick={() => {
+                                    action.run();
+                                    setContextItem(null);
+                                }}
+                            >
+                                {action.label}
+                            </div>
+                        ))}
+                        <div className="context-hint">↑↓ Navegar · OK Executar · ← Fechar</div>
+                    </div>
+                </div>
+            )}
+
             {/* Footer Hints */}
             <div className="movies-hints">
                 <span>↑↓←→ Navegar</span>
                 <span>OK Selecionar</span>
                 <span>← Voltar</span>
+                <span>🟡 Ações</span>
+                <span>CH± Página</span>
             </div>
         </div>
     );

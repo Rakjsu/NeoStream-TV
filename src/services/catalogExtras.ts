@@ -191,3 +191,107 @@ export function spinRoulette<T extends RecommendableItem>(
     }
     return candidates[candidates.length - 1];
 }
+
+// ---- Filtros de catálogo (item 32) + busca tolerante (item 26) ----
+
+export interface CatalogFilters {
+    /** 1990, 2000, 2010, 2020... (0 = qualquer) */
+    decade: number;
+    /** nota mínima em escala 0-5 (0 = qualquer) */
+    minRating: number;
+}
+
+export const DECADES = [0, 2020, 2010, 2000, 1990, 1980];
+export const MIN_RATINGS = [0, 3, 3.5, 4, 4.5];
+
+const FILTERS_KEY_PREFIX = 'neostream_filters_';
+
+export const catalogFilters = {
+    get(kind: 'movies' | 'series'): CatalogFilters {
+        try {
+            const raw = localStorage.getItem(FILTERS_KEY_PREFIX + kind);
+            const parsed = raw ? JSON.parse(raw) : {};
+            return {
+                decade: DECADES.includes(Number(parsed.decade)) ? Number(parsed.decade) : 0,
+                minRating: MIN_RATINGS.includes(Number(parsed.minRating)) ? Number(parsed.minRating) : 0,
+            };
+        } catch {
+            return { decade: 0, minRating: 0 };
+        }
+    },
+    set(kind: 'movies' | 'series', filters: CatalogFilters): void {
+        const isDefault = filters.decade === 0 && filters.minRating === 0;
+        safeWrite(FILTERS_KEY_PREFIX + kind, isDefault ? null : JSON.stringify(filters));
+    },
+};
+
+export interface FilterableItem extends SortableItem {
+    rating_5based?: number;
+    release_date?: string;
+}
+
+/** Ano do item (release_date ou o ano dentro do nome). */
+export function itemYear(item: FilterableItem): number {
+    const fromDate = Number((item.release_date || '').slice(0, 4));
+    if (fromDate >= 1900) return fromDate;
+    const match = /(19|20)\d{2}/.exec(item.name || '');
+    return match ? Number(match[0]) : 0;
+}
+
+export function matchesFilters(item: FilterableItem, filters: CatalogFilters): boolean {
+    if (filters.minRating > 0 && (item.rating_5based || 0) < filters.minRating) return false;
+    if (filters.decade > 0) {
+        const year = itemYear(item);
+        if (year < filters.decade || year >= filters.decade + 10) return false;
+    }
+    return true;
+}
+
+/** Normaliza pra busca: sem acento, minúsculo. */
+export function normalizeSearch(value: string): string {
+    return value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+}
+
+/**
+ * Casamento tolerante (item 26): substring direta OU todos os tokens da
+ * query presentes OU distância de edição 1 numa palavra (typo simples).
+ * Barato de propósito — roda sobre milhares de itens numa TV.
+ */
+export function fuzzyMatches(name: string, normalizedQuery: string): boolean {
+    if (!normalizedQuery) return true;
+    const normalizedName = normalizeSearch(name);
+    if (normalizedName.includes(normalizedQuery)) return true;
+
+    const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean);
+    if (queryTokens.length > 1 && queryTokens.every(token => normalizedName.includes(token))) {
+        return true;
+    }
+    // Typo de 1 caractere só vale pra query com 4+ letras (evita ruído)
+    if (normalizedQuery.length < 4 || queryTokens.length > 1) return false;
+    return normalizedName.split(/\s+/).some(word => withinEditDistance1(word, normalizedQuery));
+}
+
+/** true se as strings diferem por no máximo 1 inserção/remoção/troca. */
+function withinEditDistance1(a: string, b: string): boolean {
+    if (Math.abs(a.length - b.length) > 1) return false;
+    if (a === b) return true;
+    const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+    let i = 0;
+    let j = 0;
+    let diffs = 0;
+    while (i < shorter.length && j < longer.length) {
+        if (shorter[i] === longer[j]) {
+            i++;
+            j++;
+            continue;
+        }
+        if (++diffs > 1) return false;
+        if (shorter.length === longer.length) i++;
+        j++;
+    }
+    return true;
+}

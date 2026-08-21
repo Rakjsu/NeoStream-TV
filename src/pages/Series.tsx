@@ -10,7 +10,10 @@ import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/A
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
-import { catalogSort, sortCatalog, hideWatched, isRecentlyAdded, newEpisodes, SORT_LABELS, type CatalogSort } from '../services/catalogExtras';
+import {
+    catalogSort, sortCatalog, hideWatched, isRecentlyAdded, newEpisodes, SORT_LABELS, type CatalogSort,
+    catalogFilters, matchesFilters, normalizeSearch, fuzzyMatches, DECADES, type CatalogFilters,
+} from '../services/catalogExtras';
 import { kidsFilter } from '../services/kidsFilter';
 import { progressService } from '../services/progressService';
 import { storage } from '../services/storage';
@@ -35,6 +38,11 @@ export function Series() {
     const [sortMode, setSortMode] = useState<CatalogSort>(() => catalogSort.get('series'));
     const [hideWatchedOn, setHideWatchedOn] = useState(() => hideWatched.get());
     const [newEpisodesTick, setNewEpisodesTick] = useState(0);
+    // R3: filtros, menu de contexto, toast
+    const [filters, setFilters] = useState<CatalogFilters>(() => catalogFilters.get('series'));
+    const [contextItem, setContextItem] = useState<SeriesType | null>(null);
+    const [contextIndex, setContextIndex] = useState(0);
+    const [toast, setToast] = useState<string | null>(null);
     // Congelado no mount: Date.now() no render viola a pureza do react-hooks
     const [nowMs] = useState(() => Date.now());
 
@@ -117,6 +125,12 @@ export function Series() {
         );
     }, [series, followedSeriesIds]);
 
+    useEffect(() => {
+        if (!toast) return;
+        const timeout = setTimeout(() => setToast(null), 2200);
+        return () => clearTimeout(timeout);
+    }, [toast]);
+
     // Séries terminadas (só relidas quando o toggle liga ou o player fecha —
     // seriesQueue é gatilho intencional de refresh, não dependência de dado)
     const finishedSeriesIds = useMemo(() => {
@@ -130,12 +144,14 @@ export function Series() {
 
     // Filter series (memoizado — recalcular a cada tecla do D-pad trava TVs antigas)
     const filteredSeries = useMemo(() => {
-        const query = searchQuery.toLowerCase();
+        const query = normalizeSearch(searchQuery);
+        const hasFilters = filters.decade > 0 || filters.minRating > 0;
         let list = sortedSeries.filter((s) => {
-            const seriesName = s.name || '';
-            const matchesSearch = seriesName.toLowerCase().includes(query);
+            const matchesSearch = !query || fuzzyMatches(s.name || '', query);
             const matchesCategory = selectedCategory === 'all' || s.category_id === selectedCategory;
-            return matchesSearch && matchesCategory;
+            if (!matchesSearch || !matchesCategory) return false;
+            if (hasFilters && !matchesFilters(s, filters)) return false;
+            return true;
         });
         if (finishedSeriesIds) {
             // Série terminada que ganhou episódios NOVOS não se esconde —
@@ -146,7 +162,7 @@ export function Series() {
             );
         }
         return list;
-    }, [sortedSeries, searchQuery, selectedCategory, finishedSeriesIds]);
+    }, [sortedSeries, searchQuery, selectedCategory, finishedSeriesIds, filters]);
 
     // Índice focado sempre no range (lista encolhe ao esconder assistidos)
     const safeSeriesIndex = Math.min(focusedSeriesIndex, Math.max(0, filteredSeries.length - 1));
@@ -196,7 +212,7 @@ export function Series() {
                     setFocusedCategoryIndex(prev => prev - 1);
                 }
             } else if (direction === 'right') {
-                setFocusedCategoryIndex(prev => Math.min(3, prev + 1));
+                setFocusedCategoryIndex(prev => Math.min(4, prev + 1));
             } else if (direction === 'down') {
                 setFocusArea('series');
                 setFocusedSeriesIndex(0);
@@ -277,6 +293,52 @@ export function Series() {
         });
     };
 
+    const cycleFilters = () => {
+        setFilters(prev => {
+            const index = DECADES.indexOf(prev.decade);
+            const next = { ...prev, decade: DECADES[(index + 1) % DECADES.length] };
+            catalogFilters.set('series', next);
+            return next;
+        });
+    };
+
+    // Menu de contexto no card (item 24)
+    const openContextMenu = () => {
+        const item = filteredSeries[safeSeriesIndex];
+        if (!item) return;
+        setContextItem(item);
+        setContextIndex(0);
+    };
+
+    const contextActions = contextItem ? [
+        {
+            label: storage.isFavorite(String(contextItem.series_id), 'series') ? '💔 Remover dos favoritos' : '❤️ Favoritar',
+            run: () => {
+                const added = storage.toggleFavorite({
+                    id: String(contextItem.series_id),
+                    type: 'series',
+                    title: contextItem.name,
+                    poster: contextItem.cover,
+                    rating: contextItem.rating,
+                });
+                setToast(added ? '❤️ Adicionado aos favoritos' : '💔 Removido dos favoritos');
+            },
+        },
+        {
+            label: storage.isInWatchLater(String(contextItem.series_id), 'series') ? '➖ Tirar da Minha Lista' : '➕ Minha Lista',
+            run: () => {
+                const added = storage.toggleWatchLater({
+                    id: String(contextItem.series_id),
+                    type: 'series',
+                    title: contextItem.name,
+                    poster: contextItem.cover,
+                    rating: contextItem.rating,
+                });
+                setToast(added ? '➕ Salvo na Minha Lista' : '➖ Removido da Minha Lista');
+            },
+        },
+    ] : [];
+
     const openSeriesModal = (item: SeriesType) => {
         setSelectedSeries(item);
         setShowModal(true);
@@ -293,8 +355,10 @@ export function Series() {
                 categoryMenuRef.current?.open();
             } else if (focusedCategoryIndex === 2) {
                 cycleSort();
-            } else {
+            } else if (focusedCategoryIndex === 3) {
                 toggleHideWatched();
+            } else {
+                cycleFilters();
             }
         } else if (focusArea === 'series') {
             const item = filteredSeries[safeSeriesIndex];
@@ -306,7 +370,26 @@ export function Series() {
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
-        enabled: focusZone === 'content' && !showModal && !seriesQueue && !categoryMenuOpen,
+        onAction: (action) => {
+            if (action === 'yellow' && focusArea === 'series') openContextMenu();
+        },
+        enabled: focusZone === 'content' && !showModal && !seriesQueue && !categoryMenuOpen && !contextItem,
+    });
+
+    useTVNavigation({
+        enabled: !!contextItem,
+        onNavigate: (direction) => {
+            if (direction === 'up') setContextIndex(prev => Math.max(0, prev - 1));
+            else if (direction === 'down') setContextIndex(prev => Math.min(contextActions.length - 1, prev + 1));
+        },
+        onEnter: () => {
+            const action = contextActions[contextIndex];
+            if (action) {
+                action.run();
+                setContextItem(null);
+            }
+        },
+        onBack: () => setContextItem(null),
     });
 
     const handleImageError = (seriesId: number) => {
@@ -396,6 +479,13 @@ export function Series() {
                 >
                     🙈
                 </button>
+                <button
+                    className={`toolbar-btn ${filters.decade > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 4 ? 'tv-focused' : ''}`}
+                    onClick={cycleFilters}
+                    title="Filtrar por década"
+                >
+                    {filters.decade > 0 ? `${filters.decade}s` : '📅 Década'}
+                </button>
             </div>
 
             {/* Content Detail Modal */}
@@ -417,6 +507,8 @@ export function Series() {
                         cast: selectedSeries.cast,
                         director: selectedSeries.director,
                         release_date: selectedSeries.release_date,
+                        runtime: selectedSeries.episode_run_time,
+                        tmdbId: selectedSeries.tmdb_id,
                     }}
                     onPlay={async (season, episode) => {
                         // Monta a fila de episódios (habilita próximo/anterior + resume)
@@ -490,11 +582,35 @@ export function Series() {
                 )}
             </div>
 
+            {toast && <div className="catalog-toast">{toast}</div>}
+
+            {contextItem && (
+                <div className="context-overlay" onClick={() => setContextItem(null)}>
+                    <div className="context-menu" onClick={(e) => e.stopPropagation()}>
+                        <div className="context-title">{contextItem.name}</div>
+                        {contextActions.map((action, index) => (
+                            <div
+                                key={action.label}
+                                className={`context-item ${contextIndex === index ? 'tv-focused' : ''}`}
+                                onClick={() => {
+                                    action.run();
+                                    setContextItem(null);
+                                }}
+                            >
+                                {action.label}
+                            </div>
+                        ))}
+                        <div className="context-hint">↑↓ Navegar · OK Executar · ← Fechar</div>
+                    </div>
+                </div>
+            )}
+
             {/* Footer Hints */}
             <div className="series-hints">
                 <span>↑↓←→ Navegar</span>
                 <span>OK Selecionar</span>
                 <span>← Voltar</span>
+                <span>🟡 Ações</span>
             </div>
         </div>
     );
