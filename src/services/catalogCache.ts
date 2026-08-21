@@ -20,7 +20,11 @@ const BASE_KEY = 'neostream_catalog_cache';
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 // Teto por entrada. A quota de uma TV é ~5 MB no total e o app tem muito mais
 // coisa pra guardar do que catálogo.
-const MAX_BYTES = 500 * 1024;
+// 1,5 MB: uma lista de ~8 mil canais podados serializa em ~1,2 MB, e é
+// justamente ela que faz o boot demorar 4-8s. Com 500 KB o cache nunca
+// existia onde mais importava, e o app ainda pagava o custo de descobrir isso
+// serializando tudo a cada visita.
+const MAX_BYTES = 1_500 * 1024;
 // A LiveTV remonta a cada visita; regravar o catálogo em toda uma delas é
 // desperdício puro. Uma hora é folgado pro que a lista muda.
 const REWRITE_AFTER_MS = 60 * 60 * 1000;

@@ -26,9 +26,17 @@ export interface BackupPayload {
 }
 
 /** Monta o JSON do backup (só preferências). */
+/**
+ * Chaves que são preferência pra efeito de reset e snapshot, mas que NÃO
+ * cabem num QR: crescem com o uso e não são ajuste que alguém queira levar
+ * pra outra TV. `series_lastmod` acumula uma entrada por série seguida.
+ */
+const FORA_DO_QR = ['neostream_series_lastmod'];
+
 export function buildBackup(): string {
     const data: Record<string, string> = {};
     for (const key of keysOfGroup('preferencias')) {
+        if (FORA_DO_QR.includes(key.split('__p_')[0])) continue;
         const value = localStorage.getItem(key);
         if (value === null) continue;
         data[key.startsWith(PREFIX) ? key.slice(PREFIX.length) : key] = value;

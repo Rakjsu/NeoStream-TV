@@ -36,6 +36,10 @@ export const KEYS_PROGRESSO = [
 ] as const;
 
 export const KEYS_LISTAS = [
+    // Ocultação de canais é decisão de QUEM assiste (e é a base do controle
+    // parental na prática), não ajuste do aparelho
+    'neostream_hidden_channels',
+    'neostream_hidden_categories',
     'neostream_favorites',
     'neostream_watch_later',
     'neostream_fav_channel_order',
@@ -55,17 +59,20 @@ export const KEYS_PREFERENCIAS = [
     'neostream_subtitle_size',
     'neostream_player_stats',
     'neostream_playback_prefs',
-    'neostream_hidden_channels',
-    'neostream_hidden_categories',
     'neostream_aspect_prefs',
     'neostream_live_only_epg',
     'neostream_group_variants',
     'neostream_boot_last_channel',
     'neostream_hide_watched',
     'neostream_burnin_dimmer',
+    // BASELINE de "novos episódios": não é cache, perdê-la faz o app achar
+    // que tudo é novidade
+    'neostream_series_lastmod',
 ] as const;
 
-export const KEYS_CACHE = ['neostream_series_lastmod'] as const;
+// Só entra aqui o que volta sozinho de graça. O catálogo e o TMDB vêm por
+// prefixo (PREFIXOS_CACHE).
+export const KEYS_CACHE: readonly string[] = [];
 
 /** Famílias com sufixo dinâmico (aba, playlist). */
 export const PREFIXOS_PREFERENCIAS = [

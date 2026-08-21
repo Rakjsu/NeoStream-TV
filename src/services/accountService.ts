@@ -14,6 +14,8 @@ const SNOOZE_MS = 24 * 60 * 60 * 1000;
 export const EXPIRY_WARN_DAYS = 7;
 
 export interface AccountInfo {
+    /** A conexão acabou em HTTP mesmo tendo sido pedida em HTTPS? */
+    inseguro?: boolean;
     username: string;
     status: string;
     /** epoch em ms; null = sem data (conta vitalícia ou painel que não informa) */
@@ -42,7 +44,7 @@ function toInt(value: unknown): number | null {
 }
 
 export const accountService = {
-    save(auth: AuthResponse | null | undefined): void {
+    save(auth: AuthResponse | null | undefined, inseguro = false): void {
         const user = auth?.user_info;
         if (!user) return;
         const info: AccountInfo = {
@@ -55,6 +57,7 @@ export const accountService = {
             createdAt: toEpochMs(user.created_at),
             timezone: String(auth?.server_info?.timezone || ''),
             serverUrl: String(auth?.server_info?.url || ''),
+            inseguro,
             fetchedAt: Date.now(),
         };
         try {

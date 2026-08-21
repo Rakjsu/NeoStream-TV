@@ -18,9 +18,11 @@ import {
 interface SeriesQueuePlayerProps {
     queue: EpisodeQueue;
     onClose: () => void;
+    /** Repassa pro VideoPlayer: aberto de dentro de um overlay (Busca Global) */
+    isOverlayOwner?: boolean;
 }
 
-export function SeriesQueuePlayer({ queue: initialQueue, onClose }: SeriesQueuePlayerProps) {
+export function SeriesQueuePlayer({ queue: initialQueue, onClose, isOverlayOwner }: SeriesQueuePlayerProps) {
     const [queue, setQueue] = useState(initialQueue);
     // Vive aqui porque o VideoPlayer é remontado a cada episódio (key={ep.id});
     // dentro dele o contador voltaria a zero e o item 51 nunca dispararia
@@ -31,6 +33,7 @@ export function SeriesQueuePlayer({ queue: initialQueue, onClose }: SeriesQueueP
 
     return (
         <VideoPlayer
+            isOverlayOwner={isOverlayOwner}
             key={ep.id}
             autoAdvanceCountRef={autoAdvanceCountRef}
             src={playbackUrl(queue)}

@@ -416,3 +416,20 @@
     align-items: center;
     gap: 6px;
 }
+/* Aviso de conexão rebaixada para HTTP (senha em texto claro na rede) */
+.login-warning {
+    display: flex;
+    align-items: flex-start;
+    background: rgba(234, 179, 8, 0.14);
+    border: 1px solid rgba(234, 179, 8, 0.45);
+    border-radius: 10px;
+    padding: 14px 18px;
+    color: #fde68a;
+    font-size: 15px;
+    line-height: 1.45;
+    text-align: left;
+}
+
+.login-warning > * + * {
+    margin-left: 12px;
+}

@@ -684,3 +684,21 @@
     border-color: var(--ns-accent) !important;
     box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.6);
 }
+
+/* Foco de D-pad nos botões do card e do diálogo de exclusão.
+   Antes eram só-mouse: não havia como excluir um perfil pela TV. */
+.pm-btn.tv-focused {
+    box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.85);
+    transform: scale(1.06);
+}
+
+.pm-btn.pm-btn-danger.tv-focused {
+    box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.9);
+}
+
+.pm-hint {
+    margin: 6px 0 0;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 14px;
+    text-align: center;
+}

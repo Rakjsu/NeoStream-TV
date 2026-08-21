@@ -4,8 +4,9 @@ import { FaPlay, FaPause, FaCog, FaStepForward, FaStepBackward, FaListUl, FaMoon
 import { useHls, type StreamErrorCause } from '../../hooks/useHls';
 import { playbackPrefs } from '../../services/playbackPrefs';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
+import { useFocusZone } from '../../contexts/FocusContext';
 import { epgService, type EpgProgram } from '../../services/epgService';
-import { aspectPrefs, ASPECT_MODES, ASPECT_LABELS, type AspectMode } from '../../services/liveExtras';
+import { aspectPrefs, ASPECT_MODES, ASPECT_LABELS, zapHistory, type AspectMode } from '../../services/liveExtras';
 import {
     qualityByContent,
     qualityCap,
@@ -55,6 +56,22 @@ export interface VideoPlayerProps {
     onRequestPauseLive?: (pausedAtMs: number) => string | null;
     /** Canal de rádio (item 13): UI de áudio, sem vídeo */
     isRadio?: boolean;
+    /**
+     * Emendar o próximo item ao terminar. Sem valor, segue a preferência de
+     * "emendar o próximo episódio" das Configurações — que é sobre SÉRIES.
+     * A fila de catch-up passa `true`: é ela que devolve o usuário ao AO VIVO
+     * quando alcança o programa no ar, e isso não pode depender daquela opção.
+     */
+    autoAdvance?: boolean;
+    /** Desliga o D-pad do player à força (raro; o overlay do App já é tratado) */
+    navEnabled?: boolean;
+    /**
+     * O player É o overlay do momento — caso da Busca Global, que abre o
+     * player de dentro dela e desliga a própria navegação. Sem esta isenção o
+     * player também se desligaria (a zona é 'overlay') e NINGUÉM escutaria as
+     * teclas: nem seta, nem OK, nem Voltar.
+     */
+    isOverlayOwner?: boolean;
     /**
      * Contador de episódios emendados sozinhos (item 51). Precisa vir do PAI:
      * quem usa fila de episódios remonta o player a cada avanço (key por
@@ -168,12 +185,19 @@ export function VideoPlayer({
     onStreamFailed,
     onRequestPauseLive,
     isRadio = false,
-    autoAdvanceCountRef
+    autoAdvanceCountRef,
+    navEnabled = true,
+    autoAdvance,
+    isOverlayOwner = false
 }: VideoPlayerProps) {
+    // Um overlay do App (o aviso de lembrete) toma as teclas mudando a zona
+    // pra 'overlay'. Sem consultar isso aqui, o MESMO OK pausava o vídeo por
+    // baixo do aviso e ainda trocava o "último canal" do usuário.
+    const { focusZone: appFocusZone } = useFocusZone();
+
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const progressRef = useRef<HTMLDivElement>(null);
-    const hideControlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const resumeAppliedRef = useRef(false);
     const digitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -223,6 +247,8 @@ export function VideoPlayer({
     const [zapIndex, setZapIndex] = useState(0);
     // EPG do canal focado no overlay de zapping (item 6)
     const [zapEpg, setZapEpg] = useState<{ id: number; title: string } | null>(null);
+    // Banner "onde eu caí": aparece por alguns segundos a cada troca de canal
+    const [zapBanner, setZapBanner] = useState<{ num?: number; name: string } | null>(null);
 
     useEffect(() => {
         if (playerFocus !== 'zap-list' || !channelList) return;
@@ -241,6 +267,13 @@ export function VideoPlayer({
             clearTimeout(timeout);
         };
     }, [playerFocus, zapIndex, channelList]);
+
+    // O banner some sozinho
+    useEffect(() => {
+        if (!zapBanner) return;
+        const timeout = setTimeout(() => setZapBanner(null), 4000);
+        return () => clearTimeout(timeout);
+    }, [zapBanner]);
 
     // Aviso "a seguir" nos últimos 5 min do programa (item 9) — tick de 30s
     const [nextSoonTick, setNextSoonTick] = useState(0);
@@ -271,6 +304,7 @@ export function VideoPlayer({
     const [lastSrc, setLastSrc] = useState(src);
     if (src !== lastSrc) {
         setLastSrc(src);
+        if (canZap && title) setZapBanner({ num: channelList?.find(c => c.stream_id === currentChannelId)?.num, name: title });
         setError(null);
         setLoading(true);
         setDigitBuffer('');
@@ -283,6 +317,7 @@ export function VideoPlayer({
         reconnectAttemptRef.current = 0;
         streamFailedRef.current = false;
         reloadResumeRef.current = null;
+        resumeAfterReloadRef.current = false;
         if (reconnectTimerRef.current) {
             clearTimeout(reconnectTimerRef.current);
             reconnectTimerRef.current = null;
@@ -310,6 +345,10 @@ export function VideoPlayer({
     const reconnectAttemptRef = useRef(0);
     // VOD: posição capturada antes do reload (o pipeline recomeça em 0)
     const reloadResumeRef = useRef<number | null>(null);
+    // O reload veio de uma RECONEXÃO com o vídeo tocando? Então a volta tem
+    // que voltar TOCANDO — mesmo dentro do pause-live, cujas duas defesas
+    // (autoplay desligado + pausa no loadedmetadata) travariam o player.
+    const resumeAfterReloadRef = useRef(false);
     // Terminal: tentativas esgotadas — watchdog para de re-agendar
     const streamFailedRef = useRef(false);
 
@@ -397,6 +436,15 @@ export function VideoPlayer({
         let hiddenWhilePlaying = false;
         const handleVisibility = () => {
             if (document.hidden) {
+                // PRIMEIRO: matar a reconexão pendente. O backoff vai até 16s
+                // e dispara com a tela apagada; o reload() reconstrói o
+                // pipeline e o MANIFEST_PARSED chama play(). A TV passaria a
+                // noite baixando e segurando um slot de conexão da conta.
+                if (reconnectTimerRef.current) {
+                    clearTimeout(reconnectTimerRef.current);
+                    reconnectTimerRef.current = null;
+                    setReconnecting(false);
+                }
                 const video = videoRef.current;
                 hiddenWhilePlaying = !!video && !video.paused;
                 // Só solta a conexão do que estava TOCANDO. Pausado já parou de
@@ -439,6 +487,17 @@ export function VideoPlayer({
     // Agenda uma reconexão com backoff exponencial; esgotou → erro + failover
     const scheduleReconnect = useCallback((cause: StreamErrorCause | 'stall') => {
         if (reconnectTimerRef.current || streamFailedRef.current) return; // já agendada / terminal
+        // 404/403 é o provedor dizendo que o canal não existe naquela URL —
+        // repetir 4 vezes com backoff só gasta 30s antes de tentar a variante
+        // seguinte, que é o que de fato pode funcionar.
+        if (cause === 'notfound') {
+            streamFailedRef.current = true;
+            videoRef.current?.pause();
+            setReconnecting(false);
+            setError(CAUSE_MESSAGES.notfound);
+            onStreamFailedRef.current?.();
+            return;
+        }
         const attempt = reconnectAttemptRef.current + 1;
         if (attempt > MAX_RECONNECT_ATTEMPTS) {
             streamFailedRef.current = true;
@@ -455,9 +514,15 @@ export function VideoPlayer({
         const delayMs = Math.min(16000, 2000 * Math.pow(2, attempt - 1));
         reconnectTimerRef.current = setTimeout(() => {
             reconnectTimerRef.current = null;
-            // VOD volta do zero no reload — guarda a posição pra reaplicar
             const video = videoRef.current;
-            if (!isLiveContent && video && video.currentTime > 5) {
+            // Estava tocando? Então tem que voltar tocando. Sem isto, uma
+            // reconexão dentro do pause-live parava para sempre em
+            // "Reconectando… 1/4": o pipeline voltava mudo e nada mais
+            // disparava, porque o reset só acontece no evento `playing`.
+            resumeAfterReloadRef.current = !!video && !video.paused;
+            // Guarda a posição pra reaplicar. Vale também pro timeshift da
+            // pausa, que é ancorado no mesmo instante.
+            if (video && video.currentTime > 5 && (!isLiveContent || pausedLiveSrcRef.current)) {
                 reloadResumeRef.current = video.currentTime;
             }
             reload();
@@ -473,12 +538,24 @@ export function VideoPlayer({
             streamFailedRef.current = false;
             setReconnectAttempt(0);
             setReconnecting(false);
+            // Voltou a tocar = não há mais erro. O hls.js se recupera sozinho
+            // de falha de decodificação em 1-2s, e o aviso ficava na tela por
+            // cima de um vídeo que estava funcionando.
+            setError(null);
         };
         const handleLoadedMetadata = () => {
             // Posição do VOD capturada antes do reload do watchdog
             if (reloadResumeRef.current != null && video) {
                 video.currentTime = reloadResumeRef.current;
                 reloadResumeRef.current = null;
+            }
+            // Voltando de uma reconexão que estava TOCANDO: retoma. Este
+            // ramo tem que vir ANTES da pausa do pause-live, senão o player
+            // fica congelado com o overlay de "Reconectando" pra sempre.
+            if (resumeAfterReloadRef.current && video) {
+                resumeAfterReloadRef.current = false;
+                video.play().catch(() => { });
+                return;
             }
             // Cinto e suspensório do pause live: a fonte de pausa nunca
             // pode começar tocando (o usuário acabou de apertar pausa)
@@ -622,6 +699,33 @@ export function VideoPlayer({
     useEffect(() => {
         playerFocusRef.current = playerFocus;
     }, [playerFocus]);
+
+    // Auto-hide dos controles.
+    //
+    // Antes o timer só era armado quando chegava uma tecla — quem abria um
+    // filme pela Home (o OK é consumido pela página) e largava o controle
+    // assistia o filme inteiro com a barra e o título por cima da imagem,
+    // queimando elementos estáticos num painel OLED. Agora um effect é o dono:
+    // ele arma na montagem, a cada play/pause e a cada sinal de atividade.
+    const [activityTick, setActivityTick] = useState(0);
+
+    const resetHideControlsTimer = useCallback(() => {
+        // Qualquer sinal de vida zera a contagem de episódios emendados
+        autoAdvanceRef.current = 0;
+        setShowControls(true);
+        setActivityTick(tick => tick + 1);
+    }, [autoAdvanceRef]);
+
+    useEffect(() => {
+        if (!showControls) return;
+        const timeout = setTimeout(() => {
+            // Esconder a barra com ela FOCADA deixaria o seek às cegas
+            if (playing && !menu && playerFocusRef.current !== 'seekbar') {
+                setShowControls(false);
+            }
+        }, 3000);
+        return () => clearTimeout(timeout);
+    }, [showControls, playing, menu, activityTick]);
     useEffect(() => {
         if (!canZap) return;
         const handleExtraKeys = (event: KeyboardEvent) => {
@@ -631,9 +735,13 @@ export function VideoPlayer({
 
             if (key === 'MediaChannelUp' || code === 427 || key === 'PageUp' || code === 33) {
                 event.preventDefault();
+                // Trocar de canal reexibe a barra: sem isso o usuário zapeava
+                // sem nenhuma pista de onde tinha caído
+                resetHideControlsTimer();
                 switchRelative(-1);
             } else if (key === 'MediaChannelDown' || code === 428 || key === 'PageDown' || code === 34) {
                 event.preventDefault();
+                resetHideControlsTimer();
                 switchRelative(1);
             } else if (/^[0-9]$/.test(key) || (code >= 48 && code <= 57) || (code >= 96 && code <= 105)) {
                 event.preventDefault();
@@ -643,7 +751,7 @@ export function VideoPlayer({
         };
         window.addEventListener('keydown', handleExtraKeys);
         return () => window.removeEventListener('keydown', handleExtraKeys);
-    }, [canZap, switchRelative]);
+    }, [canZap, switchRelative, resetHideControlsTimer]);
 
     // ----- Sleep timer -----
     // O estado "remaining" é setado no handler (cycleSleep) e no callback do
@@ -775,8 +883,10 @@ export function VideoPlayer({
 
         const video = videoRef.current;
         const handleEnded = () => {
-            // Emendar o próximo é opcional (item 66); o botão ⏭ continua valendo
-            if (!playbackPrefs.get().autoNextEpisode) return;
+            // Emendar o próximo é opcional (item 66); o botão ⏭ continua valendo.
+            // Lido AQUI (não no render) pra não ler localStorage durante o render.
+            const emendar = autoAdvance ?? playbackPrefs.get().autoNextEpisode;
+            if (!emendar) return;
             autoAdvanceRef.current += 1;
             if (autoAdvanceRef.current >= AUTO_EPISODE_LIMIT) {
                 // Não emenda: pergunta e para de consumir banda até responder
@@ -788,7 +898,7 @@ export function VideoPlayer({
 
         video.addEventListener('ended', handleEnded);
         return () => video.removeEventListener('ended', handleEnded);
-    }, [onNextEpisode, canGoNext, autoAdvanceRef]);
+    }, [onNextEpisode, canGoNext, autoAdvanceRef, autoAdvance]);
 
     // Sem resposta = a TV ficou ligada sozinha: fecha o player
     useEffect(() => {
@@ -814,21 +924,6 @@ export function VideoPlayer({
     // precisa da versão mais recente sem virar dependência circular
     const handleCloseRef = useRef<(() => void) | null>(null);
 
-    // Auto-hide controls
-    const resetHideControlsTimer = useCallback(() => {
-        // Qualquer sinal de vida zera a contagem de episódios emendados
-        autoAdvanceRef.current = 0;
-        setShowControls(true);
-        if (hideControlsTimeoutRef.current) {
-            clearTimeout(hideControlsTimeoutRef.current);
-        }
-        hideControlsTimeoutRef.current = setTimeout(() => {
-            // Esconder a barra com ela FOCADA deixaria o seek às cegas
-            if (playing && !menu && playerFocusRef.current !== 'seekbar') {
-                setShowControls(false);
-            }
-        }, 3000);
-    }, [playing, menu, autoAdvanceRef]);
 
     // Video event handlers
     useEffect(() => {
@@ -875,16 +970,11 @@ export function VideoPlayer({
         };
     }, []);
 
-    // Mouse move handler for controls
+    // Mouse move handler for controls (dev no navegador; a TV não tem mouse)
     useEffect(() => {
         const handleMouseMove = () => resetHideControlsTimer();
         document.addEventListener('mousemove', handleMouseMove);
-        return () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            if (hideControlsTimeoutRef.current) {
-                clearTimeout(hideControlsTimeoutRef.current);
-            }
-        };
+        return () => document.removeEventListener('mousemove', handleMouseMove);
     }, [resetHideControlsTimer]);
 
     // Close handler
@@ -929,6 +1019,9 @@ export function VideoPlayer({
         if (isLiveContent && !pausedLiveSrc && onRequestPauseLive) {
             const url = onRequestPauseLive(Date.now());
             if (url) {
+                // Uma reconexão pendente pode ter armado a retomada: entrar na
+                // pausa AGORA vence, senão o vídeo voltava a tocar sozinho
+                resumeAfterReloadRef.current = false;
                 setPausedLiveSrc(url);
                 setIsBehindLive(true);
             }
@@ -1016,11 +1109,28 @@ export function VideoPlayer({
             } else if (key === 'MediaTrackPrevious' || code === 10232) {
                 event.preventDefault();
                 if (canGoPrevious) onPreviousEpisode?.();
+            } else if (key === 'ColorF0Red' || code === 403) {
+                // 🔴 volta ao canal ANTERIOR. O histórico de zapping já era
+                // gravado desde a R4 e nunca tinha sido lido por ninguém.
+                // Só na camada de controles: com o menu ⚙, a lista 📺 ou um
+                // aviso por cima, trocar de canal por baixo bagunçaria o foco
+                // dessas camadas.
+                if (!canZap) return;
+                if (playerFocusRef.current !== 'controls') return;
+                if (appFocusZone === 'overlay' && !isOverlayOwner) return;
+                const anterior = zapHistory.previous();
+                if (anterior != null && anterior !== currentChannelId) {
+                    event.preventDefault();
+                    resetHideControlsTimer();
+                    onSwitchChannel?.(anterior);
+                }
             }
         };
         window.addEventListener('keydown', handleMediaKeys);
         return () => window.removeEventListener('keydown', handleMediaKeys);
-    }, [togglePlay, handleClose, nudgeSeek, isLiveContent, canGoNext, canGoPrevious, onNextEpisode, onPreviousEpisode]);
+    }, [togglePlay, handleClose, nudgeSeek, isLiveContent, canGoNext, canGoPrevious,
+        onNextEpisode, onPreviousEpisode, canZap, currentChannelId, onSwitchChannel,
+        resetHideControlsTimer, appFocusZone, isOverlayOwner]);
 
     // ----- Menu de opções (qualidade / áudio / legenda / stats) -----
     const openMenu = useCallback((id: MenuId) => {
@@ -1281,6 +1391,13 @@ export function VideoPlayer({
             confirmStillWatching();
             return;
         }
+        // Com a barra escondida, o primeiro OK só TRAZ os controles de volta.
+        // Executar o botão que por acaso estava focado fechava o player na
+        // cara de quem só queria ver a barra.
+        if (!showControls && playerFocus === 'controls') {
+            resetHideControlsTimer();
+            return;
+        }
         resetHideControlsTimer();
 
         if (playerFocus === 'zap-list') {
@@ -1300,7 +1417,7 @@ export function VideoPlayer({
         }
     }, [playerFocus, menuIndex, menuEntries, executeControlAction, resetHideControlsTimer,
         channelList, zapIndex, onSwitchChannel, closeZapList, commitSeek, togglePlay,
-        stillWatching, confirmStillWatching]);
+        stillWatching, confirmStillWatching, showControls]);
 
     const handleBack = useCallback(() => {
         if (stillWatching) {
@@ -1317,17 +1434,21 @@ export function VideoPlayer({
         } else if (playerFocus === 'seekbar') {
             commitSeek();
             setPlayerFocus('controls');
+            // Sem isto a barra ficava na tela pra sempre: o effect do auto-hide
+            // não re-arma sozinho quando só o playerFocus muda
+            resetHideControlsTimer();
         } else if (onClose) {
             handleClose();
         }
-    }, [playerFocus, closeZapList, closeMenu, openMenu, menu, commitSeek, handleClose, onClose, stillWatching]);
+    }, [playerFocus, closeZapList, closeMenu, openMenu, menu, commitSeek, handleClose, onClose,
+        stillWatching, resetHideControlsTimer]);
 
     // TV Navigation hook
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
         onBack: handleBack,
-        enabled: true
+        enabled: navEnabled && (isOverlayOwner || appFocusZone !== 'overlay')
     });
 
     const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -1419,6 +1540,14 @@ export function VideoPlayer({
             {nextSoon && !showControls && liveEpg?.now && (
                 <div className="next-soon-banner">
                     Em {Math.max(1, Math.ceil((liveEpg.now.end - Date.now()) / 60000))} min: {nextSoon.title}
+                </div>
+            )}
+
+            {/* Onde eu caí? (banner curto na troca de canal) */}
+            {canZap && zapBanner && !showControls && (
+                <div className="zap-banner">
+                    {zapBanner.num != null && <span className="zap-banner-num">{zapBanner.num}</span>}
+                    <span className="zap-banner-name">{zapBanner.name}</span>
                 </div>
             )}
 

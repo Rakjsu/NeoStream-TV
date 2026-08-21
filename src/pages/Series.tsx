@@ -18,6 +18,7 @@ import { kidsFilter } from '../services/kidsFilter';
 import { progressService } from '../services/progressService';
 import { storage } from '../services/storage';
 import './Series.css';
+import { ErrorScreen } from '../components/ErrorScreen';
 
 export function Series() {
     const { focusZone, setFocusZone } = useFocusZone();
@@ -347,7 +348,10 @@ export function Series() {
         setNewEpisodesTick(t => t + 1);
     };
 
-    const handleEnter = () => {
+    const handleEnter = (fromInput?: boolean) => {
+        // OK vindo de dentro do campo de busca já fechou o teclado; reabrir
+        // aqui faria o IME do Tizen piscar sem parar
+        if (fromInput) return;
         if (focusArea === 'categories') {
             if (focusedCategoryIndex === 0) {
                 searchRef.current?.open();
@@ -373,7 +377,7 @@ export function Series() {
         onAction: (action) => {
             if (action === 'yellow' && focusArea === 'series') openContextMenu();
         },
-        enabled: focusZone === 'content' && !showModal && !seriesQueue && !categoryMenuOpen && !contextItem,
+        enabled: focusZone === 'content' && !error && !showModal && !seriesQueue && !categoryMenuOpen && !contextItem,
     });
 
     useTVNavigation({
@@ -418,17 +422,12 @@ export function Series() {
     // Error State
     if (error) {
         return (
-            <div className="series-error-container">
-                <div className="error-glow" />
-                <div className="error-content">
-                    <div className="error-icon">📺</div>
-                    <h2>Erro ao carregar séries</h2>
-                    <p>{error}</p>
-                    <button onClick={() => window.location.reload()} className="retry-button">
-                        🔄 Tentar novamente
-                    </button>
-                </div>
-            </div>
+            <ErrorScreen
+                icon="📺"
+                title="Erro ao carregar séries"
+                message={error}
+                className="series-error-container"
+            />
         );
     }
 

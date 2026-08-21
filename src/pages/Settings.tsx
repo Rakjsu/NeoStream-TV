@@ -111,7 +111,12 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
         () => (parentalService.requires('settings') ? 'entry' : 'none')
     );
     // O que fazer depois de um 'unlock' bem-sucedido
-    const [afterUnlock, setAfterUnlock] = useState<null | { kind: 'removepin' } | { kind: 'gate'; gate: 'settings' | 'leaveKids'; value: boolean }>(null);
+    const [afterUnlock, setAfterUnlock] = useState<
+        | null
+        | { kind: 'removepin' }
+        | { kind: 'resetconta' }
+        | { kind: 'gate'; gate: 'settings' | 'leaveKids'; value: boolean }
+    >(null);
     // Mexer nas travas exige ter provado o PIN nesta visita. Sem PIN definido,
     // não há o que destravar.
     const [parentalUnlocked, setParentalUnlocked] = useState(() => !parentalService.isSet());
@@ -369,6 +374,13 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             }
             else if (focusZone === 'reset') {
                 const group = DATA_GROUP_IDS[resetIndex];
+                // O grupo "conta" carrega o PIN parental: apagá-lo sem provar
+                // o PIN destravava o modo Kids por um caminho lateral
+                if (group === 'conta' && !parentalUnlocked && parentalService.isSet()) {
+                    setAfterUnlock({ kind: 'resetconta' });
+                    setPinMode('unlock');
+                    return;
+                }
                 if (!resetArmed) {
                     setResetArmed(true);
                     setMessage(`OK de novo apaga: ${DATA_GROUPS[group].label}.`);
@@ -471,6 +483,8 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 title="Confirmar com o PIN"
                 hint={afterUnlock?.kind === 'removepin'
                     ? 'Digite o PIN atual para removê-lo.'
+                    : afterUnlock?.kind === 'resetconta'
+                        ? 'Apagar "Conta e perfis" remove o PIN junto. Digite-o para continuar.'
                     : 'Digite o PIN para mudar as travas do controle parental.'}
                 onSubmit={async (pin) => {
                     const ok = await parentalService.verify(pin);
@@ -484,6 +498,10 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                         setPinSet(false);
                         setParentalUnlocked(true);
                         setMessage('PIN parental removido.');
+                    } else if (action?.kind === 'resetconta') {
+                        // PIN provado: o usuário ainda precisa confirmar
+                        setResetArmed(true);
+                        setMessage('OK de novo apaga: Conta e perfis.');
                     } else if (action?.kind === 'gate') {
                         parentalService.setGates({ [action.gate]: action.value });
                         setGates(prev => ({ ...prev, [action.gate]: action.value }));
@@ -754,6 +772,13 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                                 <span className="settings-label">Cliente desde</span>
                                 <span className="settings-value">{formatDate(account.createdAt)}</span>
                             </div>
+                            {account.inseguro && (
+                                <p className="settings-warning">
+                                    ⚠️ A conexão segura falhou e o app entrou por HTTP: sua senha
+                                    trafega sem proteção nesta rede. Se puder, peça ao provedor um
+                                    endereço HTTPS que funcione nesta TV.
+                                </p>
+                            )}
                             <p className="settings-muted">
                                 Lido do provedor no último login — atualiza sozinho ao entrar de novo.
                                 {expiryDays != null && expiryDays <= EXPIRY_WARN_DAYS && expiryDays >= 0 &&

@@ -212,6 +212,7 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
             {/* Reprodução dentro do overlay */}
             {playingChannel && (
                 <VideoPlayer
+                    isOverlayOwner
                     src={playingChannel.direct_source || api.getLiveStreamUrl(playingChannel.stream_id)}
                     title={playingChannel.name}
                     poster={playingChannel.stream_icon}
@@ -225,6 +226,7 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
 
             {playingMovie && (
                 <MoviePlayer
+                    isOverlayOwner
                     movieId={String(playingMovie.stream_id)}
                     title={playingMovie.name}
                     poster={playingMovie.stream_icon || playingMovie.cover}
@@ -255,6 +257,7 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
 
             {seriesQueue && (
                 <SeriesQueuePlayer
+                    isOverlayOwner
                     queue={seriesQueue}
                     onClose={() => setSeriesQueue(null)}
                 />

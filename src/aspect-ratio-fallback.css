@@ -1,0 +1,59 @@
+/* Fallback de `aspect-ratio` para Chromium < 88.
+ *
+ * O tizen/config.xml declara required_version="5.5" (Chromium 69), e o app
+ * roda em TVs Tizen 6.0 (76) e 6.5 (85) também. Em nenhuma delas
+ * `aspect-ratio` existe — ele só chegou no Chrome 88. Sem altura, o esqueleto
+ * de carregamento aparece como tracinhos de 16px e as capas colapsam.
+ *
+ * Tudo fica dentro de `@supports not (...)`: onde `aspect-ratio` funciona
+ * (Tizen 7.0 e o navegador), NADA daqui se aplica. `@supports` existe desde o
+ * Chrome 28, então o Chromium 69 entende a consulta e a avalia como
+ * verdadeira, que é exatamente o que queremos.
+ */
+
+@supports not (aspect-ratio: 1 / 1) {
+
+    /* --- Capas 2/3 ---
+       O truque do padding percentual só funciona porque estes containers são
+       filhos BLOCO que ocupam a largura do card: a porcentagem do padding
+       resolve contra a largura do bloco que os contém, que aqui é a largura
+       deles mesmos. (Ver a nota do .preview-video abaixo, onde isso NÃO vale.) */
+    .content-card-image-wrap,
+    .card-poster,
+    .mylist-page .card-poster,
+    .movie-poster,
+    .series-poster,
+    .skeleton-poster {
+        height: 0;
+        padding-top: 150%;
+    }
+
+    /* O filho de mídia sai do fluxo e preenche o container. A lista precisa
+       cobrir TODOS os filhos que carregam conteúdo visível — um que fique de
+       fora herda a altura 0 do pai e some da tela. */
+    .content-card-image-wrap > img,
+    .content-card-image-wrap > .content-card-placeholder,
+    .card-poster > img,
+    .card-poster > .poster-placeholder,
+    .movie-poster > img,
+    .movie-poster > .poster-placeholder,
+    .series-poster > img,
+    .series-poster > .poster-placeholder {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    /* --- Prévia do canal 16/9 ---
+       Aqui o padding percentual NÃO serve: `.preview-video` é um item flex de
+       largura fixa (300px) dentro de `.preview-content`, e porcentagem de
+       padding resolve contra a largura do CONTAINER, não a do próprio
+       elemento — daria ~989px de altura numa tela de 1080p, uma caixa preta
+       enorme empurrando a grade de canais pra fora. Com largura fixa, a altura
+       exata é simples de escrever: 300 × 9/16. */
+    .preview-video {
+        height: 168.75px;
+    }
+}

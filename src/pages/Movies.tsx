@@ -20,6 +20,7 @@ import { storage } from '../services/storage';
 import { kidsFilter } from '../services/kidsFilter';
 import { progressService } from '../services/progressService';
 import './Movies.css';
+import { ErrorScreen } from '../components/ErrorScreen';
 
 export function Movies() {
     const { focusZone, setFocusZone } = useFocusZone();
@@ -55,6 +56,8 @@ export function Movies() {
     // 'categories' = zona do header: índice 0 é a busca, 1 é o menu de categorias
     const [focusArea, setFocusArea] = useState<'categories' | 'movies' | 'alphabet'>('movies');
     const [alphabetIndexFocus, setAlphabetIndexFocus] = useState(0);
+    // Letra escolhida na barra A-Z (null = todas)
+    const [letterFilter, setLetterFilter] = useState<string | null>(null);
     const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
     const [focusedMovieIndex, setFocusedMovieIndex] = useState(0);
     const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
@@ -151,22 +154,41 @@ export function Movies() {
     );
 
     // Ordenação roda por mudança de modo/dados; o filtro já aconteceu acima
-    const filteredStreams = useMemo(
-        () => sortCatalog(groupedStreams, sortMode),
-        [groupedStreams, sortMode]
-    );
+    // O filtro de letra é uma lente sobre a lista ATUAL: buscar, trocar de
+    // categoria ou de ordenação muda a lista debaixo dele, e manter a letra
+    // deixaria "nenhum filme encontrado" sem nada na tela explicando por quê.
+    // Ajuste durante o render (mesmo padrão do lastSrc do player); effect com
+    // setState é proibido pela regra react-hooks/set-state-in-effect.
+    const [lastFilterKey, setLastFilterKey] = useState(`${searchQuery}|${selectedCategory}|${sortMode}`);
+    const filterKey = `${searchQuery}|${selectedCategory}|${sortMode}`;
+    if (filterKey !== lastFilterKey) {
+        setLastFilterKey(filterKey);
+        if (letterFilter !== null) setLetterFilter(null);
+    }
+
+    const filteredStreams = useMemo(() => {
+        const ordenado = sortCatalog(groupedStreams, sortMode);
+        if (!letterFilter) return ordenado;
+        return ordenado.filter(stream => {
+            const first = normalizeSearch(stream.name || '').charAt(0).toUpperCase();
+            const letra = /[A-Z]/.test(first) ? first : '#';
+            return letra === letterFilter;
+        });
+    }, [groupedStreams, sortMode, letterFilter]);
 
     // Barra A-Z (item 23): navegável por D-pad (→ da última coluna entra)
     const alphabetIndex = useMemo(() => {
         if (sortMode !== 'name') return null;
         const map = new Map<string, number>();
-        filteredStreams.forEach((stream, index) => {
+        // Sobre a lista SEM o filtro de letra: senão, ao escolher "S" a barra
+        // passaria a mostrar só o "S" e não haveria como voltar às outras
+        sortCatalog(groupedStreams, sortMode).forEach((stream, index) => {
             const first = normalizeSearch(stream.name || '').charAt(0).toUpperCase();
             const letter = /[A-Z]/.test(first) ? first : '#';
             if (!map.has(letter)) map.set(letter, index);
         });
         return map;
-    }, [filteredStreams, sortMode]);
+    }, [sortMode, groupedStreams]);
 
     // Índice focado sempre no range (lista encolhe ao esconder assistidos)
     const safeMovieIndex = Math.min(focusedMovieIndex, Math.max(0, filteredStreams.length - 1));
@@ -309,10 +331,18 @@ export function Movies() {
     };
 
     // Salto da barra A-Z: garante que o alvo esteja RENDERIZADO antes de focar
-    const jumpToIndex = (index: number) => {
-        setVisibleCount(current => Math.max(current, Math.min(filteredStreams.length, index + 18)));
+    /**
+     * Pular pra uma letra FILTRA a grade em vez de rolar até ela.
+     *
+     * O salto antigo fazia `visibleCount = índice + 18`: num catálogo de 8 mil
+     * títulos, escolher "S" montava ~6 mil cards no mesmo frame — 36 mil nós,
+     * 6 mil downloads de capa — e a TV era encerrada pelo sistema. Filtrar
+     * monta só o que interessa, e "ver só os S" é o que a pessoa queria.
+     */
+    const jumpToLetter = (letter: string) => {
+        setLetterFilter(prev => (prev === letter ? null : letter));
         setFocusArea('movies');
-        setFocusedMovieIndex(index);
+        setFocusedMovieIndex(0);
     };
 
     // Chips de tag (item 22): OK cicla nenhum → DUB → LEG → 4K → HD → nenhum
@@ -381,7 +411,10 @@ export function Movies() {
         },
     ] : [];
 
-    const handleEnter = () => {
+    const handleEnter = (fromInput?: boolean) => {
+        // OK vindo de dentro do campo de busca já fechou o teclado; reabrir
+        // aqui faria o IME do Tizen piscar sem parar
+        if (fromInput) return;
         if (focusArea === 'categories') {
             if (focusedCategoryIndex === 0) {
                 searchRef.current?.open();
@@ -399,7 +432,7 @@ export function Movies() {
         } else if (focusArea === 'alphabet') {
             const entries = alphabetIndex ? [...alphabetIndex.entries()] : [];
             const entry = entries[alphabetIndexFocus];
-            if (entry) jumpToIndex(entry[1]);
+            if (entry) jumpToLetter(entry[0]);
         } else if (focusArea === 'movies') {
             const movie = filteredStreams[safeMovieIndex];
             if (movie) {
@@ -410,7 +443,7 @@ export function Movies() {
     };
 
     // Only enable when content is focused and no modal/player/panel is open
-    const navEnabled = focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen && !contextItem;
+    const navEnabled = !error && (focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen && !contextItem);
 
     useTVNavigation({
         onNavigate: handleNavigate,
@@ -490,17 +523,12 @@ export function Movies() {
     // Error State
     if (error) {
         return (
-            <div className="movies-error-container">
-                <div className="error-glow" />
-                <div className="error-content">
-                    <div className="error-icon">🎬</div>
-                    <h2>Erro ao carregar filmes</h2>
-                    <p>{error}</p>
-                    <button onClick={() => window.location.reload()} className="retry-button">
-                        🔄 Tentar novamente
-                    </button>
-                </div>
-            </div>
+            <ErrorScreen
+                icon="🎬"
+                title="Erro ao carregar filmes"
+                message={error}
+                className="movies-error-container"
+            />
         );
     }
 
@@ -692,11 +720,11 @@ export function Movies() {
             {/* Barra A-Z (só com ordenação por nome) */}
             {alphabetIndex && alphabetIndex.size > 1 && (
                 <div className="alphabet-bar">
-                    {[...alphabetIndex.entries()].map(([letter, index], position) => (
+                    {[...alphabetIndex.keys()].map((letter, position) => (
                         <button
                             key={letter}
-                            className={`alphabet-letter ${focusArea === 'alphabet' && alphabetIndexFocus === position ? 'tv-focused' : ''}`}
-                            onClick={() => jumpToIndex(index)}
+                            className={`alphabet-letter ${letterFilter === letter ? 'active' : ''} ${focusArea === 'alphabet' && alphabetIndexFocus === position ? 'tv-focused' : ''}`}
+                            onClick={() => jumpToLetter(letter)}
                         >
                             {letter}
                         </button>

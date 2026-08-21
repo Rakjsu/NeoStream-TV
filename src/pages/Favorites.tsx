@@ -32,6 +32,9 @@ export function Favorites({ onNavigate }: FavoritesProps) {
 
     // Focus states for TV navigation
     const [focusArea, setFocusArea] = useState<'tabs' | 'items'>('items');
+    // Confirmação de dois toques pro "Limpar Tudo" (mesmo padrão do reset das
+    // Configurações): apagar a lista inteira sem confirmar seria cruel
+    const [clearArmed, setClearArmed] = useState(false);
     const [focusedTabIndex, setFocusedTabIndex] = useState(0);
     const [focusedItemIndex, setFocusedItemIndex] = useState(0);
     const [emptyFocusIndex, setEmptyFocusIndex] = useState(0);
@@ -67,6 +70,9 @@ export function Favorites({ onNavigate }: FavoritesProps) {
     const safeItemIndex = Math.min(focusedItemIndex, Math.max(0, displayItems.length - 1));
 
     const tabs = ['all', 'movies', 'series', 'channels'] as const;
+    // Slots da faixa do cabeçalho: as abas + "Limpar Tudo" (que só existe
+    // quando há algo pra limpar — slot invisível vira parada morta do D-pad)
+    const headerSlots = tabs.length + (items.length > 0 ? 1 : 0);
 
     // Abrir item: canal toca direto; filme/série abrem a ficha
     const openItem = (item: FavoriteItem) => {
@@ -91,6 +97,7 @@ export function Favorites({ onNavigate }: FavoritesProps) {
 
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
+        setClearArmed(false); // sair da linha cancela a confirmação
         if (kidsActive) {
             if (direction === 'left') setFocusZone('sidebar');
             return;
@@ -110,7 +117,9 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                 if (focusedTabIndex === 0) setFocusZone('sidebar');
                 else setFocusedTabIndex(prev => Math.max(0, prev - 1));
             } else if (direction === 'right') {
-                setFocusedTabIndex(prev => Math.min(tabs.length - 1, prev + 1));
+                // O último slot é o "Limpar Tudo" — botão que existia no
+                // desenho e que nenhuma tecla alcançava
+                setFocusedTabIndex(prev => Math.min(headerSlots - 1, prev + 1));
             } else if (direction === 'down') {
                 setFocusArea('items');
                 setFocusedItemIndex(0);
@@ -144,6 +153,16 @@ export function Favorites({ onNavigate }: FavoritesProps) {
         }
 
         if (focusArea === 'tabs') {
+            if (focusedTabIndex >= tabs.length) {
+                // Apagar tudo é irreversível: o primeiro OK arma, o segundo faz
+                if (clearArmed) {
+                    clearAll();
+                    setClearArmed(false);
+                } else {
+                    setClearArmed(true);
+                }
+                return;
+            }
             setActiveTab(tabs[focusedTabIndex]);
         } else if (focusArea === 'items') {
             const item = displayItems[safeItemIndex];
@@ -154,6 +173,12 @@ export function Favorites({ onNavigate }: FavoritesProps) {
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
+        onAction: (action) => {
+            // 🔴 remove o item em foco — mesma convenção do resto do app
+            if (action !== 'red' || focusArea !== 'items') return;
+            const item = displayItems[safeItemIndex];
+            if (item) removeItem(item);
+        },
         enabled: focusZone === 'content' && !modalItem && !playingMovie && !playingChannel && !seriesQueue,
     });
 
@@ -227,9 +252,12 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                     </div>
                 </div>
                 {items.length > 0 && (
-                    <button className="clear-btn" onClick={clearAll}>
+                    <button
+                        className={`clear-btn ${focusArea === 'tabs' && focusedTabIndex >= tabs.length ? 'tv-focused' : ''} ${clearArmed ? 'armed' : ''}`}
+                        onClick={clearAll}
+                    >
                         <span>Excluir</span>
-                        <span>Limpar Tudo</span>
+                        <span>{clearArmed ? 'OK de novo apaga' : 'Limpar Tudo'}</span>
                     </button>
                 )}
             </header>
@@ -313,6 +341,7 @@ export function Favorites({ onNavigate }: FavoritesProps) {
             <div className="favorites-hints">
                 <span>Setas Navegar</span>
                 <span>OK Selecionar</span>
+                <span className="hint-red">🔴 Remover</span>
                 <span>Voltar</span>
             </div>
 

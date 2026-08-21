@@ -34,7 +34,12 @@ interface UseTVNavigationOptions {
     onNavigate?: (direction: Direction) => void;
     onAction?: (action: TVAction) => void;
     onBack?: () => void;
-    onEnter?: () => void;
+    /**
+     * @param fromInput true quando o OK veio de DENTRO de um campo de texto —
+     * nesse caso o hook já fechou o teclado nativo, e reabrir a busca aqui
+     * refocaria o input, deixando o IME do Tizen piscando num loop sem saída.
+     */
+    onEnter?: (fromInput?: boolean) => void;
     enabled?: boolean;
 }
 
@@ -61,7 +66,7 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}) {
                 event.preventDefault();
                 event.stopPropagation();
                 target.blur();
-                onEnter?.();
+                onEnter?.(true);
                 onAction?.('enter');
                 return;
             }

@@ -1,0 +1,70 @@
+/* Tela de erro navegável pelo controle */
+
+.error-screen {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100 * var(--ns-vh));
+    padding: 48px;
+    text-align: center;
+}
+
+.error-screen-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 640px;
+    height: 640px;
+    margin: -320px 0 0 -320px;
+    background: radial-gradient(circle, rgba(var(--ns-accent-rgb), 0.16), transparent 65%);
+    pointer-events: none;
+}
+
+.error-screen-content {
+    position: relative;
+    max-width: 720px;
+}
+
+.error-screen-icon {
+    font-size: 72px;
+    line-height: 1;
+    margin-bottom: 20px;
+}
+
+.error-screen-content h2 {
+    margin: 0 0 14px;
+    color: #fff;
+    font-size: 34px;
+}
+
+.error-screen-message {
+    margin: 0 0 32px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 19px;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.error-screen-retry {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 21px;
+    font-weight: 600;
+    padding: 16px 36px;
+    cursor: pointer;
+}
+
+.error-screen-retry.tv-focused {
+    background: var(--ns-accent);
+    box-shadow: 0 0 0 4px rgba(var(--ns-accent-rgb), 0.5);
+    transform: scale(1.05);
+}
+
+.error-screen-hint {
+    margin: 22px 0 0;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 15px;
+}

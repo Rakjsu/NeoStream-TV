@@ -10,6 +10,7 @@ import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useTranslation } from '../hooks/useTranslation';
 import './Login.css';
 import { accountService } from '../services/accountService';
+import { foiRebaixadoParaHttp, normalizarUrlDoServidor } from '../services/api';
 
 interface LoginProps {
     onLoginSuccess: () => void;
@@ -91,11 +92,20 @@ export function Login({ onLoginSuccess, onLanguageSelect, startBlank = false }: 
 
         try {
             const auth = await api.authenticate(url, username, password);
-            accountService.save(auth);
+            // O app tenta HTTP quando o HTTPS falha (TV velha, CA antiga). Se
+            // isso aconteceu, a senha passa a trafegar em texto claro na URL
+            // de toda requisição — e o aviso precisa sobreviver ao Login, que
+            // desmonta no instante seguinte. Fica guardado com a conta e
+            // aparece em Configurações → Minha conta.
+            accountService.save(auth, foiRebaixadoParaHttp(url, api.getBaseUrl()));
             localStorage.setItem('includeTV', includeTV.toString());
             localStorage.setItem('includeVOD', includeVOD.toString());
-            storage.saveCredentials({ url, username, password });
-            playlistService.registerFromLogin({ url, username, password });
+            // Guarda a URL LIMPA: o link m3u que o provedor manda carrega
+            // usuário e senha na query, e era ele que voltava visível em
+            // texto claro no campo Servidor na próxima abertura do Login
+            const urlLimpa = normalizarUrlDoServidor(url);
+            storage.saveCredentials({ url: urlLimpa, username, password });
+            playlistService.registerFromLogin({ url: urlLimpa, username, password });
             onLoginSuccess();
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : '';
@@ -266,6 +276,7 @@ export function Login({ onLoginSuccess, onLanguageSelect, startBlank = false }: 
                             <span>{error}</span>
                         </div>
                     )}
+
 
                     {/* URL Input */}
                     <div className="login-field">

@@ -10,6 +10,8 @@ import { storage } from '../services/storage';
 import { categoryAffinity, scoreRecommendations, spinRoulette, newEpisodes, normalizeSearch } from '../services/catalogExtras';
 import { usageStats } from '../services/usageStats';
 import { kidsFilter } from '../services/kidsFilter';
+import { ContentDetailModal } from '../components/ContentDetailModal';
+import { exitApp } from '../services/tizenApp';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
@@ -56,6 +58,16 @@ export function Home({ onNavigate }: HomeProps) {
     const [continueItems, setContinueItems] = useState<ContinueItem[]>(() =>
         kidsFilter.isKidsActive() ? [] : progressService.getContinueWatching()
     );
+    // OK num pôster abria a página Filmes inteira, no topo, sem o item
+    // selecionado — o usuário perdia o que tinha achado
+    const [detailItem, setDetailItem] = useState<VODStream | Series | null>(null);
+    // Voltar na tela inicial fecha o app (exigência da certificação Samsung).
+    // Dois toques: fechar por engano no primeiro Voltar seria pior.
+    const [exitArmed, setExitArmed] = useState(false);
+    // A Home engolia qualquer falha e mostrava "0 canais / 0 filmes / 0
+    // séries" sem uma palavra: o usuário concluía que a lista tinha sido
+    // cancelada, não que a rede tinha caído
+    const [loadError, setLoadError] = useState('');
     const [playingMovie, setPlayingMovie] = useState<PlayableMovie | null>(null);
     const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
 
@@ -197,6 +209,9 @@ export function Home({ onNavigate }: HomeProps) {
 
             } catch (error) {
                 console.error('Failed to fetch data:', error);
+                // Mostrar "0 canais / 0 filmes / 0 séries" sem uma palavra
+                // fazia o usuário concluir que a lista dele foi cancelada
+                setLoadError(error instanceof Error ? error.message : 'Não foi possível falar com o provedor.');
             } finally {
                 setLoading(false);
             }
@@ -227,14 +242,17 @@ export function Home({ onNavigate }: HomeProps) {
     };
 
     // TV Navigation - seções dinâmicas ("continue"/"newepisodes" condicionais)
+    // A ORDEM aqui tem que ser a MESMA do DOM, senão ↓ move o foco pra cima na
+    // tela. E seção sem item nenhum não pode entrar: o foco sumia por três
+    // apertos de ↓ numa playlist só de canais.
     const sections = [
         { id: 'stats', items: 3 },
         ...(continueItems.length > 0 ? [{ id: 'continue', items: continueItems.length }] : []),
-        ...(newEpisodesList.length > 0 ? [{ id: 'newepisodes', items: newEpisodesList.length }] : []),
         ...(topItems.length > 0 ? [{ id: 'top10', items: topItems.length }] : []),
-        { id: 'recommendations', items: recommendations.length },
-        { id: 'series', items: recentSeries.length },
-        { id: 'movies', items: recentMovies.length },
+        ...(newEpisodesList.length > 0 ? [{ id: 'newepisodes', items: newEpisodesList.length }] : []),
+        ...(recommendations.length > 0 ? [{ id: 'recommendations', items: recommendations.length }] : []),
+        ...(recentSeries.length > 0 ? [{ id: 'series', items: recentSeries.length }] : []),
+        ...(recentMovies.length > 0 ? [{ id: 'movies', items: recentMovies.length }] : []),
         { id: 'quick', items: 6 }
     ];
 
@@ -260,6 +278,28 @@ export function Home({ onNavigate }: HomeProps) {
         }
     };
 
+    /** Abre a ficha do título (mesmo caminho de Filmes, Séries e Favoritos). */
+    const openDetail = (item: VODStream | Series) => setDetailItem(item);
+
+    /** Monta a fila de episódios a partir da ficha e começa a tocar. */
+    const playSeriesFromDetail = async (serie: Series, season?: number, episode?: number) => {
+        try {
+            const queue = await buildEpisodeQueue(
+                String(serie.series_id),
+                serie.name,
+                serie.cover || '',
+                season ?? 1,
+                episode ?? 1
+            );
+            if (queue) {
+                setSeriesQueue(queue);
+                setDetailItem(null);
+            }
+        } catch (err) {
+            console.error('Erro ao montar a fila de episódios:', err);
+        }
+    };
+
     const playContinueItem = async (item: ContinueItem) => {
         if (item.kind === 'movie') {
             setPlayingMovie(item.progress);
@@ -280,6 +320,7 @@ export function Home({ onNavigate }: HomeProps) {
     };
 
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
+        setExitArmed(false); // mexeu no controle: não estava saindo
         if (direction === 'up') {
             setFocusedSectionId(sections[Math.max(0, focusedSection - 1)].id);
             setFocusedItem(0);
@@ -309,12 +350,14 @@ export function Home({ onNavigate }: HomeProps) {
             if (item) void playContinueItem(item);
         } else if (section?.id === 'top10') {
             const item = topItems[focusedItem];
-            if (item) onNavigate?.('stream_id' in item ? 'movies' : 'series');
+            if (item) openDetail(item);
         } else if (section?.id === 'newepisodes') {
-            // Marca como visto (o selo some) antes de ir pro catálogo
             const s = newEpisodesList[focusedItem];
-            if (s) newEpisodes.markSeen(String(s.series_id), s.last_modified || '0');
-            onNavigate?.('series');
+            if (s) {
+                // Marca como visto (o selo some) e abre a ficha da série
+                newEpisodes.markSeen(String(s.series_id), s.last_modified || '0');
+                openDetail(s);
+            }
         } else if (section?.id === 'quick') {
             if (focusedItem === 5) {
                 surpriseMe();
@@ -322,10 +365,15 @@ export function Home({ onNavigate }: HomeProps) {
             }
             const pages = ['live', 'movies', 'series', 'favorites', 'settings'];
             onNavigate?.(pages[focusedItem] || 'live');
-        } else if (section?.id === 'movies' || section?.id === 'recommendations') {
-            onNavigate?.('movies');
+        } else if (section?.id === 'movies') {
+            const item = recentMovies[focusedItem];
+            if (item) openDetail(item);
+        } else if (section?.id === 'recommendations') {
+            const item = recommendations[focusedItem];
+            if (item) openDetail(item);
         } else if (section?.id === 'series') {
-            onNavigate?.('series');
+            const item = recentSeries[focusedItem];
+            if (item) openDetail(item);
         }
     };
 
@@ -340,12 +388,27 @@ export function Home({ onNavigate }: HomeProps) {
         onNavigate: handleNavigate,
         onEnter: handleEnter,
         onAction: (action) => {
-            if (action === 'red' && expiryWarning !== null) {
+            if (action !== 'red') return;
+            // Os dois avisos podem aparecer JUNTOS (a validade vem do login
+            // anterior, a falha de rede é deste mount). O 🔴 adia o de
+            // validade primeiro — recarregar a página descartaria o adiamento
+            // e o usuário veria o mesmo aviso de novo logo em seguida.
+            if (expiryWarning !== null) {
                 accountService.snoozeExpiry();
                 setExpiryWarning(null);
+                return;
             }
+            if (loadError) window.location.reload();
         },
-        enabled: focusZone === 'content' && !playingMovie && !seriesQueue,
+        onBack: () => {
+            if (exitArmed) {
+                exitApp();
+                setExitArmed(false);
+                return;
+            }
+            setExitArmed(true);
+        },
+        enabled: focusZone === 'content' && !detailItem && !playingMovie && !seriesQueue,
     });
 
     // Auto-scroll to focused section when it changes
@@ -355,6 +418,16 @@ export function Home({ onNavigate }: HomeProps) {
             element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }, [focusedSectionId]);
+
+    // ...e a fileira rola na HORIZONTAL junto com o item focado. Sem isso, do
+    // 10º pôster em diante o destaque saía pela direita e a tela ficava
+    // imóvel — parecia que o app tinha travado.
+    useEffect(() => {
+        const secao = document.getElementById(`home-${focusedSectionId}`);
+        const fileira = secao?.querySelector('.content-row');
+        const card = fileira?.children[focusedItem] as HTMLElement | undefined;
+        card?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    }, [focusedSectionId, focusedItem]);
 
     // Helper to get cover image
     const getCover = (item: VODStream | Series) => {
@@ -379,6 +452,12 @@ export function Home({ onNavigate }: HomeProps) {
             {/* Background decorations */}
             <div className="home-bg-decoration home-bg-decoration-1" />
             <div className="home-bg-decoration home-bg-decoration-2" />
+
+            {exitArmed && (
+                <div className="home-exit-toast">
+                    Pressione Voltar de novo para sair do NeoStream
+                </div>
+            )}
 
             {/* Validade da lista (item 68) */}
             {expiryWarning !== null && (
@@ -405,6 +484,15 @@ export function Home({ onNavigate }: HomeProps) {
                 </div>
                 <div className="home-clock">{formatTime(currentTime)}</div>
             </header>
+
+            {loadError && (
+                <div className="home-load-error">
+                    <span className="home-load-error-text">⚠️ {loadError}</span>
+                    <span className="home-load-error-hint">
+                        {expiryWarning !== null ? '🔴 adia o aviso acima' : '🔴 tentar de novo'}
+                    </span>
+                </div>
+            )}
 
             {/* Stats Cards */}
             <section id="home-stats" className="home-stats">
@@ -661,6 +749,39 @@ export function Home({ onNavigate }: HomeProps) {
             </footer>
 
             {/* Continue Watching: Movie Player */}
+            {detailItem && (
+                <ContentDetailModal
+                    isOpen={true}
+                    onClose={() => setDetailItem(null)}
+                    contentId={String('stream_id' in detailItem ? detailItem.stream_id : detailItem.series_id)}
+                    contentType={'stream_id' in detailItem ? 'movie' : 'series'}
+                    contentData={{
+                        name: detailItem.name,
+                        cover: 'stream_id' in detailItem
+                            ? (detailItem.stream_icon || detailItem.cover || '')
+                            : (detailItem.cover || ''),
+                        plot: detailItem.plot,
+                        genre: detailItem.genre,
+                        rating: detailItem.rating,
+                        release_date: detailItem.release_date,
+                        container_extension: 'stream_id' in detailItem ? detailItem.container_extension : undefined,
+                    }}
+                    onPlay={(season, episode) => {
+                        if ('stream_id' in detailItem) {
+                            setPlayingMovie({
+                                id: String(detailItem.stream_id),
+                                name: detailItem.name,
+                                poster: detailItem.stream_icon || detailItem.cover || '',
+                                container: detailItem.container_extension,
+                            } as PlayableMovie);
+                            setDetailItem(null);
+                        } else {
+                            void playSeriesFromDetail(detailItem, season, episode);
+                        }
+                    }}
+                />
+            )}
+
             {playingMovie && (
                 <MoviePlayer
                     movieId={playingMovie.id}

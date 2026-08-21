@@ -50,7 +50,12 @@ export const storageSchema = {
                 version = migration.to;
             } catch (error) {
                 console.error(`[storage] migração para v${migration.to} falhou:`, error);
-                break; // não pula uma migração pra rodar a seguinte
+                // Grava só até onde REALMENTE chegou e sai. Escrever
+                // CURRENT_SCHEMA aqui marcaria como feita uma migração que
+                // FALHOU — ela nunca mais seria tentada e o dado que ela
+                // deveria converter ficaria perdido em silêncio.
+                writeRaw(VERSION_KEY, String(version));
+                return;
             }
         }
         writeRaw(VERSION_KEY, String(Math.max(version, CURRENT_SCHEMA)));

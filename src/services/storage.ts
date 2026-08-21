@@ -2,6 +2,7 @@
 
 import type { Credentials } from '../types';
 import { scopedKey } from './profileScope';
+import { writeJson, writeRaw, removeKey } from './safeStorage';
 
 export interface SavedContentItem {
     id: string;
@@ -50,7 +51,7 @@ const DEFAULT_SETTINGS: Settings = {
 class StorageService {
     // Credentials
     saveCredentials(credentials: Credentials): void {
-        localStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
+        writeJson(STORAGE_KEYS.CREDENTIALS, credentials);
     }
 
     getCredentials(): Credentials | null {
@@ -64,7 +65,7 @@ class StorageService {
     }
 
     clearCredentials(): void {
-        localStorage.removeItem(STORAGE_KEYS.CREDENTIALS);
+        removeKey(STORAGE_KEYS.CREDENTIALS);
     }
 
     // Sanitiza listas salvas por versões antigas do app (o modal antigo
@@ -98,13 +99,13 @@ class StorageService {
         const favorites = this.getFavorites();
         if (!favorites.some(f => f.id === item.id && f.type === item.type)) {
             favorites.push({ ...item, addedAt: Date.now() });
-            localStorage.setItem(favoritesKey(), JSON.stringify(favorites));
+            writeJson(favoritesKey(), favorites);
         }
     }
 
     removeFavorite(id: string, type: SavedContentItem['type']): void {
         const favorites = this.getFavorites().filter(f => !(f.id === id && f.type === type));
-        localStorage.setItem(favoritesKey(), JSON.stringify(favorites));
+        writeJson(favoritesKey(), favorites);
     }
 
     isFavorite(id: string, type: SavedContentItem['type']): boolean {
@@ -121,7 +122,7 @@ class StorageService {
     }
 
     clearFavorites(): void {
-        localStorage.setItem(favoritesKey(), JSON.stringify([]));
+        writeJson(favoritesKey(), []);
     }
 
     // Watch Later (Minha Lista)
@@ -133,13 +134,13 @@ class StorageService {
         const items = this.getWatchLater();
         if (!items.some(i => i.id === item.id && i.type === item.type)) {
             items.push({ ...item, addedAt: Date.now() });
-            localStorage.setItem(watchLaterKey(), JSON.stringify(items));
+            writeJson(watchLaterKey(), items);
         }
     }
 
     removeWatchLater(id: string, type: SavedContentItem['type']): void {
         const items = this.getWatchLater().filter(i => !(i.id === id && i.type === type));
-        localStorage.setItem(watchLaterKey(), JSON.stringify(items));
+        writeJson(watchLaterKey(), items);
     }
 
     isInWatchLater(id: string, type: SavedContentItem['type']): boolean {
@@ -156,12 +157,12 @@ class StorageService {
     }
 
     clearWatchLater(): void {
-        localStorage.setItem(watchLaterKey(), JSON.stringify([]));
+        writeJson(watchLaterKey(), []);
     }
 
     // Last channel
     setLastChannel(streamId: number): void {
-        localStorage.setItem(lastChannelKey(), String(streamId));
+        writeRaw(lastChannelKey(), String(streamId));
     }
 
     getLastChannel(): number | null {
@@ -185,7 +186,7 @@ class StorageService {
 
     saveSettings(settings: Partial<Settings>): void {
         const current = this.getSettings();
-        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify({ ...current, ...settings }));
+        writeJson(STORAGE_KEYS.SETTINGS, { ...current, ...settings });
     }
 
     // TMDB API key (user-provided and stored locally only)
@@ -196,19 +197,19 @@ class StorageService {
     saveTmdbApiKey(apiKey: string): void {
         const trimmed = apiKey.trim();
         if (trimmed) {
-            localStorage.setItem(STORAGE_KEYS.TMDB_API_KEY, trimmed);
+            writeRaw(STORAGE_KEYS.TMDB_API_KEY, trimmed);
         } else {
             this.clearTmdbApiKey();
         }
     }
 
     clearTmdbApiKey(): void {
-        localStorage.removeItem(STORAGE_KEYS.TMDB_API_KEY);
+        removeKey(STORAGE_KEYS.TMDB_API_KEY);
     }
 
     // Clear all data
     clearAll(): void {
-        Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+        Object.values(STORAGE_KEYS).forEach(key => removeKey(key));
     }
 }
 

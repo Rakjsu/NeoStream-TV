@@ -15,14 +15,17 @@ interface MoviePlayerProps {
     /** Stream a reproduzir de fato (versão escolhida); default = movieId */
     streamId?: number;
     onClose: () => void;
+    /** Repassa pro VideoPlayer: aberto de dentro de um overlay (Busca Global) */
+    isOverlayOwner?: boolean;
 }
 
-export function MoviePlayer({ movieId, title, poster, container, streamId, onClose }: MoviePlayerProps) {
+export function MoviePlayer({ movieId, title, poster, container, streamId, onClose , isOverlayOwner}: MoviePlayerProps) {
     const resumeTime = progressService.getMovieResumeTime(movieId);
     useWatchSession('movie', title);
 
     return (
         <VideoPlayer
+            isOverlayOwner={isOverlayOwner}
             src={api.getVodStreamUrl(streamId ?? Number(movieId), container || 'mp4')}
             title={title}
             poster={poster}

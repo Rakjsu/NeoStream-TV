@@ -41,6 +41,11 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
     const [pendingProfile, setPendingProfile] = useState<Profile | null>(null);
     // Perfil que só entra depois do PIN PARENTAL (saída do modo Kids, item 55)
     const [parentalTarget, setParentalTarget] = useState<Profile | null>(null);
+    // Sub-foco DENTRO do card: os botões Editar/Excluir existiam no desenho e
+    // nenhuma seta chegava neles — não havia como excluir um perfil pela TV.
+    const [cardZone, setCardZone] = useState<'card' | 'edit' | 'delete'>('card');
+    // Botão do diálogo de exclusão: 0 = cancelar, 1 = excluir
+    const [deleteFocusIndex, setDeleteFocusIndex] = useState(0);
     const [pinInput, setPinInput] = useState('');
     const [pinError, setPinError] = useState('');
 
@@ -139,7 +144,41 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
 
     // Handle navigation
     const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
+        if (mode === 'delete-confirm') {
+            // ←→ escolhem entre Cancelar e Excluir
+            if (direction === 'left') setDeleteFocusIndex(0);
+            else if (direction === 'right') setDeleteFocusIndex(1);
+            return;
+        }
         if (mode === 'list') {
+            // Com o foco num card, ←→ percorrem card → Editar → Excluir.
+            // Os perfis Kids e o card "+ Adicionar" não têm essas ações.
+            const perfilFocado = focusedIndex < profiles.length ? profiles[focusedIndex] : null;
+            // O perfil ATIVO não pode ser excluído (nem o Kids, nem o último):
+            // deixar o sub-foco chegar num botão desabilitado dá uma tecla que
+            // não responde — pior que não ter o botão.
+            const podeExcluir = !!perfilFocado
+                && perfilFocado.id !== activeProfile?.id
+                && profiles.length > 1;
+            const temAcoes = !!perfilFocado && !perfilFocado.isKids;
+
+            if (temAcoes && (direction === 'left' || direction === 'right')) {
+                const ordem: Array<'card' | 'edit' | 'delete'> = podeExcluir
+                    ? ['card', 'edit', 'delete']
+                    : ['card', 'edit'];
+                const atual = ordem.indexOf(cardZone);
+                if (direction === 'right' && atual < ordem.length - 1) {
+                    setCardZone(ordem[atual + 1]);
+                    return;
+                }
+                if (direction === 'left' && atual > 0) {
+                    setCardZone(ordem[atual - 1]);
+                    return;
+                }
+            }
+            // Sair do card zera o sub-foco: voltar depois e cair no "Excluir"
+            // seria uma surpresa desagradável
+            setCardZone('card');
             // Grid navigation (3 columns)
             const cols = 3;
             if (closeButtonFocused) {
@@ -208,9 +247,38 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                 }
             }
         }
-    }, [mode, totalItems, editFocusZone, avatarFocusIndex, closeButtonFocused, focusedIndex, editingProfile]);
+    }, [mode, totalItems, editFocusZone, avatarFocusIndex, closeButtonFocused, focusedIndex,
+        editingProfile, profiles, cardZone, activeProfile]);
+
+    const handleDeleteProfile = useCallback(() => {
+        if (!deleteTarget) return;
+        // Sem zerar o sub-foco, o "Excluir" fica destacado no card que herdou
+        // a posição do perfil recém-apagado — pronto pra apagar o próximo
+        setCardZone('card');
+        profileService.deleteProfile(deleteTarget.id);
+        refreshProfiles();
+        setDeleteTarget(null);
+        setMode('list');
+        setFocusedIndex(0);
+        setDeleteFocusIndex(0);
+    }, [deleteTarget, refreshProfiles]);
+
+    /** Abre a confirmação de exclusão (o perfil ativo e o Kids não podem). */
+    const startDelete = useCallback((profile: Profile) => {
+        if (profile.id === activeProfile?.id) return;
+        if (profile.isKids) return;
+        setDeleteTarget(profile);
+        // Nasce em "Cancelar": exclusão nunca é o padrão
+        setDeleteFocusIndex(0);
+        setMode('delete-confirm');
+    }, [activeProfile]);
 
     const handleEnter = useCallback(() => {
+        if (mode === 'delete-confirm') {
+            if (deleteFocusIndex === 1) handleDeleteProfile();
+            else { setMode('list'); setDeleteTarget(null); }
+            return;
+        }
         if (mode === 'list') {
             if (closeButtonFocused) {
                 // Close button - close the modal
@@ -220,6 +288,16 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
             if (focusedIndex < profiles.length) {
                 const profile = profiles[focusedIndex];
                 const isActive = profile.id === activeProfile?.id;
+
+                // Sub-foco nos botões do card vence a ação padrão
+                if (cardZone === 'edit' && !profile.isKids) {
+                    startEdit(profile);
+                    return;
+                }
+                if (cardZone === 'delete' && !profile.isKids) {
+                    startDelete(profile);
+                    return;
+                }
 
                 if (isActive) {
                     // Active profile - open edit mode (unless it's Kids profile)
@@ -268,7 +346,9 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                 }
             }
         }
-    }, [mode, closeButtonFocused, focusedIndex, profiles, activeProfile, onClose, editFocusZone, buttonFocusIndex, avatarFocusIndex, startEdit, handleCreateProfile, handleEditProfile, requestSwitch]);
+    }, [mode, closeButtonFocused, focusedIndex, profiles, activeProfile, onClose, editFocusZone,
+        buttonFocusIndex, avatarFocusIndex, startEdit, handleCreateProfile, handleEditProfile,
+        requestSwitch, cardZone, deleteFocusIndex, handleDeleteProfile, startDelete]);
 
     const handleBack = useCallback(() => {
         if (mode === 'list') {
@@ -307,28 +387,6 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
     };
 
     // Handle delete profile
-    const handleDeleteProfile = () => {
-        if (!deleteTarget) return;
-
-        profileService.deleteProfile(deleteTarget.id);
-        refreshProfiles();
-        setDeleteTarget(null);
-        setMode('list');
-        setFocusedIndex(0);
-    };
-
-    // Start delete confirmation
-    const startDelete = (profile: Profile) => {
-        if (profile.id === activeProfile?.id) {
-            return; // Cannot delete active profile
-        }
-        if (profile.isKids) {
-            return; // Cannot delete kids profile
-        }
-        setDeleteTarget(profile);
-        setMode('delete-confirm');
-    };
-
     return (
         <div className="pm-overlay">
             {/* Animated Background */}
@@ -400,13 +458,13 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                                 {!profile.isKids && (
                                     <div className="pm-actions">
                                         <button
-                                            className="pm-btn pm-btn-edit"
+                                            className={`pm-btn pm-btn-edit ${isFocused && cardZone === 'edit' ? 'tv-focused' : ''}`}
                                             onClick={(e) => { e.stopPropagation(); startEdit(profile); }}
                                         >
                                             Editar
                                         </button>
                                         <button
-                                            className="pm-btn pm-btn-delete"
+                                            className={`pm-btn pm-btn-delete ${isFocused && cardZone === 'delete' ? 'tv-focused' : ''}`}
                                             onClick={(e) => { e.stopPropagation(); startDelete(profile); }}
                                             disabled={isActive || profiles.length <= 1}
                                         >
@@ -593,12 +651,19 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                         <br />
                         <span className="pm-delete-warning">Esta ação não pode ser desfeita.</span>
                     </p>
+                    <p className="pm-hint">◀ ▶ escolhe · OK confirma · Voltar cancela</p>
 
                     <div className="pm-modal-buttons">
-                        <button className="pm-btn pm-btn-cancel" onClick={() => setMode('list')}>
+                        <button
+                            className={`pm-btn pm-btn-cancel ${deleteFocusIndex === 0 ? 'tv-focused' : ''}`}
+                            onClick={() => { setMode('list'); setDeleteTarget(null); }}
+                        >
                             Cancelar
                         </button>
-                        <button className="pm-btn pm-btn-danger" onClick={handleDeleteProfile}>
+                        <button
+                            className={`pm-btn pm-btn-danger ${deleteFocusIndex === 1 ? 'tv-focused' : ''}`}
+                            onClick={handleDeleteProfile}
+                        >
                             Excluir
                         </button>
                     </div>

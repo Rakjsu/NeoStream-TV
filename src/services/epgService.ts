@@ -64,7 +64,10 @@ interface ShortEpgResponse {
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX = 80; // teto de canais em memória (TV com pouca RAM)
 
-const cache = new Map<number, { at: number; data: ChannelEpg }>();
+// `limit` faz parte da identidade da entrada: o painel de jogos pede 40
+// programas e o cache respondia com os 6 da ficha do canal — sem erro, sem
+// aviso, só eventos faltando.
+const cache = new Map<number, { at: number; limit: number; data: ChannelEpg }>();
 // Agenda do dia (get_simple_data_table) — mais pesada, TTL maior, cap menor
 const DAY_TTL_MS = 10 * 60 * 1000;
 const dayCache = new Map<number, { at: number; programs: EpgProgram[] }>();
@@ -85,12 +88,17 @@ function toMs(listing: ShortEpgListing, field: 'start' | 'stop'): number {
     const ts = field === 'start' ? listing.start_timestamp : listing.stop_timestamp;
     const numeric = Number(ts);
     if (numeric > 0) return numeric * 1000;
-    // Fallback pro formato "YYYY-MM-DD HH:MM:SS" (fuso do provedor — impreciso,
-    // mas melhor que nada quando o provedor não manda timestamps).
+    // Fallback pro formato "YYYY-MM-DD HH:MM:SS". Sem sufixo de fuso, o
+    // Date.parse interpreta no fuso da TV — e painel na Europa atendendo
+    // usuário no Brasil é combinação comuníssima em IPTV, o que deslocava a
+    // agenda inteira em horas. O app JÁ conhece o offset do provedor (aprendido
+    // no login pelo par time_now/timestamp_now): lê como UTC e aplica.
     const raw = field === 'start' ? listing.start : (listing.end || listing.stop);
     if (raw) {
-        const parsed = Date.parse(raw.replace(' ', 'T'));
-        if (!Number.isNaN(parsed)) return parsed;
+        const comoUtc = Date.parse(raw.replace(' ', 'T') + 'Z');
+        if (!Number.isNaN(comoUtc)) return comoUtc - api.getProviderOffsetMs();
+        const local = Date.parse(raw.replace(' ', 'T'));
+        if (!Number.isNaN(local)) return local;
     }
     return 0;
 }
@@ -123,7 +131,7 @@ export const epgService = {
     /** EPG do canal (agora/a seguir). Cache de 5 min; erro devolve vazio. */
     async getChannelEpg(streamId: number, limit = 6): Promise<ChannelEpg> {
         const cached = cache.get(streamId);
-        if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+        if (cached && cached.limit >= limit && Date.now() - cached.at < CACHE_TTL_MS) {
             // Reclassifica com o relógio atual (o "agora" muda sem refetch).
             return classify(cached.data.programs);
         }
@@ -145,7 +153,7 @@ export const epgService = {
                     }
                     if (oldestKey !== null) cache.delete(oldestKey);
                 }
-                cache.set(streamId, { at: Date.now(), data: result });
+                cache.set(streamId, { at: Date.now(), limit, data: result });
                 return result;
             } catch {
                 return { now: null, next: null, programs: [] };

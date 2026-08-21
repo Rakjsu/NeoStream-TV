@@ -24,6 +24,7 @@ import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/A
 import { VideoPlayer, type PlayerChannel } from '../components/VideoPlayer';
 import './LiveTV.css';
 import { readCatalog, writeCatalog, dropCatalog, trimLive, trimCategory, type CachedLiveStream } from '../services/catalogCache';
+import { ErrorScreen } from '../components/ErrorScreen';
 
 function formatClock(ms: number): string {
     const d = new Date(ms);
@@ -348,7 +349,10 @@ export function LiveTV() {
         'variants',
         'onlyepg',
         'random',
-        ...(hiddenIds.size > 0 ? (['hidden'] as const) : []),
+        // O botão 🙈 também precisa existir ENQUANTO o modo está ligado: era
+        // ele que desligava o modo, e ao desocultar o último canal ele sumia,
+        // deixando a grade vazia sem nenhuma tecla que resolvesse
+        ...(hiddenIds.size > 0 || showOnlyHidden ? (['hidden'] as const) : []),
         ...(favoriteChannels.length > 0 ? (['favpanel'] as const) : []),
         ...(sportsChannels.length > 0 ? (['sports'] as const) : []),
     ];
@@ -668,7 +672,10 @@ export function LiveTV() {
         }
     }, [focusedChannelIndex, focusArea]);
 
-    const handleEnter = () => {
+    const handleEnter = (fromInput?: boolean) => {
+        // OK vindo de dentro do campo de busca já fechou o teclado; reabrir
+        // aqui faria o IME do Tizen piscar sem parar
+        if (fromInput) return;
         if (focusArea === 'categories') {
             if (focusedCategoryIndex === 0) {
                 searchRef.current?.open();
@@ -735,7 +742,7 @@ export function LiveTV() {
         onEnter: handleEnter,
         onBack: handleBack,
         onAction: handleAction,
-        enabled: focusZone === 'content' && !playingChannel && !archivePlayback && !showAgenda && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel,
+        enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel,
     });
 
     const handleImageError = (streamId: number) => {
@@ -787,14 +794,12 @@ export function LiveTV() {
     // Error State
     if (error) {
         return (
-            <div className="livetv-error-container">
-                <div className="error-icon">📡</div>
-                <h2>Erro ao carregar canais</h2>
-                <p>{error}</p>
-                <button onClick={() => window.location.reload()} className="retry-button">
-                    🔄 Tentar novamente
-                </button>
-            </div>
+            <ErrorScreen
+                icon="📡"
+                title="Erro ao carregar canais"
+                message={error}
+                className="livetv-error-container"
+            />
         );
     }
 
@@ -850,7 +855,7 @@ export function LiveTV() {
                 >
                     🎲
                 </button>
-                {hiddenIds.size > 0 && (
+                {(hiddenIds.size > 0 || showOnlyHidden) && (
                     <button
                         className={`toolbar-btn ${showOnlyHidden ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('hidden') ? 'tv-focused' : ''}`}
                         onClick={() => setShowOnlyHidden(prev => !prev)}
@@ -1089,6 +1094,10 @@ export function LiveTV() {
                         title={`⏮ ${program.title} — ${archivePlayback.channel.name}`}
                         poster={archivePlayback.channel.stream_icon || undefined}
                         autoPlay
+                        // A fila do arquivo sempre emenda: é ela que devolve o
+                        // usuário ao AO VIVO quando alcança o programa no ar.
+                        // Isso não pode depender da opção "emendar episódio".
+                        autoAdvance
                         onNextEpisode={advanceArchive}
                         onPreviousEpisode={previousArchive}
                         canGoNext

@@ -105,9 +105,34 @@ function getCached<T>(store: CacheStore<T>, key: string): T | null {
     return null;
 }
 
+/** Mantém só as N entradas mais recentes da loja (LRU por timestamp). */
+function pruneStore<T>(store: CacheStore<T>): void {
+    const chaves = Object.keys(store);
+    if (chaves.length <= MAX_CACHE_ENTRIES) return;
+    chaves
+        .sort((a, b) => (store[b]?.timestamp || 0) - (store[a]?.timestamp || 0))
+        .slice(MAX_CACHE_ENTRIES)
+        .forEach(chave => { delete store[chave]; });
+}
+
+// Teto de entradas por loja. Sem isto o cache passava de 2 MB e cada ficha
+// nova reserializava tudo na main thread (200-400 ms de UI travada na TV) —
+// além de ser ele quem enchia a quota que derrubava os outros serviços.
+const MAX_CACHE_ENTRIES = 120;
+// Regravar a cada item aberto é o que custa caro. Agrupa as gravações.
+const SAVE_DEBOUNCE_MS = 1500;
+const saveTimers: Record<string, ReturnType<typeof setTimeout> | undefined> = {};
+
 function setCache<T>(store: CacheStore<T>, key: string, data: T, storageKey: string): void {
     store[key] = { data, timestamp: Date.now() };
-    saveCacheToStorage(storageKey, store);
+    pruneStore(store);
+    // Gravação agrupada: navegar por 10 fichas seguidas reserializava a loja
+    // inteira 10 vezes na main thread. Agora é uma vez só, no fim.
+    if (saveTimers[storageKey]) clearTimeout(saveTimers[storageKey]);
+    saveTimers[storageKey] = setTimeout(() => {
+        saveTimers[storageKey] = undefined;
+        saveCacheToStorage(storageKey, store);
+    }, SAVE_DEBOUNCE_MS);
 }
 
 // Normalize search query

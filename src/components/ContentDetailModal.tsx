@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import { storage } from '../services/storage';
 import { searchMovieByName, searchSeriesByName, fetchMovieDetails, fetchSeriesDetails, getImageUrl, formatGenres, type TMDBMovieDetails, type TMDBSeriesDetails, IMAGE_SIZE_FICHA, IMAGE_SIZE_FUNDO } from '../services/tmdb';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { progressService } from '../services/progressService';
 import type { Episode, SeriesInfo } from '../types';
 import './ContentDetailModal.css';
 
@@ -73,6 +74,16 @@ export function ContentDetailModal({
     const [focusZone, setFocusZone] = useState<FocusZone>('play');
     const [seasonFocusIndex, setSeasonFocusIndex] = useState(0);
     const [episodeFocusIndex, setEpisodeFocusIndex] = useState(0);
+    // A janela da lista tem ~180px: sem rolar, do 3º episódio em diante o
+    // destaque saía da área visível e o usuário navegava às cegas
+    const episodeListRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (focusZone !== 'episode') return;
+        const lista = episodeListRef.current;
+        const item = lista?.children[episodeFocusIndex] as HTMLElement | undefined;
+        item?.scrollIntoView({ block: 'nearest' });
+    }, [focusZone, episodeFocusIndex]);
     const [versionFocusIndex, setVersionFocusIndex] = useState(0);
     const hasVersions = !!(versions && versions.length > 1 && onSelectVersion);
 
@@ -94,8 +105,26 @@ export function ContentDetailModal({
         api.getSeriesInfo(Number(contentId))
             .then(data => {
                 setSeriesInfo(data);
-                setSelectedSeason(1);
-                setSelectedEpisode(1);
+                // Abrir sempre em T1E1 ignorava o progresso que já está salvo:
+                // quem parou no E14 da T2 reencontrava "Assistir T1 E1"
+                const progresso = progressService.getSeries(String(contentId));
+                const temporadas = Object.keys(data?.episodes || {});
+                const temporadaValida = progresso
+                    && temporadas.includes(String(progresso.season))
+                    && !progresso.seriesCompleted;
+                if (temporadaValida && progresso) {
+                    setSelectedSeason(progresso.season);
+                    setSelectedEpisode(progresso.episode);
+                    const lista = data?.episodes?.[progresso.season] || [];
+                    const idx = lista.findIndex(ep => Number(ep.episode_num) === progresso.episode);
+                    setEpisodeFocusIndex(idx >= 0 ? idx : 0);
+                    const idxTemporada = temporadas.indexOf(String(progresso.season));
+                    if (idxTemporada >= 0) setSeasonFocusIndex(idxTemporada);
+                } else {
+                    setSelectedSeason(1);
+                    setSelectedEpisode(1);
+                    setEpisodeFocusIndex(0);
+                }
             })
             .catch(err => {
                 console.error('Error fetching series info:', err);
@@ -220,6 +249,10 @@ export function ContentDetailModal({
                     } else {
                         setFocusZone('play');
                     }
+                } else if (direction === 'left' || direction === 'right') {
+                    // Sair da lista pelos lados: descer 24 episódios até o fim
+                    // pra chegar no botão Assistir custava até 20 teclas
+                    setFocusZone('play');
                 }
             }
         } else {
@@ -283,7 +316,10 @@ export function ContentDetailModal({
         } else if (focusZone === 'episode') {
             const ep = episodes[episodeFocusIndex];
             if (ep) {
+                // OK no episódio TOCA. Antes só selecionava, e o usuário
+                // ainda tinha que achar o botão Assistir lá embaixo.
                 setSelectedEpisode(Number(ep.episode_num));
+                onPlay(selectedSeason, Number(ep.episode_num));
             }
         }
     }, [isOpen, focusZone, contentType, selectedSeason, selectedEpisode, buildSavedItem, seasons, seasonFocusIndex, episodes, episodeFocusIndex, onPlay, handleClose, versions, versionFocusIndex, onSelectVersion]);
@@ -442,7 +478,7 @@ export function ContentDetailModal({
                             </div>
 
                             {/* Episode List */}
-                            <div className="episode-list">
+                            <div className="episode-list" ref={episodeListRef}>
                                 {episodes.map((ep, index: number) => {
                                     const epNum = Number(ep.episode_num);
                                     const isSelected = epNum === selectedEpisode;

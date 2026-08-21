@@ -1,7 +1,7 @@
 // Main App Component - NeoStream TV
 
-import { useState, useEffect, useCallback } from 'react';
-import { api } from './services/api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { api, foiRebaixadoParaHttp } from './services/api';
 import { storage } from './services/storage';
 import { Welcome } from './pages/Welcome';
 import { Login } from './pages/Login';
@@ -20,7 +20,7 @@ import { SetupWizard } from './components/SetupWizard';
 import { setupWizard } from './services/wizardState';
 import { playlistService } from './services/playlistService';
 import { profileService } from './services/profileService';
-import { migrateScopeOnce } from './services/profileScope';
+import { migrateScopeOnce, migrateHiddenScope } from './services/profileScope';
 import { storageSchema } from './services/storageSchema';
 import { accountService } from './services/accountService';
 import { bootLastChannel } from './services/liveExtras';
@@ -35,6 +35,7 @@ import { applyFlexGapFallback } from './services/flexGap';
 import { burnIn } from './services/burnIn';
 import './index.css';
 import './flex-gap-fallback.css';
+import './aspect-ratio-fallback.css';
 import './App.css';
 import './components/LivePanels.css';
 
@@ -114,7 +115,13 @@ function OfflineRetry({ onRetry, onOtherLogin }: { onRetry: () => void; onOtherL
   );
 }
 
-/** Aviso de lembrete (item 3): OK assiste, Voltar dispensa. */
+/**
+ * Aviso de lembrete (item 3): OK assiste, Voltar dispensa.
+ *
+ * Enquanto ele está na tela o App muda a zona de foco pra 'overlay', então as
+ * páginas e a sidebar se desligam sozinhas. Sem isso o mesmo OK pausava o
+ * vídeo por baixo e ainda trocava o "último canal" do usuário.
+ */
 function ReminderToast({ reminder, onWatch, onDismiss }: {
   reminder: Reminder;
   onWatch: () => void;
@@ -149,7 +156,35 @@ function App() {
   const [activeReminder, setActiveReminder] = useState<Reminder | null>(null);
   // Assistente de primeira configuração (item 60): só depois do primeiro login
   const [showWizard, setShowWizard] = useState(false);
+  // Remontar a LiveTV à força: é assim que o "Assistir agora" de um lembrete
+  // funciona quando o usuário JÁ está na TV ao Vivo (trocar de página seria
+  // um no-op e a flag de autoplay ficaria armada pra uma visita futura)
+  const [liveTick, setLiveTick] = useState(0);
 
+
+  // Enquanto o aviso está na tela ele é o dono das teclas. A zona muda JUNTO
+  // com quem mostra e esconde o aviso — dentro de um effect a regra
+  // react-hooks/set-state-in-effect proíbe, e o cleanup ainda por cima
+  // rodaria DEPOIS do "Assistir agora", desfazendo a zona que ele escolheu.
+  const zoneBeforeReminder = useRef<FocusZone>('content');
+  // Espelho da zona atual: o ref é escrito em effect, nunca no render
+  const focusZoneRef = useRef<FocusZone>('content');
+  useEffect(() => {
+    focusZoneRef.current = focusZone;
+  }, [focusZone]);
+
+  const showReminderToast = useCallback((reminder: Reminder) => {
+    zoneBeforeReminder.current = focusZoneRef.current;
+    setActiveReminder(reminder);
+    setFocusZone('overlay');
+  }, []);
+
+  const hideReminderToast = useCallback(() => {
+    setActiveReminder(null);
+    // Só devolve a zona se ela ainda for a NOSSA: quem dispensou o aviso
+    // abrindo outra coisa já escolheu a zona dele
+    setFocusZone(zone => (zone === 'overlay' ? zoneBeforeReminder.current : zone));
+  }, []);
 
   useEffect(() => {
     registerTizenKeys();
@@ -163,6 +198,8 @@ function App() {
     // Logo depois do initialize e ANTES de qualquer leitura de dado escopado
     // (checkAuth já lê o último canal)
     migrateScopeOnce();
+    // Segunda leva: a ocultação de canais virou dado de perfil depois
+    migrateHiddenScope();
     playlistService.migrate();
     themeService.apply();
     a11yService.apply();
@@ -175,16 +212,21 @@ function App() {
     burnIn.install();
     // Retrato semanal das preferências (item 62)
     configSnapshot.maybeTake();
+    // subscribe ANTES de init: o init dispara na hora os lembretes cuja
+    // janela de aviso já passou, e com a ordem invertida esse disparo ia pra
+    // uma lista de ouvintes VAZIA — quem ligasse a TV 20s depois da hora
+    // simplesmente nunca via o aviso, e ele não era reagendado.
+    const cancelar = reminderService.subscribe(reminder => showReminderToast(reminder));
     reminderService.init();
-    return reminderService.subscribe(reminder => setActiveReminder(reminder));
-  }, []);
+    return cancelar;
+  }, [showReminderToast]);
 
   // O aviso some sozinho depois de 45s
   useEffect(() => {
     if (!activeReminder) return;
-    const timeout = setTimeout(() => setActiveReminder(null), 45000);
+    const timeout = setTimeout(() => hideReminderToast(), 45000);
     return () => clearTimeout(timeout);
-  }, [activeReminder]);
+  }, [activeReminder, hideReminderToast]);
 
   // O wizard cobre a tela inteira: sem mudar a zona de foco, a página por
   // baixo (que só testa `=== 'content'`) continuaria recebendo as MESMAS
@@ -199,6 +241,21 @@ function App() {
     setFocusZone('content');
   }, []);
 
+  // O gerenciador de perfis é aberto DE DENTRO da sidebar, e a sidebar mantém
+  // o handler global de teclas vivo enquanto tiver o foco. Sem trocar a zona,
+  // um ↓ movia os dois ao mesmo tempo e o OK seguinte trocava o perfil E
+  // executava o "Sair" da sidebar — apagando as credenciais do aparelho.
+  const openProfileManager = useCallback(() => {
+    setShowProfileManager(true);
+    setFocusZone('overlay');
+  }, []);
+
+  const closeProfileManager = useCallback(() => {
+    setShowProfileManager(false);
+    // Volta pra sidebar (não pro conteúdo): é de lá que o modal foi aberto
+    setFocusZone('sidebar');
+  }, []);
+
   const checkAuth = useCallback(async () => {
     if (!storage.hasSettings()) {
       setAuthState('languageSelection');
@@ -211,7 +268,7 @@ function App() {
         // Try to authenticate with saved credentials
         // O payload traz validade, conexões e status da conta — era descartado
         const auth = await api.authenticate(credentials.url, credentials.username, credentials.password);
-        accountService.save(auth);
+        accountService.save(auth, foiRebaixadoParaHttp(credentials.url, api.getBaseUrl()));
         // "Ligar e assistir": abre direto na TV ao vivo tocando o último canal
         if (bootLastChannel.get() && storage.getLastChannel()) {
           sessionStorage.setItem('neostream_autoplay_last', '1');
@@ -257,6 +314,10 @@ function App() {
   const handleLogout = () => {
     api.logout();
     storage.clearCredentials();
+    // A credencial também vive na playlist, em texto claro: sair sem limpar
+    // isso deixava a conta do dono anterior pronta pra ser reativada
+    playlistService.clearAll();
+    accountService.clear();
     setAuthState('welcome');
   };
 
@@ -323,12 +384,12 @@ function App() {
           activeItem={currentPage}
           onItemSelect={handlePageChange}
           onLogout={handleLogout}
-          onProfileClick={() => setShowProfileManager(true)}
+          onProfileClick={openProfileManager}
           focused={focusZone === 'sidebar'}
         />
         <main className="app-content" key={profileTick}>
           {currentPage === 'home' && <Home onNavigate={handlePageChange} />}
-          {currentPage === 'live' && <LiveTV />}
+          {currentPage === 'live' && <LiveTV key={liveTick} />}
           {currentPage === 'movies' && <Movies />}
           {currentPage === 'series' && <Series />}
           {currentPage === 'mylist' && <MyList onNavigate={handlePageChange} />}
@@ -342,14 +403,21 @@ function App() {
           <ReminderToast
             reminder={activeReminder}
             onWatch={() => {
-              // A LiveTV consome a flag e já abre tocando o canal
+              // A LiveTV consome a flag no mount e já abre tocando o canal
               sessionStorage.setItem('neostream_autoplay_last', '1');
               storage.setLastChannel(activeReminder.streamId);
               setActiveReminder(null);
-              setCurrentPage('live');
+              // Já estando na LiveTV, trocar de página não remontaria nada:
+              // a key força o mount e o caminho de consumo da flag roda
+              if (currentPage === 'live') setLiveTick(tick => tick + 1);
+              else setCurrentPage('live');
+              // Um overlay aberto por cima (perfis, busca, assistente) deixaria
+              // o player rodando embaixo dele
+              setShowProfileManager(false);
+              setShowGlobalSearch(false);
               setFocusZone('content');
             }}
-            onDismiss={() => setActiveReminder(null)}
+            onDismiss={hideReminderToast}
           />
         )}
 
@@ -366,13 +434,13 @@ function App() {
 
         {showProfileManager && (
           <ProfileManager
-            onClose={() => setShowProfileManager(false)}
+            onClose={closeProfileManager}
             onProfileSwitched={() => {
               // Timers e toast de lembrete são estado EM MEMÓRIA amarrado à
               // chave do perfil anterior: sem re-armar, o aviso de um perfil
               // aparece dentro do outro
               reminderService.reset();
-              setActiveReminder(null);
+              hideReminderToast();
               setProfileTick(t => t + 1);
             }}
           />

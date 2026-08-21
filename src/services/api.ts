@@ -15,6 +15,16 @@ function ensureProtocol(value: string): string {
     return `http://${trimmed}`;
 }
 
+/**
+ * Limpa a URL do servidor: tira `/player_api.php`, query string e barra final.
+ * Exportada porque o Login precisa GUARDAR a versão limpa — colar o link m3u
+ * inteiro (o que o provedor manda no WhatsApp) deixava usuário e senha
+ * legíveis no campo Servidor pra sempre.
+ */
+export function normalizarUrlDoServidor(input: string): string {
+    return normalizeServerUrl(input);
+}
+
 function normalizeServerUrl(input: string): string {
     const withoutSpaces = input.trim().replace(/\s+/g, '');
     if (!withoutSpaces) {
@@ -45,17 +55,40 @@ function normalizeServerUrl(input: string): string {
     return trimTrailingSlash(parsed.toString());
 }
 
+/**
+ * Portas típicas de painel Xtream por protocolo. Trocar só o esquema mantendo
+ * a porta quase nunca funciona: HTTP costuma ser 8080/8000 e TLS 443/8443.
+ */
+const PORTA_ALTERNATIVA: Record<string, Record<string, string>> = {
+    'https:': { '8080': '8443', '80': '443', '8000': '8443' },
+    'http:': { '8443': '8080', '443': '80' },
+};
+
 function getAlternateProtocolUrl(baseUrl: string): string | null {
     const parsed = new URL(baseUrl);
-    if (parsed.protocol === 'http:') {
-        parsed.protocol = 'https:';
-        return trimTrailingSlash(parsed.toString());
+    const destino = parsed.protocol === 'http:' ? 'https:'
+        : parsed.protocol === 'https:' ? 'http:'
+            : null;
+    if (!destino) return null;
+    const portaAtual = parsed.port;
+    parsed.protocol = destino;
+    // O setter de protocol só limpa a porta quando ela é a padrão do novo
+    // esquema; sem isto, https://painel:8080 continuava apontando pra 8080
+    const nova = portaAtual ? PORTA_ALTERNATIVA[destino]?.[portaAtual] : undefined;
+    if (nova) parsed.port = nova;
+    return trimTrailingSlash(parsed.toString());
+}
+
+/**
+ * O usuário digitou HTTPS e a conexão acabou em HTTP? Nesse caso a senha
+ * trafega em texto claro na URL de toda requisição — e ele precisa saber.
+ */
+export function foiRebaixadoParaHttp(pedido: string, efetivo: string): boolean {
+    try {
+        return new URL(pedido).protocol === 'https:' && new URL(efetivo).protocol === 'http:';
+    } catch {
+        return false;
     }
-    if (parsed.protocol === 'https:') {
-        parsed.protocol = 'http:';
-        return trimTrailingSlash(parsed.toString());
-    }
-    return null;
 }
 
 function buildApiUrl(
@@ -77,6 +110,29 @@ function buildApiUrl(
     return apiUrl;
 }
 
+/**
+ * Listagens de catálogo guardadas em MEMÓRIA por alguns minutos.
+ *
+ * O app troca de página por render condicional: sair de Filmes e voltar
+ * remonta e refaz o fetch. Home busca canais+filmes+séries, Filmes busca de
+ * novo, a busca global dispara mais seis em paralelo — tudo isso do mesmo
+ * provedor, com a mesma resposta, em segundos. Numa TV isso é banda, memória e
+ * uma conexão simultânea da conta a cada vez.
+ *
+ * Fica em memória de propósito: o catálogo PERSISTIDO (catalogCache) é outra
+ * coisa, serve pro boot instantâneo e tem poda e teto próprios.
+ */
+const CATALOG_TTL_MS = 5 * 60 * 1000;
+const catalogoMemoria = new Map<string, { at: number; data: unknown }>();
+/** Requisições em voo: dois pedidos iguais ao mesmo tempo viram um só. */
+const emVoo = new Map<string, Promise<unknown>>();
+
+/** Descarta tudo (troca de provedor, logout). */
+export function limparCacheDeCatalogo(): void {
+    catalogoMemoria.clear();
+    emVoo.clear();
+}
+
 class XtreamAPI {
     private baseUrl: string = '';
     private username: string = '';
@@ -84,6 +140,29 @@ class XtreamAPI {
     /** Diferença (ms) entre o relógio local do provedor e o epoch — o
      *  timeshift do Xtream pede a hora no FUSO DO PROVEDOR. */
     private providerOffsetMs: number = 0;
+
+    /**
+     * Igual ao makeRequest, mas com cache em memória e deduplicação.
+     * Só pras LISTAGENS de catálogo, que são grandes e mudam devagar.
+     */
+    private async listagem<T>(action: string, timeoutMs = 30000): Promise<T> {
+        const chave = `${this.baseUrl}|${this.username}|${action}`;
+        const guardado = catalogoMemoria.get(chave);
+        if (guardado && Date.now() - guardado.at < CATALOG_TTL_MS) {
+            return guardado.data as T;
+        }
+        const jaPedido = emVoo.get(chave);
+        if (jaPedido) return jaPedido as Promise<T>;
+
+        const pedido = this.makeRequest<T>(action, {}, timeoutMs)
+            .then(data => {
+                catalogoMemoria.set(chave, { at: Date.now(), data });
+                return data;
+            })
+            .finally(() => emVoo.delete(chave));
+        emVoo.set(chave, pedido as Promise<unknown>);
+        return pedido;
+    }
 
     private async makeRequest<T>(action: string, params: Record<string, string> = {}, timeoutMs = 30000): Promise<T> {
         const url = buildApiUrl(this.baseUrl, this.username, this.password, action, params);
@@ -163,6 +242,19 @@ class XtreamAPI {
         this.password = credentials.password;
     }
 
+    /**
+     * Diferença entre a hora de parede do provedor e o UTC, aprendida no
+     * login. Usada pra ler horários de EPG que vêm sem fuso.
+     */
+    getProviderOffsetMs(): number {
+        return this.providerOffsetMs;
+    }
+
+    /** URL que a autenticação REALMENTE usou (pode diferir da digitada). */
+    getBaseUrl(): string {
+        return this.baseUrl;
+    }
+
     getCredentials(): Credentials | null {
         if (!this.baseUrl || !this.username || !this.password) {
             return null;
@@ -179,13 +271,15 @@ class XtreamAPI {
         const alternateBaseUrl = getAlternateProtocolUrl(baseUrl);
         const candidateUrls = alternateBaseUrl ? [baseUrl, alternateBaseUrl] : [baseUrl];
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-
         try {
             let lastError: unknown;
 
             for (const candidateUrl of candidateUrls) {
+                // Um deadline POR tentativa: com um único cronômetro de 15s
+                // para as duas, a primeira consumia tudo e a segunda nascia
+                // abortada — o fallback nunca chegava a acontecer
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000);
                 try {
                     const data = await this.fetchAuth(candidateUrl, username, password, controller.signal);
                     clearTimeout(timeoutId);
@@ -197,6 +291,7 @@ class XtreamAPI {
 
                     return data;
                 } catch (error: unknown) {
+                    clearTimeout(timeoutId);
                     lastError = error;
                     const message = error instanceof Error ? error.message : '';
                     const name = error instanceof Error ? error.name : '';
@@ -216,8 +311,6 @@ class XtreamAPI {
 
             throw lastError;
         } catch (error: unknown) {
-            clearTimeout(timeoutId);
-
             const message = error instanceof Error ? error.message : '';
             const name = error instanceof Error ? error.name : '';
 
@@ -234,15 +327,15 @@ class XtreamAPI {
     }
 
     async getLiveStreams(): Promise<LiveStream[]> {
-        return this.makeRequest<LiveStream[]>('get_live_streams');
+        return this.listagem<LiveStream[]>('get_live_streams');
     }
 
     async getVODStreams(): Promise<VODStream[]> {
-        return this.makeRequest<VODStream[]>('get_vod_streams');
+        return this.listagem<VODStream[]>('get_vod_streams');
     }
 
     async getSeries(): Promise<Series[]> {
-        return this.makeRequest<Series[]>('get_series');
+        return this.listagem<Series[]>('get_series');
     }
 
     async getSeriesInfo(seriesId: number): Promise<SeriesInfo> {
@@ -254,15 +347,15 @@ class XtreamAPI {
     }
 
     async getLiveCategories(): Promise<Category[]> {
-        return this.makeRequest<Category[]>('get_live_categories');
+        return this.listagem<Category[]>('get_live_categories');
     }
 
     async getVodCategories(): Promise<Category[]> {
-        return this.makeRequest<Category[]>('get_vod_categories');
+        return this.listagem<Category[]>('get_vod_categories');
     }
 
     async getSeriesCategories(): Promise<Category[]> {
-        return this.makeRequest<Category[]>('get_series_categories');
+        return this.listagem<Category[]>('get_series_categories');
     }
 
     /** EPG curto por canal (agora/a seguir). Campos title/description em base64. */
@@ -341,6 +434,8 @@ class XtreamAPI {
         this.username = '';
         this.password = '';
         this.providerOffsetMs = 0;
+        // O catálogo em memória é da conta que acabou de sair
+        limparCacheDeCatalogo();
     }
 }
 

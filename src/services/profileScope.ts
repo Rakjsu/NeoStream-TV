@@ -68,6 +68,12 @@ export function purgeProfileData(profileId: string): void {
 }
 
 const MIGRATED_KEY = 'neostream_scope_migrated';
+// Bases que entraram no escopo DEPOIS da primeira migração. Quem já rodou a v1
+// tem a flag gravada e nunca mais passaria pelo laço — a ocultação de canais
+// ficaria pra trás na chave base e o usuário abriria o app com os 40 canais
+// que ele escondeu de volta na grade.
+const MIGRATED_V2_KEY = 'neostream_scope_migrated_v2';
+const BASES_V2 = ['neostream_hidden_channels', 'neostream_hidden_categories'];
 
 /**
  * Migração única do item 54.
@@ -78,20 +84,9 @@ const MIGRATED_KEY = 'neostream_scope_migrated';
  * favoritos, "Continuar assistindo", lembretes e estatísticas aparentemente
  * vazios: o dado continuaria no disco, inalcançável.
  */
-export function migrateScopeOnce(): void {
-    try {
-        if (localStorage.getItem(MIGRATED_KEY)) return;
-        // A marca é gravada ANTES de mover: se algo falhar no meio, uma
-        // segunda execução sobrescreveria dado já legítimo do perfil.
-        localStorage.setItem(MIGRATED_KEY, '1');
-    } catch {
-        return; // sem marca confiável, não mexe em nada
-    }
-
-    const id = activeProfileId();
-    if (!id || id === 'default') return; // aqui a migração é de fato um no-op
-
-    for (const base of SCOPED_BASES) {
+/** Move um conjunto de bases pro escopo do perfil ativo (uma vez só). */
+function moverParaOEscopo(bases: readonly string[], id: string): void {
+    for (const base of bases) {
         try {
             const target = scopedKeyFor(base, id);
             if (localStorage.getItem(target) !== null) continue; // já tem dado próprio
@@ -105,4 +100,36 @@ export function migrateScopeOnce(): void {
             // a base que falhar continua onde está — visível de novo no perfil principal
         }
     }
+}
+
+/**
+ * Segunda leva da migração de escopo: a ocultação de canais só virou dado de
+ * perfil depois que a primeira migração já tinha rodado em todo mundo.
+ */
+export function migrateHiddenScope(): void {
+    try {
+        if (localStorage.getItem(MIGRATED_V2_KEY)) return;
+        localStorage.setItem(MIGRATED_V2_KEY, '1');
+    } catch {
+        return;
+    }
+    const id = activeProfileId();
+    if (!id || id === 'default') return;
+    moverParaOEscopo(BASES_V2, id);
+}
+
+export function migrateScopeOnce(): void {
+    try {
+        if (localStorage.getItem(MIGRATED_KEY)) return;
+        // A marca é gravada ANTES de mover: se algo falhar no meio, uma
+        // segunda execução sobrescreveria dado já legítimo do perfil.
+        localStorage.setItem(MIGRATED_KEY, '1');
+    } catch {
+        return; // sem marca confiável, não mexe em nada
+    }
+
+    const id = activeProfileId();
+    if (!id || id === 'default') return; // aqui a migração é de fato um no-op
+
+    moverParaOEscopo(SCOPED_BASES, id);
 }

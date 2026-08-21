@@ -8,7 +8,9 @@ import { scopedKey } from './profileScope';
 const ZAP_KEY_BASE = 'neostream_zap_history';
 // Histórico de zapping é por perfil (item 54)
 const ZAP_KEY = () => scopedKey(ZAP_KEY_BASE);
-const HIDDEN_KEY = 'neostream_hidden_channels';
+// Por perfil: a ocultação que o pai faz no perfil dele não deve nem valer
+// nem APARECER no perfil da criança (o painel 🙈 listava tudo de bandeja)
+const HIDDEN_KEY = () => scopedKey('neostream_hidden_channels');
 const ASPECT_KEY = 'neostream_aspect_prefs';
 const ONLY_EPG_KEY = 'neostream_live_only_epg';
 const GROUP_VARIANTS_KEY = 'neostream_group_variants';
@@ -44,6 +46,15 @@ function writeRaw(key: string, value: string | null): void {
 }
 
 export const zapHistory = {
+    /**
+     * Canal anterior (o penúltimo do MRU). É o botão mais usado de qualquer
+     * controle de TV, e o histórico já era gravado — só nunca era lido.
+     */
+    previous(): number | null {
+        const lista = readJson<number[]>(ZAP_KEY(), []);
+        return lista.length > 1 ? lista[1] : null;
+    },
+
     get(): number[] {
         return readJson<number[]>(ZAP_KEY(), []);
     },
@@ -56,29 +67,29 @@ export const zapHistory = {
 
 export const hiddenChannels = {
     get(): Set<number> {
-        return new Set(readJson<number[]>(HIDDEN_KEY, []));
+        return new Set(readJson<number[]>(HIDDEN_KEY(), []));
     },
     toggle(streamId: number): Set<number> {
         const set = this.get();
         if (set.has(streamId)) set.delete(streamId);
         else set.add(streamId);
-        writeJson(HIDDEN_KEY, [...set]);
+        writeJson(HIDDEN_KEY(), [...set]);
         return set;
     },
 };
 
 // Categorias inteiras ocultas (item 16) — só afetam a visão "Todos"
-const HIDDEN_CATS_KEY = 'neostream_hidden_categories';
+const HIDDEN_CATS_KEY = () => scopedKey('neostream_hidden_categories');
 
 export const hiddenCategories = {
     get(): Set<string> {
-        return new Set(readJson<string[]>(HIDDEN_CATS_KEY, []));
+        return new Set(readJson<string[]>(HIDDEN_CATS_KEY(), []));
     },
     toggle(categoryId: string): Set<string> {
         const set = this.get();
         if (set.has(categoryId)) set.delete(categoryId);
         else set.add(categoryId);
-        writeJson(HIDDEN_CATS_KEY, [...set]);
+        writeJson(HIDDEN_CATS_KEY(), [...set]);
         return set;
     },
 };

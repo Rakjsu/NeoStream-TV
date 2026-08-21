@@ -1042,3 +1042,34 @@
     color: rgba(255, 255, 255, 0.4);
     font-size: 15px;
 }
+
+/* Banner "onde eu caí" na troca de canal (CH± e dígitos com a barra oculta) */
+.zap-banner {
+    position: absolute;
+    left: 48px;
+    bottom: 64px;
+    display: flex;
+    align-items: baseline;
+    background: rgba(0, 0, 0, 0.78);
+    border-left: 4px solid var(--ns-accent);
+    border-radius: 8px;
+    padding: 14px 24px;
+    z-index: 58;
+}
+
+.zap-banner > * + * {
+    margin-left: 16px;
+}
+
+.zap-banner-num {
+    color: var(--ns-accent);
+    font-size: 30px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.zap-banner-name {
+    color: #fff;
+    font-size: 26px;
+    font-weight: 700;
+}

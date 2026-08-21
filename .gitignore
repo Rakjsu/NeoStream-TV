@@ -36,6 +36,10 @@ Thumbs.db
 
 # Environment
 .env
+# Cobre .env.production / .development / .test — verificado com
+# `git check-ignore`: sem esta linha, os três NÃO eram ignorados, e este é um
+# repositório público que guarda credenciais de IPTV
+.env.*
 .env.local
 .env.development.local
 .env.test.local
@@ -68,3 +72,7 @@ webos-package/
 *.bak
 *.tmp
 *.temp
+
+# Claude Code (local agent config / memory)
+CLAUDE.md
+.claude/
