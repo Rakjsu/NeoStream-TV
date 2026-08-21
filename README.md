@@ -8,6 +8,8 @@ Created by **Rakjsu**.
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
 ![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite)
 ![License](https://img.shields.io/badge/License-MIT-green)
+![Tests](https://img.shields.io/badge/tests-226-brightgreen)
+![Target](https://img.shields.io/badge/Tizen-5.5%2B%20(Chromium%2069)-1428A0?logo=samsung)
 
 ## Disclaimer
 
@@ -38,6 +40,9 @@ Use at your own risk. The creator and contributors are not responsible for how t
 - **Quality variants** (4K/FHD/HD/SD) grouped into a single card with per-variant buttons.
 - Favorite channels as a virtual category, hidden channels, hidden categories, EPG-only filter,
   and random zap.
+- **Multi-channel program guide**: channels as rows, time as columns, EPG fetched lazily per visible
+  row. OK plays what is on air, opens the archive for a past program, or sets a reminder for a future
+  one.
 - Color key shortcuts: red (EPG filter), green (random), yellow (favorite), blue (hide).
 - EPG timezone offset adjustment per playlist, for providers that report the wrong timezone.
 - Optional "power on and watch": boot straight into the last watched channel.
@@ -88,9 +93,29 @@ npm run build        # Alias for build:web
 npm run build:web    # Type-check and build the modern web app
 npm run build:tizen  # Type-check, build the Tizen bundle, and copy assets into tizen/
 npm run lint         # Run ESLint
+npm test             # Run the test suite (Vitest)
+npm run test:watch   # Run the tests in watch mode
+npm run check:css    # Check the CSS against Chromium 69 (the oldest supported TV)
+npm run check:bundle # Check the built bundle against the size budget
 npm run preview      # Preview the production build locally
 npx tsc -b           # Type-check exactly like the build does
 ```
+
+## Quality gates
+
+Every push and pull request runs [CI](.github/workflows/ci.yml):
+
+| Gate | What it protects |
+| --- | --- |
+| `npx tsc -b` | The same type-check the build performs. `tsc --noEmit` lets errors through in a project with references. |
+| `npm run lint` | ESLint, including the React Hooks rules the project treats as errors. |
+| `npm test` | 226 tests. Node environment, except the `useTVNavigation` suite, which needs jsdom. |
+| `npm run check:css` | CSS features Chromium 69 ignores. They break neither the build nor the browser — they only disappear on the TV. |
+| `npm run build:tizen` | Fails if `tizen/index.html` points at assets the build did not produce (that ships a black screen). |
+| `npm run check:bundle` | Size budget. On a 2019 TV the cost of a large bundle is parse time and heap, not bandwidth. |
+
+The tests deliberately cover the places where failures are silent: storage quota, per-profile data
+scoping, catalog caching, reminder timers, the parental PIN lockout, and every remote key code.
 
 ## TMDB API Key
 
@@ -196,13 +221,16 @@ Delivered so far: live playback with zapping and EPG, catch-up, catalog browsing
 watching, profiles with parental filtering, themes, global search, multi-playlist, and stream
 resilience.
 
+Also delivered: the multi-channel program guide, program reminders, the "now on favorites" panel,
+embedded audio and subtitle track selection, per-profile data scoping, and the test suite with CI.
+
 Next up:
 
-- Multi-channel program guide with a classic timeline.
-- Program reminders and a "now on favorites" panel.
-- Embedded audio and subtitle track selection from the HLS stream.
-- Per-profile data scoping for favorites, history, and progress.
-- Automated tests (Vitest) and continuous integration.
+- Pairing with the NeoStream desktop app over the LAN (six-digit code), which is the prerequisite for
+  QR pairing from a phone: sending credentials to the TV needs a receiver, and a Tizen web app cannot
+  listen on a socket.
+- Backup and restore through the paired desktop, and favorites/progress sync.
+- The phone as a keyboard for global search.
 - LG webOS packaging.
 
 ## License
