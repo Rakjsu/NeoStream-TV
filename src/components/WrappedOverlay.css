@@ -2,7 +2,10 @@
 
 .wrapped-overlay {
     position: fixed;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     background: linear-gradient(135deg, rgba(var(--ns-accent-rgb), 0.35), rgba(5, 5, 15, 0.97) 60%);
     z-index: 5000;
     display: flex;

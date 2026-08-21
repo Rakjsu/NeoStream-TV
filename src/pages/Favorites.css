@@ -10,7 +10,10 @@
 /* Animated Backdrop */
 .favorites-backdrop {
     position: fixed;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
     z-index: 0;
 }
@@ -18,7 +21,10 @@
 .favorites-backdrop::before {
     content: '';
     position: absolute;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     background:
         radial-gradient(ellipse at 20% 20%, rgba(239, 68, 68, 0.12) 0%, transparent 50%),
         radial-gradient(ellipse at 80% 80%, rgba(236, 72, 153, 0.08) 0%, transparent 50%);
@@ -261,7 +267,10 @@
 
 .card-overlay {
     position: absolute;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, transparent 50%);
     opacity: 0;
     transition: opacity 0.3s ease;
@@ -351,7 +360,10 @@
 
 .empty-icon-glow {
     position: absolute;
-    inset: -20px;
+    top: -20px;
+    right: -20px;
+    bottom: -20px;
+    left: -20px;
     background: radial-gradient(circle, rgba(239, 68, 68, 0.3) 0%, transparent 60%);
     border-radius: 50%;
     animation: glowPulse 3s ease-in-out infinite;

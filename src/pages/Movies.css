@@ -10,14 +10,20 @@
 /* Background */
 .movies-bg-gradient {
     position: fixed;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
     z-index: 0;
 }
 
 .movies-backdrop {
     position: fixed;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     background-size: cover;
     background-position: center;
     opacity: 0.2;
@@ -688,7 +694,10 @@
 
 .context-overlay {
     position: fixed;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     background: rgba(5, 5, 15, 0.8);
     z-index: 4500;
     display: flex;

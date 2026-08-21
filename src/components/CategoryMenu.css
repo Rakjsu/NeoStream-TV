@@ -190,7 +190,10 @@
 /* Backdrop */
 .category-backdrop {
     position: fixed;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     background: radial-gradient(circle at center, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.8));
     backdrop-filter: blur(8px);
     z-index: 998;
@@ -243,7 +246,10 @@
 .category-panel-header::before {
     content: '';
     position: absolute;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.03), transparent);
     animation: shimmer 3s infinite;
     background-size: 1000px 100%;
@@ -398,7 +404,10 @@
 .category-item::before {
     content: '';
     position: absolute;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     border-radius: 14px;
     padding: 2px;
     background: linear-gradient(135deg, #ef4444, #f97316, #ef4444);
