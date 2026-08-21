@@ -70,3 +70,22 @@
   font-size: var(--font-size-lg);
   color: var(--text-muted);
 }
+
+/* Confirmação de saída (Voltar na Home, ou na sidebar já estando na Home).
+   Vive no App e não mais na Home: a cadeia de Voltar termina no App e o aviso
+   precisa aparecer também com a sidebar focada. O z-index fica acima das
+   páginas e abaixo dos overlays de sistema (5500) — se um deles estiver
+   aberto, é ELE que está tratando o Voltar. */
+.app-exit-toast {
+    position: fixed;
+    bottom: 96px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.86);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    padding: 14px 26px;
+    color: #fff;
+    font-size: 18px;
+    z-index: 4000;
+}

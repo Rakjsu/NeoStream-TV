@@ -13,6 +13,7 @@ export const KEYS_CONTA = [
     'neostream_tv_profiles',
     'neostream_parental_pin',
     'neostream_parental_gates',
+    'neostream_parental_lock',
     'neostream_account_info',
     'neostream_expiry_snooze',
     'neostream_settings',
@@ -24,7 +25,17 @@ export const KEYS_CONTA = [
     'neostream_config_snapshots',
     'neostream_wizard_done',
     'neostream_scope_migrated',
+    'neostream_scope_migrated_v2',
     'neostream_schema_version',
+] as const;
+
+/**
+ * Chaves que vivem em sessionStorage, não em localStorage: morrem junto com a
+ * sessão e por isso NÃO entram em reset, backup nem diagnóstico. Ficam
+ * listadas aqui só para o teste de contrato saber que são deliberadas.
+ */
+export const KEYS_SESSAO = [
+    'neostream_autoplay_last',
 ] as const;
 
 /** Dado de QUEM assiste — vive por perfil (ver profileScope). */

@@ -9,7 +9,11 @@
     "build:web": "tsc -b && vite build",
     "build:tizen": "node scripts/build-tizen.mjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "check:css": "node scripts/check-tizen-css.mjs",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "hls.js": "^1.6.15",
@@ -32,6 +36,7 @@
     "terser": "^5.44.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "vitest": "^4.1.11"
   }
 }

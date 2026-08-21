@@ -12,6 +12,8 @@ interface SidebarProps {
     onItemSelect: (itemId: string) => void;
     onLogout: () => void;
     onProfileClick: () => void;
+    /** Voltar com a sidebar focada: sobe um degrau (página → Home → sair) */
+    onBack?: () => void;
     focused?: boolean;
 }
 
@@ -35,7 +37,7 @@ const allMenuItems: MenuItem[] = [
     { id: 'settings', label: 'Configurações', emoji: '⚙️', gradient: 'linear-gradient(135deg, #6b7280, #4b5563)' },
 ];
 
-export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, focused = false }: SidebarProps) {
+export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, focused = false , onBack}: SidebarProps) {
     const { setFocusZone } = useFocusZone();
     const { t } = useTranslation();
 
@@ -92,6 +94,7 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
+        onBack,
         enabled: focused,
     });
 

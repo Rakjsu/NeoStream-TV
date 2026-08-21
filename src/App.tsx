@@ -27,6 +27,7 @@ import { bootLastChannel } from './services/liveExtras';
 import { reminderService, type Reminder } from './services/reminderService';
 import { FocusContext, type FocusZone } from './contexts/FocusContext';
 import { useTVNavigation } from './hooks/useTVNavigation';
+import { useExitPrompt } from './hooks/useExitPrompt';
 import { themeService } from './services/themeService';
 import { a11yService } from './services/a11yService';
 import { configSnapshot } from './services/configSnapshot';
@@ -160,6 +161,10 @@ function App() {
   // funciona quando o usuário JÁ está na TV ao Vivo (trocar de página seria
   // um no-op e a flag de autoplay ficaria armada pra uma visita futura)
   const [liveTick, setLiveTick] = useState(0);
+  // Voltar tem uma cadeia só no app inteiro: conteúdo → sidebar → Home →
+  // aviso de saída → sair. A ponta dessa cadeia mora aqui porque o aviso
+  // aparece em cima de qualquer página.
+  const { armado: exitArmado, pedirSaida, desarmar: desarmarSaida } = useExitPrompt();
 
 
   // Enquanto o aviso está na tela ele é o dono das teclas. A zona muda JUNTO
@@ -327,6 +332,7 @@ function App() {
       setFocusZone('overlay');
       return;
     }
+    desarmarSaida(); // navegar é sinal de que ele NÃO quer sair
     setCurrentPage(page as Page);
     setFocusZone('content'); // Reset focus to content when changing pages
   };
@@ -385,10 +391,16 @@ function App() {
           onItemSelect={handlePageChange}
           onLogout={handleLogout}
           onProfileClick={openProfileManager}
+          onBack={() => {
+            // Na sidebar, Voltar sobe um degrau: qualquer página → Home;
+            // já na Home, é o pedido de saída.
+            if (currentPage !== 'home') handlePageChange('home');
+            else pedirSaida();
+          }}
           focused={focusZone === 'sidebar'}
         />
         <main className="app-content" key={profileTick}>
-          {currentPage === 'home' && <Home onNavigate={handlePageChange} />}
+          {currentPage === 'home' && <Home onNavigate={handlePageChange} onRequestExit={pedirSaida} onCancelExit={desarmarSaida} />}
           {currentPage === 'live' && <LiveTV key={liveTick} />}
           {currentPage === 'movies' && <Movies />}
           {currentPage === 'series' && <Series />}
@@ -396,6 +408,14 @@ function App() {
           {currentPage === 'favorites' && <Favorites onNavigate={handlePageChange} />}
           {currentPage === 'settings' && <Settings onAddPlaylist={() => { setAddingPlaylist(true); setAuthState('login'); }} />}
         </main>
+
+        {/* Aviso de saída: a Home era a dona dele, mas a cadeia de Voltar
+            termina aqui e o aviso precisa aparecer com a sidebar focada. */}
+        {exitArmado && (
+          <div className="app-exit-toast" role="status">
+            Pressione Voltar de novo para sair do NeoStream
+          </div>
+        )}
 
         {/* Profile Manager Modal */}
         {/* Aviso de lembrete — acima de tudo, com D-pad próprio */}

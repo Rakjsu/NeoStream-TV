@@ -12,7 +12,9 @@ export interface QualityLevel {
     label: string;
 }
 
-export type StreamErrorCause = 'notfound' | 'network' | 'media' | 'fatal';
+export type { StreamErrorCause } from '../services/playerDecisions';
+import { classifyStreamError, chooseCappedLevel } from '../services/playerDecisions';
+import type { StreamErrorCause } from '../services/playerDecisions';
 
 /** Faixa embutida no stream (áudio ou legenda) — itens 39 e 40 */
 export interface MediaTrack {
@@ -282,19 +284,11 @@ export function useHls({
                     // "o manifesto não declarou RESOLUTION" — e não "é enorme".
                     // Sem NENHUMA altura declarada não dá pra aplicar teto: fazer
                     // isso travaria o canal inteiro na pior variante do provedor.
-                    const cap = qualityCap.get();
-                    const withHeight = data.levels
-                        .map((level, index) => ({ index, height: level.height || 0 }))
-                        .filter(entry => entry.height > 0);
-                    if (cap > 0 && withHeight.length > 0) {
-                        const allowed = withHeight.filter(entry => entry.height <= cap);
-                        // Nada cabe no teto: fica com a MENOR das declaradas,
-                        // que é o mais perto do que o usuário pediu
-                        const chosen = allowed.length > 0
-                            ? allowed.reduce((best, entry) => (entry.height > best.height ? entry : best))
-                            : withHeight.reduce((best, entry) => (entry.height < best.height ? entry : best));
-                        hls.autoLevelCapping = chosen.index;
-                    }
+                    const escolhido = chooseCappedLevel(
+                        data.levels.map((level, index) => ({ index, height: level.height || 0 })),
+                        qualityCap.get()
+                    );
+                    if (escolhido !== null) hls.autoLevelCapping = escolhido;
 
                     if (autoPlay) {
                         video.play().catch(() => { });
@@ -317,10 +311,11 @@ export function useHls({
                     if (data.fatal) {
                         // Causa granular pro player mostrar mensagem acionável
                         const status = (data.response as { code?: number } | undefined)?.code;
-                        const cause: StreamErrorCause =
-                            data.type === Hls.ErrorTypes.NETWORK_ERROR
-                                ? (status === 404 || status === 403 ? 'notfound' : 'network')
-                                : data.type === Hls.ErrorTypes.MEDIA_ERROR ? 'media' : 'fatal';
+                        const cause: StreamErrorCause = classifyStreamError(
+                            data.type === Hls.ErrorTypes.NETWORK_ERROR ? 'network'
+                                : data.type === Hls.ErrorTypes.MEDIA_ERROR ? 'media' : 'other',
+                            status
+                        );
                         switch (data.type) {
                             case Hls.ErrorTypes.NETWORK_ERROR:
                                 console.error('[HLS] Network error, trying to recover...');

@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Um push novo cancela o CI do anterior no mesmo branch
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    name: Tipos, lint e testes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` e não `npm install`: garante que o lockfile é honrado. Já
+      # aconteceu de os gates locais passarem e o CI nem instalar.
+      - run: npm ci
+
+      # O MESMO comando do build. `tsc --noEmit` deixa erro passar em projeto
+      # com references — foi assim que um build quebrado chegou ao main.
+      - name: Tipos
+        run: npx tsc -b
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes
+        run: npm test
+
+  tizen:
+    name: Compatibilidade Tizen e orçamento
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # CSS que o Chromium 69 ignora não quebra build nem aparece no
+      # navegador: só some na TV. Esta é a única checagem que pega.
+      - name: CSS contra Chromium 69
+        run: node scripts/check-tizen-css.mjs
+
+      # Também confere que tizen/index.html aponta pra assets que existem —
+      # sem isso o .wgt sai com tela preta e sem erro nenhum.
+      - name: Build Tizen
+        run: npm run build:tizen
+
+      - name: Orçamento de bundle
+        run: node scripts/check-bundle-budget.mjs
+
+      - name: Guardar o bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: tizen-assets
+          path: tizen/assets
+          retention-days: 7

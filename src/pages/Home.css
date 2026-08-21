@@ -431,21 +431,6 @@
     margin-left: 18px;
 }
 
-/* Confirmação de saída do app (Voltar duas vezes na tela inicial) */
-.home-exit-toast {
-    position: fixed;
-    bottom: 96px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.86);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 10px;
-    padding: 14px 26px;
-    color: #fff;
-    font-size: 18px;
-    z-index: 60;
-}
-
 /* Falha ao carregar o catálogo (antes a Home só mostrava zeros) */
 .home-load-error {
     position: relative;

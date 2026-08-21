@@ -108,3 +108,10 @@
     font-size: 15px;
     margin-bottom: 4px;
 }
+
+/* Teclado durante a espera do controle parental: continua legível (o usuário
+   precisa ver a contagem regressiva por cima dele) mas obviamente inerte. */
+.pin-key-locked {
+    opacity: 0.35;
+    cursor: not-allowed;
+}

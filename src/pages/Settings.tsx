@@ -457,6 +457,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             <PinPrompt
                 title="Configurações protegidas"
                 hint="Digite o PIN parental para continuar."
+                parental
                 // Cancelar devolve o foco pra sidebar mas a trava CONTINUA na
                 // tela: sem isto os dois receberiam a mesma tecla
                 enabled={appFocusZone === 'content'}
@@ -481,6 +482,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
         return (
             <PinPrompt
                 title="Confirmar com o PIN"
+                parental
                 hint={afterUnlock?.kind === 'removepin'
                     ? 'Digite o PIN atual para removê-lo.'
                     : afterUnlock?.kind === 'resetconta'

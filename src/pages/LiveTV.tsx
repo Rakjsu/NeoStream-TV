@@ -719,7 +719,11 @@ export function LiveTV() {
         if (focusArea === 'preview' || selectedChannel) {
             setSelectedChannel(null);
             setFocusArea('channels');
+            return;
         }
+        // Na raiz da página, Voltar devolve o foco pra sidebar — sem isto a
+        // tecla não fazia nada e o usuário ficava preso na grade de canais.
+        setFocusZone('sidebar');
     };
 
     // Color keys: 🔴 só-EPG · 🟢 aleatório · 🟡 favorito · 🔵 ocultar

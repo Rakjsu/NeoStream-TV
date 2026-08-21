@@ -173,6 +173,11 @@ export function MyList({ onNavigate }: MyListProps) {
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
+        onBack: () => {
+            // Sem isto a tecla nao fazia nada e o usuario ficava preso na
+            // pagina. Voltar devolve o foco pra sidebar; de la vai pra Home.
+            setFocusZone('sidebar');
+        },
         onAction: (action) => {
             // 🔴 remove o item em foco — mesma convenção do resto do app
             if (action !== 'red' || focusArea !== 'items') return;

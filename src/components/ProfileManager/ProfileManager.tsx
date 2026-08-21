@@ -673,6 +673,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
             {parentalTarget && (
                 <PinPrompt
                     title="Sair do modo Kids"
+                    parental
                     hint={`Digite o PIN parental para entrar em "${parentalTarget.name}".`}
                     onSubmit={async (pin) => {
                         const ok = await parentalService.verify(pin);

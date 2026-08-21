@@ -2,6 +2,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FaPlay, FaPause, FaCog, FaStepForward, FaStepBackward, FaListUl, FaMoon, FaExpand } from 'react-icons/fa';
 import { useHls, type StreamErrorCause } from '../../hooks/useHls';
+import {
+    MAX_RECONNECT_ATTEMPTS, isTerminalCause, reconnectDelayMs,
+} from '../../services/playerDecisions';
 import { playbackPrefs } from '../../services/playbackPrefs';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
 import { useFocusZone } from '../../contexts/FocusContext';
@@ -106,7 +109,7 @@ const AUTO_EPISODE_LIMIT = 3;
 const STILL_WATCHING_TIMEOUT_MS = 90000;
 const DIGIT_TIMEOUT_MS = 1400;
 const ZAP_WINDOW = 9; // linhas visíveis no overlay de zapping
-const MAX_RECONNECT_ATTEMPTS = 4;
+
 const STALL_LIMIT_MS = 12000; // watchdog: tempo parado antes de reconectar
 
 // Mensagem acionável por causa (R1 item 45)
@@ -490,7 +493,7 @@ export function VideoPlayer({
         // 404/403 é o provedor dizendo que o canal não existe naquela URL —
         // repetir 4 vezes com backoff só gasta 30s antes de tentar a variante
         // seguinte, que é o que de fato pode funcionar.
-        if (cause === 'notfound') {
+        if (isTerminalCause(cause)) {
             streamFailedRef.current = true;
             videoRef.current?.pause();
             setReconnecting(false);
@@ -511,7 +514,7 @@ export function VideoPlayer({
         setReconnectAttempt(attempt);
         setReconnecting(true);
         setError(null);
-        const delayMs = Math.min(16000, 2000 * Math.pow(2, attempt - 1));
+        const delayMs = reconnectDelayMs(attempt);
         reconnectTimerRef.current = setTimeout(() => {
             reconnectTimerRef.current = null;
             const video = videoRef.current;

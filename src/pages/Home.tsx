@@ -11,7 +11,6 @@ import { categoryAffinity, scoreRecommendations, spinRoulette, newEpisodes, norm
 import { usageStats } from '../services/usageStats';
 import { kidsFilter } from '../services/kidsFilter';
 import { ContentDetailModal } from '../components/ContentDetailModal';
-import { exitApp } from '../services/tizenApp';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
@@ -31,6 +30,10 @@ interface PlayableMovie {
 
 interface HomeProps {
     onNavigate?: (page: string) => void;
+    /** Voltar na Home é o pedido de saída — a cadeia inteira vive no App. */
+    onRequestExit: () => void;
+    /** Qualquer movimento no controle cancela o aviso de saída. */
+    onCancelExit: () => void;
 }
 
 interface ContentCounts {
@@ -39,7 +42,7 @@ interface ContentCounts {
     series: number;
 }
 
-export function Home({ onNavigate }: HomeProps) {
+export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     const { focusZone, setFocusZone } = useFocusZone();
     const [loading, setLoading] = useState(true);
     const [counts, setCounts] = useState<ContentCounts>({ live: 0, vod: 0, series: 0 });
@@ -61,9 +64,6 @@ export function Home({ onNavigate }: HomeProps) {
     // OK num pôster abria a página Filmes inteira, no topo, sem o item
     // selecionado — o usuário perdia o que tinha achado
     const [detailItem, setDetailItem] = useState<VODStream | Series | null>(null);
-    // Voltar na tela inicial fecha o app (exigência da certificação Samsung).
-    // Dois toques: fechar por engano no primeiro Voltar seria pior.
-    const [exitArmed, setExitArmed] = useState(false);
     // A Home engolia qualquer falha e mostrava "0 canais / 0 filmes / 0
     // séries" sem uma palavra: o usuário concluía que a lista tinha sido
     // cancelada, não que a rede tinha caído
@@ -320,7 +320,7 @@ export function Home({ onNavigate }: HomeProps) {
     };
 
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
-        setExitArmed(false); // mexeu no controle: não estava saindo
+        onCancelExit(); // mexeu no controle: não estava saindo
         if (direction === 'up') {
             setFocusedSectionId(sections[Math.max(0, focusedSection - 1)].id);
             setFocusedItem(0);
@@ -400,14 +400,7 @@ export function Home({ onNavigate }: HomeProps) {
             }
             if (loadError) window.location.reload();
         },
-        onBack: () => {
-            if (exitArmed) {
-                exitApp();
-                setExitArmed(false);
-                return;
-            }
-            setExitArmed(true);
-        },
+        onBack: onRequestExit,
         enabled: focusZone === 'content' && !detailItem && !playingMovie && !seriesQueue,
     });
 
@@ -452,12 +445,6 @@ export function Home({ onNavigate }: HomeProps) {
             {/* Background decorations */}
             <div className="home-bg-decoration home-bg-decoration-1" />
             <div className="home-bg-decoration home-bg-decoration-2" />
-
-            {exitArmed && (
-                <div className="home-exit-toast">
-                    Pressione Voltar de novo para sair do NeoStream
-                </div>
-            )}
 
             {/* Validade da lista (item 68) */}
             {expiryWarning !== null && (

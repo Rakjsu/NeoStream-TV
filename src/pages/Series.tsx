@@ -393,7 +393,16 @@ export function Series() {
                 setContextItem(null);
             }
         },
-        onBack: () => setContextItem(null),
+        onBack: () => {
+            // Voltar sobe um degrau: primeiro fecha o que estiver aberto por
+            // cima, depois devolve o foco pra sidebar (de lá, Voltar vai pra
+            // Home e só então pede pra sair).
+            if (contextItem) {
+                setContextItem(null);
+                return;
+            }
+            setFocusZone('sidebar');
+        },
     });
 
     const handleImageError = (seriesId: number) => {
