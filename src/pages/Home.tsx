@@ -460,7 +460,7 @@ export function Home({ onNavigate }: HomeProps) {
                                         onClick={() => void playContinueItem(item)}
                                     >
                                         <div className="card-image card-image-poster">
-                                            <img
+                                            <img decoding="async"
                                                 src={item.progress.poster || ''}
                                                 alt={title}
                                                 onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">🎬</text></svg>'; }}
@@ -493,7 +493,7 @@ export function Home({ onNavigate }: HomeProps) {
                                 >
                                     <span className="top10-rank">{index + 1}</span>
                                     <div className="card-image card-image-poster">
-                                        <img
+                                        <img decoding="async"
                                             src={getCover(item)}
                                             alt={getName(item)}
                                             onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/></svg>'; }}
@@ -521,7 +521,7 @@ export function Home({ onNavigate }: HomeProps) {
                                     }}
                                 >
                                     <div className="card-image card-image-poster">
-                                        <img
+                                        <img decoding="async"
                                             src={s.cover}
                                             alt={s.name}
                                             onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">📺</text></svg>'; }}
@@ -546,7 +546,7 @@ export function Home({ onNavigate }: HomeProps) {
                                 onClick={() => onNavigate?.('stream_id' in item ? 'movies' : 'series')}
                             >
                                 <div className="card-image card-image-poster">
-                                    <img
+                                    <img decoding="async"
                                         src={getCover(item)}
                                         alt={getName(item)}
                                         onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">🎬</text></svg>'; }}
@@ -569,7 +569,7 @@ export function Home({ onNavigate }: HomeProps) {
                                 onClick={() => onNavigate?.('series')}
                             >
                                 <div className="card-image card-image-poster">
-                                    <img
+                                    <img decoding="async"
                                         src={series.cover}
                                         alt={series.name}
                                         onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">📺</text></svg>'; }}
@@ -592,7 +592,7 @@ export function Home({ onNavigate }: HomeProps) {
                                 onClick={() => onNavigate?.('movies')}
                             >
                                 <div className="card-image card-image-poster">
-                                    <img
+                                    <img decoding="async"
                                         src={movie.stream_icon || movie.cover}
                                         alt={movie.name}
                                         onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">🎬</text></svg>'; }}

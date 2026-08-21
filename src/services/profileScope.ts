@@ -6,8 +6,10 @@
 // e desinstalar o recurso não órfã nenhum dado. Perfis novos nascem vazios,
 // que é exatamente o que se espera de um perfil novo.
 
+import { KEYS_PROGRESSO, KEYS_LISTAS, SUFIXO_PERFIL } from './storageKeys';
+
 const PROFILES_KEY = 'neostream_tv_profiles';
-const SUFFIX = '__p_';
+const SUFFIX = SUFIXO_PERFIL;
 
 // getItem é barato; JSON.parse não é. Só reparseia quando a string muda —
 // scopedKey() é chamado em todo isFavorite()/getMovie() do app.
@@ -47,17 +49,7 @@ export function scopedKeyFor(base: string, profileId: string): string {
  * aparelho (tema, acessibilidade, teto de qualidade) ficam de fora de
  * propósito: são do aparelho e da sala, não de quem está assistindo.
  */
-export const SCOPED_BASES = [
-    'neostream_favorites',
-    'neostream_watch_later',
-    'neostream_movie_progress',
-    'neostream_series_progress',
-    'neostream_usage_stats',
-    'neostream_zap_history',
-    'neostream_fav_channel_order',
-    'neostream_last_channel',
-    'neostream_reminders',
-] as const;
+export const SCOPED_BASES: readonly string[] = [...KEYS_PROGRESSO, ...KEYS_LISTAS];
 
 /**
  * Apaga todo o dado de um perfil (usado ao excluir o perfil).

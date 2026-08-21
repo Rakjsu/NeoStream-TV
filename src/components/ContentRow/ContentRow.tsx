@@ -56,7 +56,7 @@ export function ContentRow({ title, items, onSelect }: ContentRowProps) {
                         >
                             <div className="content-card-image-wrap">
                                 {item.image ? (
-                                    <img
+                                    <img decoding="async"
                                         src={item.image}
                                         alt={item.title}
                                         className="content-card-image"

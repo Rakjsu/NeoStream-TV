@@ -394,29 +394,40 @@ export function VideoPlayer({
     // morre em silêncio enquanto a página fica escondida — o vídeo volta
     // congelado sem disparar nenhum erro. Re-inicializa se a ausência foi longa.
     useEffect(() => {
-        let hiddenAt = 0;
         let hiddenWhilePlaying = false;
         const handleVisibility = () => {
             if (document.hidden) {
-                hiddenAt = Date.now();
-                hiddenWhilePlaying = !!videoRef.current && !videoRef.current.paused;
+                const video = videoRef.current;
+                hiddenWhilePlaying = !!video && !video.paused;
+                // Só solta a conexão do que estava TOCANDO. Pausado já parou de
+                // pedir fragmentos (o buffer encheu), não segura conexão do
+                // provedor — e destruir o pipeline aqui deixaria o player MORTO
+                // na volta rápida, porque não sobra nada pra retomar.
+                if (!hiddenWhilePlaying || !video) return;
+                // A posição do VOD é reaplicada no loadedmetadata do reload
+                if (!isLiveContent && video.currentTime > 5) {
+                    reloadResumeRef.current = video.currentTime;
+                }
+                video.pause();
+                cleanup();
+                // cleanup() destrói o pipeline do HLS — mas filme e episódio
+                // são URL direta (.mp4/.mkv) e não passam por ele: sem soltar
+                // o src, o <video> continua baixando em standby. A posição já
+                // foi guardada acima e volta no loadedmetadata do reload.
+                video.removeAttribute('src');
+                video.load();
                 return;
             }
-            const away = hiddenAt ? Date.now() - hiddenAt : 0;
-            hiddenAt = 0;
-            if (away < 20000) return;
-            // Pausado antes do standby → o usuário quis parar; re-inicializar
-            // aqui faria o vídeo voltar a tocar sozinho
+            // Estava tocando → o pipeline foi destruído ao esconder, então a
+            // volta SEMPRE reconstrói. Não existe mais janela de "voltou
+            // rápido, aproveita o que está vivo": não ficou nada vivo.
             if (!hiddenWhilePlaying) return;
-            const video = videoRef.current;
-            if (!isLiveContent && video && video.currentTime > 5) {
-                reloadResumeRef.current = video.currentTime;
-            }
+            hiddenWhilePlaying = false;
             reload();
         };
         document.addEventListener('visibilitychange', handleVisibility);
         return () => document.removeEventListener('visibilitychange', handleVisibility);
-    }, [reload, isLiveContent]);
+    }, [reload, isLiveContent, cleanup]);
 
     // onStreamFailed via ref: o watchdog roda num effect de deps vazias e não
     // pode capturar a closure do primeiro render (variantes do LiveTV mudam)
@@ -546,7 +557,13 @@ export function VideoPlayer({
     // Segura o screensaver do sistema enquanto o player existe (R1 item 77)
     useEffect(() => {
         holdSystemScreenSaver(true);
-        return () => holdSystemScreenSaver(false);
+        // Marca pro CSS: o anti burn-in (item 78) escurece a interface parada,
+        // mas não pode escurecer o que a pessoa está assistindo
+        document.documentElement.dataset.playing = '1';
+        return () => {
+            holdSystemScreenSaver(false);
+            delete document.documentElement.dataset.playing;
+        };
     }, []);
 
     // Build list of available control buttons
@@ -900,7 +917,10 @@ export function VideoPlayer({
         const video = videoRef.current;
         if (!video) return;
         if (video.paused) {
-            video.play();
+            // .catch obrigatório: play() rejeita com AbortError quando um
+            // load()/troca de src acontece perto — e uma rejeição solta aqui
+            // acorda o overlay de erro do boot por cima do app inteiro
+            video.play().catch(() => { });
             return;
         }
         video.pause();
@@ -1386,7 +1406,7 @@ export function VideoPlayer({
                 {isRadio && (
                     <div className="radio-stage">
                         {poster
-                            ? <img className="radio-logo" src={poster} alt={title || 'Rádio'} />
+                            ? <img decoding="async" className="radio-logo" src={poster} alt={title || 'Rádio'} />
                             : <div className="radio-logo radio-logo-fallback">📻</div>}
                         <div className="radio-name">{title}</div>
                         <RadioClock />
@@ -1523,7 +1543,7 @@ export function VideoPlayer({
             {menu && menuEntries.length > 0 && (
                 <div className="quality-menu">
                     <div className="quality-menu-header">
-                        <FaCog /> {MENU_TITLES[menu]}
+                        <FaCog /> <span>{MENU_TITLES[menu]}</span>
                     </div>
                     <div className="quality-menu-items">
                         {menuEntries.map((entry, index) => (
@@ -1640,12 +1660,14 @@ export function VideoPlayer({
                                     onClick={seekToLive}
                                 >
                                     <span className="live-dot" />
-                                    VOLTAR AO VIVO
+                                    {/* Texto solto vira item flex anônimo e o
+                                        fallback de gap não o alcança */}
+                                    <span>VOLTAR AO VIVO</span>
                                 </button>
                             ) : (
                                 <span className="live-badge">
                                     <span className="live-dot" />
-                                    AO VIVO
+                                    <span>AO VIVO</span>
                                 </span>
                             )
                         ) : (

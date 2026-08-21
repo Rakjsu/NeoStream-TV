@@ -162,7 +162,19 @@ export interface TMDBSeriesDetails {
 /**
  * Get backdrop/poster image URL from TMDB
  */
-export function getImageUrl(path: string | null, size: string = 'w780'): string | null {
+/**
+ * Tamanhos do TMDB. Numa grade de TV o card tem ~220 px de largura: baixar
+ * w780 pra exibir em 220 gasta ~4x mais banda e memória de decodificação — e
+ * numa TV de 1 GB de RAM a memória é o recurso que acaba primeiro.
+ */
+export const IMAGE_SIZE_GRADE = 'w342';
+export const IMAGE_SIZE_FICHA = 'w500';
+export const IMAGE_SIZE_FUNDO = 'w1280';
+
+// Hoje TODO call site passa o tamanho de propósito; o padrão só existe pra
+// quem for acrescentar um novo. A grade do catálogo não usa TMDB — ela mostra
+// o stream_icon que o próprio provedor manda, num tamanho que não escolhemos.
+export function getImageUrl(path: string | null, size: string = IMAGE_SIZE_FICHA): string | null {
     if (!path) return null;
     return `${TMDB_IMAGE_BASE_URL}/${size}${path}`;
 }

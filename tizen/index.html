@@ -19,7 +19,12 @@
 
     #boot-status {
       position: fixed;
-      inset: 0;
+      /* 'inset' so existe no Chrome 87; esta e a tela que aparece quando o
+         app NAO carrega, entao ela precisa funcionar no Chromium 69 */
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -51,7 +56,13 @@
     }
   </style>
   <script>
+    // Depois que o app sobe, quem trata erro e o AppErrorBoundary + a captura
+    // do diagnostico. Sem esta trava, QUALQUER rejeicao solta (ex.: AbortError
+    // de um play()) cobre um app que esta funcionando com a tela de erro do
+    // boot — que nao tem zona de foco e nao sai com tecla nenhuma.
+    window.__NEOSTREAM_BOOTED__ = false;
     window.__NEOSTREAM_BOOT_ERROR__ = function (message) {
+      if (window.__NEOSTREAM_BOOTED__) return;
       var boot = document.getElementById('boot-status');
       if (!boot) return;
       boot.className = '';
@@ -68,7 +79,7 @@
       window.__NEOSTREAM_BOOT_ERROR__(message);
     };
   </script>
-  <script src="./assets/polyfills-legacy.js"></script>
+  <script src="./assets/polyfills.js"></script>
 </head>
 
 <body>
@@ -86,22 +97,24 @@
     css.href = './assets/style.css?v=' + version;
     document.head.appendChild(css);
 
-    if (!window.System || !window.System.import) {
-      window.__NEOSTREAM_BOOT_ERROR__('SystemJS nao foi carregado.');
-    } else {
-      window.System.import('./assets/index-legacy.js?v=' + version)
-        .then(function () {
-          setTimeout(function () {
-            var boot = document.getElementById('boot-status');
-            if (boot && document.getElementById('root').children.length > 0) {
-              boot.className = 'ready';
-            }
-          }, 300);
-        })
-        .catch(function (error) {
-          window.__NEOSTREAM_BOOT_ERROR__(error && error.message ? error.message : String(error));
-        });
-    }
+    // O bundle e um IIFE unico (vite.tizen.config.ts: format 'iife',
+    // renderLegacyChunks desligado). Nao ha mais SystemJS pra importar:
+    // e uma tag <script> comum, com onerror pra tela de erro do boot.
+    var app = document.createElement('script');
+    app.src = './assets/index.js?v=' + version;
+    app.onload = function () {
+      setTimeout(function () {
+        var boot = document.getElementById('boot-status');
+        if (boot && document.getElementById('root').children.length > 0) {
+          boot.className = 'ready';
+          window.__NEOSTREAM_BOOTED__ = true;
+        }
+      }, 300);
+    };
+    app.onerror = function () {
+      window.__NEOSTREAM_BOOT_ERROR__('Nao foi possivel carregar assets/index.js.');
+    };
+    document.body.appendChild(app);
   </script>
 </body>
 

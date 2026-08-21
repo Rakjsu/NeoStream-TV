@@ -277,7 +277,7 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                     >
                         <div className="card-poster">
                             {item.poster ? (
-                                <img src={item.poster} alt={item.title} />
+                                <img decoding="async" src={item.poster} alt={item.title} />
                             ) : (
                                 <div className="poster-placeholder">
                                     {item.type === 'movie' ? 'Filme' : item.type === 'series' ? 'Série' : 'Canal'}

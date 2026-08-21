@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
-import { searchMovieByName, searchSeriesByName, fetchMovieDetails, fetchSeriesDetails, getImageUrl, formatGenres, type TMDBMovieDetails, type TMDBSeriesDetails } from '../services/tmdb';
+import { searchMovieByName, searchSeriesByName, fetchMovieDetails, fetchSeriesDetails, getImageUrl, formatGenres, type TMDBMovieDetails, type TMDBSeriesDetails, IMAGE_SIZE_FICHA, IMAGE_SIZE_FUNDO } from '../services/tmdb';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import type { Episode, SeriesInfo } from '../types';
 import './ContentDetailModal.css';
@@ -251,7 +251,7 @@ export function ContentDetailModal({
         id: contentId,
         type: contentType,
         title: contentData.name,
-        poster: (tmdbData?.poster_path ? getImageUrl(tmdbData.poster_path, 'w500') : contentData.cover) || undefined,
+        poster: (tmdbData?.poster_path ? getImageUrl(tmdbData.poster_path, IMAGE_SIZE_FICHA) : contentData.cover) || undefined,
         rating: tmdbData?.vote_average ? tmdbData.vote_average.toFixed(1) : contentData.rating,
         year: contentData.release_date?.split('-')[0],
         container: contentData.container_extension,
@@ -340,8 +340,8 @@ export function ContentDetailModal({
     const overview = tmdbData?.overview || contentData.plot || 'Sem descrição disponível.';
     const rating = tmdbData?.vote_average ? tmdbData.vote_average.toFixed(1) : contentData.rating;
     const genres = tmdbData?.genres ? formatGenres(tmdbData.genres) : contentData.genre;
-    const backdropUrl = tmdbData?.backdrop_path ? getImageUrl(tmdbData.backdrop_path, 'w1280') : null;
-    const posterUrl = tmdbData?.poster_path ? getImageUrl(tmdbData.poster_path, 'w500') : contentData.cover;
+    const backdropUrl = tmdbData?.backdrop_path ? getImageUrl(tmdbData.backdrop_path, IMAGE_SIZE_FUNDO) : null;
+    const posterUrl = tmdbData?.poster_path ? getImageUrl(tmdbData.poster_path, IMAGE_SIZE_FICHA) : contentData.cover;
 
     return (
         <div
@@ -365,7 +365,7 @@ export function ContentDetailModal({
 
                 {/* Poster */}
                 <div className="modal-poster">
-                    <img
+                    <img decoding="async"
                         src={posterUrl || contentData.cover}
                         alt={contentData.name}
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}

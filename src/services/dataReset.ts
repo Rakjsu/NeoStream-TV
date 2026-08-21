@@ -5,6 +5,17 @@
 // e com prefixo dinâmico (ordenação por aba, offset de EPG por playlist).
 // Uma lista fixa deixaria lixo para trás na primeira chave nova.
 
+import {
+    KEYS_CONTA,
+    KEYS_PROGRESSO,
+    KEYS_LISTAS,
+    KEYS_PREFERENCIAS,
+    KEYS_CACHE,
+    PREFIXOS_CACHE,
+    PREFIXOS_PREFERENCIAS,
+    SUFIXO_PERFIL,
+} from './storageKeys';
+
 export type DataGroup = 'progresso' | 'listas' | 'caches' | 'preferencias' | 'conta';
 
 interface GroupDef {
@@ -19,75 +30,31 @@ export const DATA_GROUPS: Record<DataGroup, GroupDef> = {
     progresso: {
         label: 'Progresso e histórico',
         description: 'Continuar assistindo, itens marcados como vistos e a retrospectiva.',
-        bases: ['neostream_movie_progress', 'neostream_series_progress', 'neostream_usage_stats', 'neostream_zap_history'],
+        bases: [...KEYS_PROGRESSO],
         prefixes: [],
     },
     listas: {
         label: 'Favoritos e Minha Lista',
         description: 'Favoritos, Minha Lista, ordem dos canais favoritos e lembretes.',
-        bases: [
-            'neostream_favorites',
-            'neostream_watch_later',
-            'neostream_fav_channel_order',
-            'neostream_reminders',
-            'neostream_last_channel',
-        ],
+        bases: [...KEYS_LISTAS],
         prefixes: [],
     },
     caches: {
         label: 'Caches',
-        description: 'Capas e fichas do TMDB e marcadores de novidade. Tudo volta sozinho.',
-        bases: ['neostream_series_lastmod'],
-        prefixes: ['tmdb_'],
+        description: 'Capas e fichas do TMDB e o catálogo guardado. Tudo volta sozinho.',
+        bases: [...KEYS_CACHE],
+        prefixes: [...PREFIXOS_CACHE],
     },
     preferencias: {
         label: 'Preferências',
         description: 'Tema, acessibilidade, filtros, ajustes do player e da TV ao vivo.',
-        bases: [
-            'neostream_theme_accent',
-            'neostream_theme_bg',
-            'neostream_a11y_contrast',
-            'neostream_a11y_text_scale',
-            'neostream_a11y_reduce_motion',
-            'neostream_quality_by_content',
-            'neostream_quality_cap',
-            'neostream_subtitle_size',
-            'neostream_player_stats',
-            'neostream_playback_prefs',
-            'neostream_hidden_channels',
-            'neostream_hidden_categories',
-            'neostream_aspect_prefs',
-            'neostream_live_only_epg',
-            'neostream_group_variants',
-            'neostream_boot_last_channel',
-            'neostream_hide_watched',
-        ],
-        prefixes: ['neostream_sort_', 'neostream_filters_', 'neostream_epg_offset_'],
+        bases: [...KEYS_PREFERENCIAS],
+        prefixes: [...PREFIXOS_PREFERENCIAS],
     },
     conta: {
         label: 'Conta e perfis',
         description: 'Credenciais, playlists, perfis, PIN e o estado da configuração inicial.',
-        bases: [
-            'neostream_credentials',
-            'neostream_playlists',
-            // Flags DA PLAYLIST ativa (o playlistService as reescreve a cada
-            // troca) — nunca preferência do aparelho, ou um restore antigo
-            // desligaria as abas de TV/VOD sem caminho de volta
-            'includeTV',
-            'includeVOD',
-            // Estado do aparelho, não preferência: o snapshot não pode se
-            // conter (recursão) e o wizard não deve reabrir num restore
-            'neostream_config_snapshots',
-            'neostream_wizard_done',
-            'neostream_scope_migrated',
-            'neostream_tv_profiles',
-            'neostream_parental_pin',
-            'neostream_parental_gates',
-            'neostream_account_info',
-            'neostream_expiry_snooze',
-            'neostream_settings',
-            'neostream_tmdb_api_key',
-        ],
+        bases: [...KEYS_CONTA],
         prefixes: [],
     },
 };
@@ -109,7 +76,7 @@ function allKeys(): string[] {
 
 /** A chave pertence ao grupo? Aceita o sufixo de perfil `__p_<id>`. */
 function belongsTo(key: string, group: GroupDef): boolean {
-    const base = key.split('__p_')[0];
+    const base = key.split(SUFIXO_PERFIL)[0];
     return group.bases.includes(base) || group.prefixes.some(prefix => base.startsWith(prefix));
 }
 

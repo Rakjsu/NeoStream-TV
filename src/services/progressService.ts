@@ -4,6 +4,7 @@
 // por série (suficiente pra fileira "Continuar Assistindo" e pro auto-resume).
 
 import { scopedKey } from './profileScope';
+import { writeJson, pruneToNewest } from './safeStorage';
 
 // Progresso é dado de QUEM assiste: cada perfil tem o seu (item 54)
 const MOVIE_KEY = () => scopedKey('neostream_movie_progress');
@@ -64,17 +65,13 @@ function readMap<T>(key: string): Record<string, T> {
 }
 
 function writeMap<T extends { updatedAt: number }>(key: string, map: Record<string, T>): void {
-    const entries = Object.entries(map);
-    if (entries.length > MAX_ENTRIES) {
-        entries.sort((a, b) => b[1].updatedAt - a[1].updatedAt);
-        map = Object.fromEntries(entries.slice(0, MAX_ENTRIES));
-    }
-    try {
-        localStorage.setItem(key, JSON.stringify(map));
-    } catch {
-        // Quota cheia numa TV antiga: descarta o mais velho e tenta 1x.
-        const trimmed = Object.fromEntries(entries.sort((a, b) => b[1].updatedAt - a[1].updatedAt).slice(0, 20));
-        try { localStorage.setItem(key, JSON.stringify(trimmed)); } catch { /* desiste */ }
+    // A poda LRU e o tratamento de quota vivem no safeStorage (item 81):
+    // aqui havia uma segunda implementação, com outro limite e outra ordem.
+    // writeJson já derruba os CACHES antes de desistir — bem melhor que
+    // descartar o progresso do usuário, que era o que acontecia aqui.
+    if (!writeJson(key, pruneToNewest(map, MAX_ENTRIES)).ok) {
+        // Nem depois de liberar cache coube: corta bem mais e tenta de novo
+        writeJson(key, pruneToNewest(map, 20));
     }
 }
 

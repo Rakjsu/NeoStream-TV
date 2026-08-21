@@ -558,7 +558,7 @@ export function Series() {
                                     {brokenImages.has(item.series_id) ? (
                                         <div className="poster-placeholder">📺</div>
                                     ) : (
-                                        <img
+                                        <img decoding="async"
                                             src={item.cover}
                                             alt={item.name}
                                             loading="lazy"

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "npm run build:web",
     "build:web": "tsc -b && vite build",
-    "build:tizen": "tsc -b && vite build --config vite.tizen.config.ts && xcopy dist-tizen\\assets\\* tizen\\assets\\ /E /Y",
+    "build:tizen": "node scripts/build-tizen.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

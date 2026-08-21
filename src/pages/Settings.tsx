@@ -8,6 +8,7 @@ import { bootLastChannel } from '../services/liveExtras';
 import { qualityCap, QUALITY_CAPS, type QualityCap } from '../services/playerPrefs';
 import { playbackPrefs, BUFFER_PROFILES, BUFFER_LABELS, type BufferProfile } from '../services/playbackPrefs';
 import { a11yService, TEXT_SCALES, type ContrastMode, type TextScale } from '../services/a11yService';
+import { burnIn } from '../services/burnIn';
 import { accountService, EXPIRY_WARN_DAYS } from '../services/accountService';
 import { parentalService } from '../services/parentalService';
 import { configSnapshot } from '../services/configSnapshot';
@@ -24,7 +25,7 @@ type FocusZone =
     | 'bg' | 'accent' | 'lang' | 'playlists'
     | 'epgoffset' | 'bootlast'
     | 'qualitycap' | 'autonext' | 'resume' | 'buffer'
-    | 'contrast' | 'textscale' | 'motion'
+    | 'contrast' | 'textscale' | 'motion' | 'burnin'
     | 'account'
     | 'parentalpin' | 'gatesettings' | 'gatekids'
     | 'guide' | 'diag' | 'qrbackup' | 'snapshot' | 'reset'
@@ -35,7 +36,7 @@ const ZONES: FocusZone[] = [
     'bg', 'accent', 'lang', 'playlists',
     'epgoffset', 'bootlast',
     'qualitycap', 'autonext', 'resume', 'buffer',
-    'contrast', 'textscale', 'motion',
+    'contrast', 'textscale', 'motion', 'burnin',
     'account',
     'parentalpin', 'gatesettings', 'gatekids',
     'guide', 'diag', 'qrbackup', 'snapshot', 'reset',
@@ -96,6 +97,8 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     const [contrast, setContrast] = useState<ContrastMode>(() => a11yService.getContrast());
     const [textScale, setTextScale] = useState<TextScale>(() => a11yService.getTextScale());
     const [reduceMotion, setReduceMotion] = useState(() => a11yService.getReduceMotion());
+    // Anti burn-in (item 78)
+    const [dimmer, setDimmer] = useState(() => burnIn.isEnabled());
     // Minha conta (item 56)
     const [account] = useState(() => accountService.get());
     // Controle parental (item 55)
@@ -274,6 +277,10 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 const next = direction === 'right';
                 a11yService.setReduceMotion(next);
                 setReduceMotion(next);
+            } else if (focusZone === 'burnin') {
+                const next = direction === 'right';
+                burnIn.setEnabled(next);
+                setDimmer(next);
             } else if (focusZone === 'gatesettings' || focusZone === 'gatekids') {
                 const gate = focusZone === 'gatesettings' ? 'settings' as const : 'leaveKids' as const;
                 const value = direction === 'right';
@@ -409,6 +416,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             contrast: 'sec-a11y',
             textscale: 'sec-a11y',
             motion: 'sec-a11y',
+            burnin: 'sec-a11y',
             account: 'sec-conta',
             parentalpin: 'sec-parental',
             gatesettings: 'sec-parental',
@@ -693,6 +701,17 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     </div>
                     <p className="settings-muted">
                         Deixa a navegação mais responsiva em TVs antigas.
+                    </p>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Escurecer o menu parado (anti burn-in)</span>
+                        <span className={`settings-value ${focusZone === 'burnin' ? 'focused' : ''}`}>
+                            {dimmer ? 'Ligado' : 'Desligado'}
+                        </span>
+                    </div>
+                    <p className="settings-muted">
+                        Depois de 5 min sem tocar no controle a interface escurece — nunca
+                        durante a reprodução. Protege painéis OLED de marcar a imagem.
                     </p>
                 </section>
 

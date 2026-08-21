@@ -140,3 +140,44 @@ html[data-motion="reduzido"] .focused,
 html[data-motion="reduzido"] .tv-focused {
     transform: none !important;
 }
+
+/* ===================================================================
+   Anti burn-in (item 78)
+   =================================================================== */
+
+/* Menu parado marca painel OLED. Depois de 5 min sem tecla a interface
+   escurece — mas NUNCA durante a reprodução (`data-playing` é posto pelo
+   VideoPlayer enquanto ele existe). */
+html.app-dimmed:not([data-playing]) .app {
+    opacity: 0.35;
+    transition: opacity 1.2s ease;
+}
+
+html:not(.app-dimmed) .app {
+    transition: opacity 0.4s ease;
+}
+
+/* Logo e relógio da tela de rádio/pausa derivam devagar: pixel que não fica
+   parado não marca. A animação é longa de propósito — a 3 m ninguém percebe. */
+@keyframes ns-burnin-drift {
+    0% { transform: translate(0, 0); }
+    25% { transform: translate(14px, -10px); }
+    50% { transform: translate(-8px, 12px); }
+    75% { transform: translate(-14px, -6px); }
+    100% { transform: translate(0, 0); }
+}
+
+/* O badge de pause live e centralizado com translateX(-50%) no VideoPlayer.css:
+   uma animacao de `transform` SUBSTITUI esse valor e jogaria o badge pra
+   esquerda. So a tela de radio (que nao usa transform) entra na deriva. */
+.radio-stage {
+    animation: ns-burnin-drift 90s ease-in-out infinite;
+}
+
+/* O modo "reduzir animações" zera toda duração — mas ESTA animação existe
+   justamente para proteger o painel, então ela é exceção. A deriva é lenta
+   demais para incomodar quem pediu menos movimento. */
+html[data-motion="reduzido"] .radio-stage {
+    animation-duration: 90s !important;
+    animation-iteration-count: infinite !important;
+}

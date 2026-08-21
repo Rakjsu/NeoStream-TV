@@ -377,7 +377,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                             >
                                 {isActive && (
                                     <div className="pm-active-badge">
-                                        <span>✓</span> Ativo
+                                        <span>✓</span> <span>Ativo</span>
                                     </div>
                                 )}
 

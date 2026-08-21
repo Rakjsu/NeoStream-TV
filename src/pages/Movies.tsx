@@ -658,7 +658,7 @@ export function Movies() {
                                     {brokenImages.has(movie.stream_id) ? (
                                         <div className="poster-placeholder">🎬</div>
                                     ) : (
-                                        <img
+                                        <img decoding="async"
                                             src={movie.stream_icon || movie.cover}
                                             alt={movie.name}
                                             loading="lazy"

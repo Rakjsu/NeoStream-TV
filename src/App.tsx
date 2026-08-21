@@ -21,6 +21,7 @@ import { setupWizard } from './services/wizardState';
 import { playlistService } from './services/playlistService';
 import { profileService } from './services/profileService';
 import { migrateScopeOnce } from './services/profileScope';
+import { storageSchema } from './services/storageSchema';
 import { accountService } from './services/accountService';
 import { bootLastChannel } from './services/liveExtras';
 import { reminderService, type Reminder } from './services/reminderService';
@@ -30,7 +31,10 @@ import { themeService } from './services/themeService';
 import { a11yService } from './services/a11yService';
 import { configSnapshot } from './services/configSnapshot';
 import { installErrorCapture } from './services/diagnostics';
+import { applyFlexGapFallback } from './services/flexGap';
+import { burnIn } from './services/burnIn';
 import './index.css';
+import './flex-gap-fallback.css';
 import './App.css';
 import './components/LivePanels.css';
 
@@ -149,17 +153,26 @@ function App() {
 
   useEffect(() => {
     registerTizenKeys();
+    // PRIMEIRO de tudo: a versão do esquema é decidida olhando se já existe
+    // dado no aparelho. Rodar depois de profileService.initialize() (que grava
+    // os perfis padrão) fazia TODA instalação nova parecer antiga.
+    storageSchema.migrate();
     // Antes só o ProfileManager inicializava: até o usuário abrir o
     // gerenciador não havia perfil ativo e o gate Kids ficava inerte
     profileService.initialize();
-    // Precisa rodar logo depois do initialize e ANTES de qualquer leitura de
-    // dado escopado (checkAuth já lê o último canal)
+    // Logo depois do initialize e ANTES de qualquer leitura de dado escopado
+    // (checkAuth já lê o último canal)
     migrateScopeOnce();
     playlistService.migrate();
     themeService.apply();
     a11yService.apply();
+    // Tizen 5.5/6.0 não têm `gap` em flexbox: sem isto, os itens de 102
+    // containers ficam colados na TV (e só na TV)
+    applyFlexGapFallback();
     // Sem console aberto numa TV, o anel de erros é a única testemunha
     installErrorCapture();
+    // Menu parado por horas marca painel OLED (item 78)
+    burnIn.install();
     // Retrato semanal das preferências (item 62)
     configSnapshot.maybeTake();
     reminderService.init();

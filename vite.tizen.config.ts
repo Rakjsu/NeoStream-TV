@@ -14,14 +14,26 @@ export default defineConfig({
   plugins: [
     react(),
     legacy({
-      targets: ['chrome >= 50', 'safari >= 10'],
-      additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
-      renderLegacyChunks: true,
-      modernPolyfills: ['es.promise', 'es.array.iterator'],
+      // O alvo real e o Chromium 69 do Tizen 5.5 (config.xml). Mirar em
+      // 'chrome >= 50' + Safari carregava polyfill de coisa que a TV ja tem;
+      // o que o 69 NAO tem e sintaxe nova (?. e ?? sao do Chrome 80), e disso
+      // o plugin cuida transpilando.
+      targets: ['chrome >= 69'],
+      // UM bundle so. Com renderLegacyChunks o .wgt levava DUAS copias do app
+      // inteiro (moderna + legacy, ~1 MB cada) porque o par module/nomodule
+      // existe pra atender navegadores diferentes — e aqui o alvo e um so.
+      renderLegacyChunks: false,
+      // Sem os chunks legacy, os polyfills de BIBLIOTECA passam a ser
+      // responsabilidade daqui: Object.fromEntries e do Chrome 73 e o codigo
+      // usa (progressService). Sintaxe (?. e ?? sao do Chrome 80) quem resolve
+      // e o build.target abaixo.
+      modernPolyfills: true,
     }),
   ],
   base: './',
   build: {
+    // Chromium 69 = Tizen 5.5, o minimo declarado no config.xml
+    target: 'chrome69',
     outDir: 'dist-tizen',
     minify: 'terser',
     cssCodeSplit: false,

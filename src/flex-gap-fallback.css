@@ -1,0 +1,444 @@
+/* Fallback de `gap` em FLEXBOX para Chromium < 84 — GERADO, não editar à mão.
+ *
+ * O tizen/config.xml declara required_version="5.5" (Chromium 69) e o app roda
+ * também em TVs Tizen 6.0 (Chromium 76). Em nenhuma das duas `gap` funciona em
+ * flexbox — ele só chegou no Chrome 84 — e os itens ficam colados.
+ *
+ * Por que fallback em vez de trocar `gap` por margem no CSS original:
+ * `gap` é a forma correta e funciona em Tizen 6.5+ (Chromium 85) e no navegador.
+ * Trocar tudo por margem pioraria o caso bom para consertar o ruim, e margem
+ * não é equivalente a `gap` (afeta o box do filho, sobra nas pontas, quebra
+ * com wrap). Aqui o CSS original fica intacto e a compensação só existe onde
+ * de fato falta suporte.
+ *
+ * A classe `no-flex-gap` é posta no <html> por src/services/flexGap.ts, que
+ * MEDE o suporte no boot (não adivinha por user-agent).
+ *
+ * Regenerar: scratchpad/gap_generate.py
+ */
+
+/* ---- App.css ---- */
+
+html.no-flex-gap .app-loading > * + * {
+    margin-top: var(--spacing-lg);
+}
+
+html.no-flex-gap .placeholder-page > * + * {
+    margin-top: var(--spacing-md);
+}
+
+/* ---- components/CategoryMenu.css ---- */
+
+html.no-flex-gap .category-toggle-btn > * + * {
+    margin-top: 5px;
+}
+
+html.no-flex-gap .category-item > * + * {
+    margin-left: 14px;
+}
+
+/* ---- components/ContentDetailModal.css ---- */
+
+html.no-flex-gap .modal-meta > * {
+    margin-right: 10px;
+    margin-bottom: 10px;
+}
+
+html.no-flex-gap .meta-badge > * + * {
+    margin-left: 6px;
+}
+
+html.no-flex-gap .modal-genres > * {
+    margin-right: 8px;
+    margin-bottom: 8px;
+}
+
+html.no-flex-gap .season-tabs > * {
+    margin-right: 10px;
+    margin-bottom: 10px;
+}
+
+html.no-flex-gap .episode-item > * + * {
+    margin-left: 14px;
+}
+
+html.no-flex-gap .modal-actions > * {
+    margin-right: 14px;
+    margin-bottom: 14px;
+}
+
+html.no-flex-gap .action-btn > * + * {
+    margin-left: 10px;
+}
+
+/* ---- components/ContentRow/ContentRow.css ---- */
+
+html.no-flex-gap .content-row-items > * + * {
+    margin-left: var(--spacing-md);
+}
+
+/* ---- components/ProfileManager/ProfileManager.css ---- */
+
+html.no-flex-gap .pm-title > * + * {
+    margin-left: 16px;
+}
+
+html.no-flex-gap .pm-profiles-grid > * {
+    margin-right: 24px;
+    margin-bottom: 24px;
+}
+
+html.no-flex-gap .pm-profile-card > * + * {
+    margin-top: 16px;
+}
+
+html.no-flex-gap .pm-active-badge > * + * {
+    margin-left: 4px;
+}
+
+html.no-flex-gap .pm-profile-name > * + * {
+    margin-top: 6px;
+}
+
+html.no-flex-gap .pm-pin-indicator > * + * {
+    margin-left: 4px;
+}
+
+html.no-flex-gap .pm-actions > * + * {
+    margin-left: 8px;
+}
+
+html.no-flex-gap .pm-btn > * + * {
+    margin-left: 6px;
+}
+
+html.no-flex-gap .pm-add-card > * + * {
+    margin-top: 16px;
+}
+
+html.no-flex-gap .pm-modal-header > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .pm-form > * + * {
+    margin-top: 16px;
+}
+
+html.no-flex-gap .pm-modal-buttons > * + *,
+html.no-flex-gap .pm-pin-buttons > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .pm-pin-input-container > * + * {
+    margin-left: 12px;
+}
+
+/* ---- components/Sidebar/Sidebar.css ---- */
+
+html.no-flex-gap .nav-container > * + * {
+    margin-top: 8px;
+}
+
+html.no-flex-gap .tooltip > * + * {
+    margin-left: 10px;
+}
+
+html.no-flex-gap .bottom-section > * + * {
+    margin-top: 12px;
+}
+
+/* ---- components/VideoPlayer/VideoPlayer.css ---- */
+
+html.no-flex-gap .video-player-loading > * + * {
+    margin-top: 16px;
+}
+
+html.no-flex-gap .controls-row > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .controls-left > * + *,
+html.no-flex-gap .controls-right > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .volume-control > * + * {
+    margin-left: 8px;
+}
+
+html.no-flex-gap .live-badge > * + * {
+    margin-left: 6px;
+}
+
+html.no-flex-gap .quality-btn > * + * {
+    margin-left: 6px;
+}
+
+html.no-flex-gap .quality-menu-header > * + * {
+    margin-left: 10px;
+}
+
+/* ---- index.css ---- */
+
+html.no-flex-gap .tv-button > * + * {
+    margin-left: var(--spacing-sm);
+}
+
+/* ---- pages/Favorites.css ---- */
+
+html.no-flex-gap .header-title > * + * {
+    margin-left: 16px;
+}
+
+html.no-flex-gap .clear-btn > * + * {
+    margin-left: 8px;
+}
+
+html.no-flex-gap .tabs-container > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .tab > * + * {
+    margin-left: 8px;
+}
+
+html.no-flex-gap .card-meta > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .empty-suggestions > * {
+    margin-right: 16px;
+    margin-bottom: 16px;
+}
+
+html.no-flex-gap .suggestion-btn > * + * {
+    margin-left: 10px;
+}
+
+html.no-flex-gap .favorites-hints > * + * {
+    margin-left: 32px;
+}
+
+/* ---- pages/Home.css ---- */
+
+html.no-flex-gap .content-row > * + * {
+    margin-left: 16px;
+}
+
+/* ---- pages/LanguageSelection.css ---- */
+
+html.no-flex-gap .language-selection-content > * + * {
+    margin-top: 3rem;
+}
+
+html.no-flex-gap .language-selection-header > * + * {
+    margin-top: 1rem;
+}
+
+html.no-flex-gap .language-options > * + * {
+    margin-top: 1rem;
+}
+
+html.no-flex-gap .language-btn > * + * {
+    margin-left: 1.5rem;
+}
+
+/* ---- pages/LiveTV.css ---- */
+
+html.no-flex-gap .livetv-search-container > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .livetv-categories > * + * {
+    margin-left: 8px;
+}
+
+html.no-flex-gap .preview-content > * + * {
+    margin-left: 24px;
+}
+
+html.no-flex-gap .preview-actions > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .play-button > * + * {
+    margin-left: 8px;
+}
+
+html.no-flex-gap .channel-card > * + * {
+    margin-left: 14px;
+}
+
+html.no-flex-gap .livetv-hints > * + * {
+    margin-left: 32px;
+}
+
+html.no-flex-gap .loading-text > * + * {
+    margin-left: 8px;
+}
+
+html.no-flex-gap .loading-dots > * + * {
+    margin-left: 4px;
+}
+
+html.no-flex-gap .skeleton-card > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .retry-button > * + * {
+    margin-left: 8px;
+}
+
+/* ---- pages/Login.css ---- */
+
+html.no-flex-gap .login-badge > * + * {
+    margin-left: 10px;
+}
+
+html.no-flex-gap .login-form > * + * {
+    margin-top: 20px;
+}
+
+html.no-flex-gap .login-error > * + * {
+    margin-left: 14px;
+}
+
+html.no-flex-gap .login-field > * + * {
+    margin-top: 8px;
+}
+
+html.no-flex-gap .login-checkboxes > * + * {
+    margin-top: 14px;
+}
+
+html.no-flex-gap .login-buttons > * {
+    margin-right: 12px;
+    margin-bottom: 12px;
+}
+
+html.no-flex-gap .login-hint > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .login-hint span > * + * {
+    margin-left: 6px;
+}
+
+/* ---- pages/Movies.css ---- */
+
+html.no-flex-gap .movies-search-container > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .movies-categories > * + * {
+    margin-left: 8px;
+}
+
+html.no-flex-gap .movie-preview-panel > * + * {
+    margin-left: 24px;
+}
+
+html.no-flex-gap .preview-meta > * {
+    margin-right: 8px;
+    margin-bottom: 8px;
+}
+
+html.no-flex-gap .movies-hints > * + * {
+    margin-left: 32px;
+}
+
+/* ---- pages/MyList.css ---- */
+
+html.no-flex-gap .mylist-page .card-overlay > * + * {
+    margin-top: 12px;
+}
+
+html.no-flex-gap .mylist-page .card-meta > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .mylist-page .empty-suggestions > * + * {
+    margin-left: 16px;
+}
+
+html.no-flex-gap .mylist-page .suggestion-btn > * + * {
+    margin-left: 10px;
+}
+
+html.no-flex-gap .mylist-hints > * + * {
+    margin-left: 24px;
+}
+
+/* ---- pages/Series.css ---- */
+
+html.no-flex-gap .series-search-container > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .series-categories > * + * {
+    margin-left: 8px;
+}
+
+html.no-flex-gap .series-preview-panel > * + * {
+    margin-left: 24px;
+}
+
+html.no-flex-gap .series-hints > * + * {
+    margin-left: 32px;
+}
+
+/* ---- pages/Settings.css ---- */
+
+html.no-flex-gap .settings-actions > * + * {
+    margin-left: 14px;
+}
+
+/* ---- pages/Welcome.css ---- */
+
+html.no-flex-gap .welcome-badge > * + * {
+    margin-left: 6px;
+}
+
+html.no-flex-gap .welcome-cards > * + * {
+    margin-top: 16px;
+}
+
+html.no-flex-gap .welcome-card > * + * {
+    margin-left: 20px;
+}
+
+html.no-flex-gap .welcome-card-text > * + * {
+    margin-top: 4px;
+}
+
+html.no-flex-gap .welcome-hint > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .welcome-hint span > * + * {
+    margin-left: 6px;
+}
+
+/* ---- exceções à regra estrutural (mantidas à mão) ---- */
+
+/* `.pm-active-badge` é position:absolute: está fora do fluxo e NUNCA
+   participou do gap. O `+` não sabe disso e daria margem ao `.pm-avatar`,
+   descendo o card do perfil ativo 16px em relação aos vizinhos. */
+html.no-flex-gap .pm-profile-card > .pm-active-badge + * {
+    margin-top: 0;
+}
+
+/* `.pm-actions` usa `margin-top: auto` pra grudar os botões no rodapé do card.
+   A regra genérica tem especificidade maior e mataria esse `auto`. Aqui o
+   `auto` volta e o espaçamento do gap é pago com PADDING, que não colide. */
+html.no-flex-gap .pm-profile-card > .pm-actions {
+    margin-top: auto;
+    padding-top: 16px;
+}
+
+/* `.empty-suggestions` herda `flex-wrap: wrap` de Favorites.css mesmo dentro
+   do MyList (MyList.css não sobrescreve), então vale a forma wrap-safe `> *`
+   já emitida acima. A regra específica da página SOMARIA 16px em cima. */
+html.no-flex-gap .mylist-page .empty-suggestions > * + * {
+    margin-left: 0;
+}

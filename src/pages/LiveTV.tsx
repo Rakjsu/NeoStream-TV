@@ -23,6 +23,7 @@ import { favoriteOrder, isRadioChannel, isSportsCategory, type SportsEvent } fro
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { VideoPlayer, type PlayerChannel } from '../components/VideoPlayer';
 import './LiveTV.css';
+import { readCatalog, writeCatalog, dropCatalog, trimLive, trimCategory, type CachedLiveStream } from '../services/catalogCache';
 
 function formatClock(ms: number): string {
     const d = new Date(ms);
@@ -140,37 +141,81 @@ export function LiveTV() {
     // Fetch data
     useEffect(() => {
         async function fetchData() {
+            // A flag de "ligar e assistir" é consumida AQUI, antes de qualquer
+            // await. Consumi-la só depois do fetch fazia duas coisas erradas:
+            // se o fetch falhava ela sobrevivia e disparava autoplay numa
+            // visita futura; e com o cache na tela o usuário já estava
+            // navegando quando o player abria por cima dele.
+            const wantsAutoplay = sessionStorage.getItem('neostream_autoplay_last') === '1';
+            sessionStorage.removeItem('neostream_autoplay_last');
+            const lastId = storage.getLastChannel();
+
+            /** Pré-seleciona (e só no boot, dá play) o último canal assistido. */
+            const restoreLastChannel = (items: LiveStream[]) => {
+                if (!lastId) return;
+                const found = items.find(item => item.stream_id === lastId);
+                if (!found) return;
+                setSelectedChannel(found);
+                if (wantsAutoplay) {
+                    setPlayingChannel(found);
+                    storage.setLastChannel(found.stream_id);
+                    zapHistory.push(found.stream_id);
+                }
+            };
+
+            // Stale-while-revalidate (item 70): o catálogo de ontem entra na
+            // tela imediatamente enquanto o de hoje ainda está vindo. Numa TV
+            // isso é a diferença entre 4 s de "carregando" e nada.
+            const cachedStreams = readCatalog<CachedLiveStream>('live');
+            const cachedCategories = readCatalog<Category>('live-cats');
+            let servedFromCache = false;
+            if (cachedStreams && cachedCategories) {
+                // O que veio do cache é PODADO: completa os campos que a
+                // grade não usa mas o tipo exige, pra ninguém ler lixo
+                const restored = cachedStreams.map(item => ({
+                    ...item,
+                    stream_type: 'live',
+                    added: '',
+                    custom_sid: '',
+                    direct_source: '',
+                    tv_archive_duration: 0,
+                } satisfies LiveStream));
+                const gatedCache = kidsFilter.apply(restored, cachedCategories);
+                setStreams(gatedCache.items);
+                setCategories(gatedCache.categories);
+                setLoading(false);
+                servedFromCache = true;
+                // Restaura JUNTO com o cache: assim o player (se for o caso)
+                // abre antes de o usuário começar a navegar, e não no meio
+                restoreLastChannel(gatedCache.items);
+            }
+
             try {
-                setLoading(true);
+                if (!servedFromCache) setLoading(true);
                 const [streamsData, categoriesData] = await Promise.all([
                     api.getLiveStreams(),
                     api.getLiveCategories()
                 ]);
+                // Os dois andam juntos: categorias guardadas sem os canais
+                // correspondentes dariam um menu cheio de categorias vazias
+                if (writeCatalog('live', streamsData, trimLive)) {
+                    writeCatalog('live-cats', categoriesData, trimCategory);
+                } else {
+                    dropCatalog('live-cats');
+                }
                 // Gate do perfil Kids (remove categorias adultas e seus canais)
                 const gated = kidsFilter.apply(streamsData, categoriesData);
                 setStreams(gated.items);
                 setCategories(gated.categories);
-
-                // Retomar o último canal assistido (só pré-seleciona, não dá play)
-                // Flag do boot consumida SEMPRE (mesmo sem achar o canal):
-                // viva na sessão, ela dispararia autoplay em montagens futuras
-                const wantsAutoplay = sessionStorage.getItem('neostream_autoplay_last') === '1';
-                sessionStorage.removeItem('neostream_autoplay_last');
-                const lastId = storage.getLastChannel();
-                if (lastId) {
-                    const found = gated.items.find(s => s.stream_id === lastId);
-                    if (found) {
-                        setSelectedChannel(found);
-                        // Boot "ligar e assistir": o App sinaliza via sessionStorage
-                        if (wantsAutoplay) {
-                            setPlayingChannel(found);
-                            storage.setLastChannel(found.stream_id);
-                            zapHistory.push(found.stream_id);
-                        }
-                    }
-                }
+                // Só restaura aqui se o cache não deu conta: repetir abriria o
+                // player por cima de quem já está navegando
+                if (!servedFromCache) restoreLastChannel(gated.items);
             } catch (err: unknown) {
-                setError(err instanceof Error ? err.message : 'Erro ao carregar canais');
+                // Com o cache na tela, uma falha de rede não pode apagar o que
+                // o usuário já está vendo — ele continua navegando o de ontem
+                if (!servedFromCache) {
+                    setError(err instanceof Error ? err.message : 'Erro ao carregar canais');
+                }
             } finally {
                 setLoading(false);
             }
@@ -853,7 +898,7 @@ export function LiveTV() {
                                 {brokenImages.has(selectedChannel.stream_id) ? (
                                     <span className="placeholder-emoji">📺</span>
                                 ) : (
-                                    <img
+                                    <img decoding="async"
                                         src={selectedChannel?.stream_icon || ''}
                                         alt={selectedChannel?.name || 'Canal'}
                                         onError={() => handleImageError(selectedChannel.stream_id)}
@@ -862,7 +907,10 @@ export function LiveTV() {
                             </div>
                             <div className="live-badge">
                                 <span className="live-dot" />
-                                AO VIVO
+                                {/* O <span> não é decorativo: texto solto vira
+                                    item flex ANÔNIMO, que nenhum seletor CSS
+                                    alcança — e o fallback de gap some. */}
+                                <span>AO VIVO</span>
                             </div>
                         </div>
                         <div className="preview-details">
@@ -973,7 +1021,7 @@ export function LiveTV() {
                                     {brokenImages.has(stream.stream_id) ? (
                                         <span className="channel-placeholder">📺</span>
                                     ) : (
-                                        <img
+                                        <img decoding="async"
                                             src={stream?.stream_icon || ''}
                                             alt={stream?.name || 'Canal'}
                                             onError={() => handleImageError(stream.stream_id)}
