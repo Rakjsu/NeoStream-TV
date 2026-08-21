@@ -824,3 +824,76 @@
     white-space: nowrap;
     z-index: 70;
 }
+
+/* ===== R4: pause live + modo rádio ===== */
+
+.paused-live-badge {
+    position: absolute;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10, 10, 20, 0.9);
+    border: 1px solid rgba(var(--ns-accent-rgb), 0.6);
+    color: #fff;
+    font-size: 17px;
+    padding: 10px 22px;
+    border-radius: 10px;
+    z-index: 70;
+}
+
+.video-element.radio-hidden {
+    opacity: 0 !important;
+    pointer-events: none;
+}
+
+.radio-stage {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #05050f;
+    z-index: 20;
+}
+
+.radio-stage > * + * {
+    margin-top: 18px;
+}
+
+.radio-logo {
+    width: 220px;
+    height: 220px;
+    object-fit: contain;
+    border-radius: 20px;
+}
+
+.radio-logo-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 110px;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.radio-name {
+    color: #fff;
+    font-size: 30px;
+    font-weight: 700;
+    max-width: 70vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.radio-clock {
+    color: var(--ns-accent);
+    font-size: 56px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.radio-hint {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 15px;
+}

@@ -18,11 +18,13 @@ import { ProfileManager } from './components/ProfileManager';
 import { GlobalSearch } from './components/GlobalSearch';
 import { playlistService } from './services/playlistService';
 import { bootLastChannel } from './services/liveExtras';
+import { reminderService, type Reminder } from './services/reminderService';
 import { FocusContext, type FocusZone } from './contexts/FocusContext';
 import { useTVNavigation } from './hooks/useTVNavigation';
 import { themeService } from './services/themeService';
 import './index.css';
 import './App.css';
+import './components/LivePanels.css';
 
 type Page = 'home' | 'live' | 'movies' | 'series' | 'mylist' | 'favorites' | 'settings';
 type AuthState = 'loading' | 'languageSelection' | 'welcome' | 'login' | 'authenticated' | 'offline';
@@ -97,6 +99,26 @@ function OfflineRetry({ onRetry, onOtherLogin }: { onRetry: () => void; onOtherL
   );
 }
 
+/** Aviso de lembrete (item 3): OK assiste, Voltar dispensa. */
+function ReminderToast({ reminder, onWatch, onDismiss }: {
+  reminder: Reminder;
+  onWatch: () => void;
+  onDismiss: () => void;
+}) {
+  useTVNavigation({ onEnter: onWatch, onBack: onDismiss });
+  return (
+    <div className="reminder-toast">
+      <span className="reminder-toast-text">
+        🔔 {reminder.programTitle} começa já em {reminder.channelName}
+      </span>
+      <button className="app-offline-retry tv-focused" onClick={onWatch}>
+        ▶ Assistir agora
+      </button>
+      <span className="reminder-toast-hint">OK assiste · Voltar dispensa</span>
+    </div>
+  );
+}
+
 function App() {
   const [authState, setAuthState] = useState<AuthState>('loading');
   const [currentPage, setCurrentPage] = useState<Page>('home');
@@ -107,12 +129,24 @@ function App() {
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   // Fluxo ➕ Adicionar playlist: Login abre em branco
   const [addingPlaylist, setAddingPlaylist] = useState(false);
+  // Lembretes vivem no App: disparam em QUALQUER página (na LiveTV só,
+  // o aviso morria ao sair da página e o timer era recriado a cada volta)
+  const [activeReminder, setActiveReminder] = useState<Reminder | null>(null);
 
   useEffect(() => {
     registerTizenKeys();
     playlistService.migrate();
     themeService.apply();
+    reminderService.init();
+    return reminderService.subscribe(reminder => setActiveReminder(reminder));
   }, []);
+
+  // O aviso some sozinho depois de 45s
+  useEffect(() => {
+    if (!activeReminder) return;
+    const timeout = setTimeout(() => setActiveReminder(null), 45000);
+    return () => clearTimeout(timeout);
+  }, [activeReminder]);
 
   const checkAuth = useCallback(async () => {
     if (!storage.hasSettings()) {
@@ -246,6 +280,22 @@ function App() {
         </main>
 
         {/* Profile Manager Modal */}
+        {/* Aviso de lembrete — acima de tudo, com D-pad próprio */}
+        {activeReminder && (
+          <ReminderToast
+            reminder={activeReminder}
+            onWatch={() => {
+              // A LiveTV consome a flag e já abre tocando o canal
+              sessionStorage.setItem('neostream_autoplay_last', '1');
+              storage.setLastChannel(activeReminder.streamId);
+              setActiveReminder(null);
+              setCurrentPage('live');
+              setFocusZone('content');
+            }}
+            onDismiss={() => setActiveReminder(null)}
+          />
+        )}
+
         {showGlobalSearch && (
           <GlobalSearch
             onClose={() => {

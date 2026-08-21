@@ -17,6 +17,9 @@ import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
 import { ChannelAgendaOverlay } from '../components/ChannelAgendaOverlay';
+import { FavoritesNowPanel, SportsPanel } from '../components/LivePanels';
+import { reminderService } from '../services/reminderService';
+import { favoriteOrder, isRadioChannel, isSportsCategory, type SportsEvent } from '../services/liveDiscovery';
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { VideoPlayer, type PlayerChannel } from '../components/VideoPlayer';
 import './LiveTV.css';
@@ -73,9 +76,15 @@ export function LiveTV() {
     // Categorias inteiras ocultas (item 16)
     const [hiddenCatIds, setHiddenCatIds] = useState<Set<string>>(() => hiddenCategories.get());
 
+    // R4: painéis, lembretes e ordem manual dos favoritos
+    const [showFavoritesPanel, setShowFavoritesPanel] = useState(false);
+    const [showSportsPanel, setShowSportsPanel] = useState(false);
+    const [favOrderTick, setFavOrderTick] = useState(0);
+
     // Focus states for TV navigation
     // 'categories' = zona do header: índice 0 é a busca, 1 é o menu de categorias
     // 'preview' = botões da ficha do canal (Assistir/⭐/🙈/variantes)
+    // 'categories' = header: 0 busca, 1 menu, 2+ botões da toolbar
     const [focusArea, setFocusArea] = useState<'categories' | 'channels' | 'preview'>('channels');
     const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
     const [focusedChannelIndex, setFocusedChannelIndex] = useState(0);
@@ -222,6 +231,30 @@ export function LiveTV() {
         return groupChannelVariants(processedStreams);
     }, [processedStreams, groupVariantsOn]);
 
+    // Canais favoritos na ORDEM MANUAL do usuário (item 17)
+    const favoriteChannels = useMemo(() => {
+        const list = streams.filter(s => favoriteChannelIds.has(s.stream_id));
+        return favoriteOrder.apply(list);
+        // favOrderTick força recomputo depois de mover um canal
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [streams, favoriteChannelIds, favOrderTick]);
+
+    // Canais de esporte pro painel "Jogos de hoje" (item 12)
+    const sportsChannels = useMemo(() => {
+        const sportsCategoryIds = new Set(
+            categories.filter(c => isSportsCategory(c.category_name)).map(c => c.category_id)
+        );
+        if (sportsCategoryIds.size === 0) return [];
+        return streams.filter(s => sportsCategoryIds.has(s.category_id));
+    }, [streams, categories]);
+
+    // Nome da categoria por id (detecção de rádio — item 13)
+    const categoryNameById = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const category of categories) map.set(category.category_id, category.category_name);
+        return map;
+    }, [categories]);
+
     // Lista de canais pro player (zapping)
     const playerChannelList = useMemo<PlayerChannel[]>(
         () => filteredStreams.map(s => ({
@@ -263,6 +296,19 @@ export function LiveTV() {
     const activePreviewEpg = selectedChannel && previewEpgFor === selectedChannel.stream_id
         ? previewEpg
         : null;
+
+    // Botões da toolbar na ordem do JSX — vira a extensão da zona do header
+    // (sem isso, ⭐ Agora e ⚽ Jogos só abriam por mouse)
+    const toolbarItems: Array<'variants' | 'onlyepg' | 'random' | 'hidden' | 'favpanel' | 'sports'> = [
+        'variants',
+        'onlyepg',
+        'random',
+        ...(hiddenIds.size > 0 ? (['hidden'] as const) : []),
+        ...(favoriteChannels.length > 0 ? (['favpanel'] as const) : []),
+        ...(sportsChannels.length > 0 ? (['sports'] as const) : []),
+    ];
+    const HEADER_BASE = 2; // 0 = busca, 1 = menu de categorias
+    const toolbarFocusIndex = (item: string) => HEADER_BASE + toolbarItems.indexOf(item as typeof toolbarItems[number]);
 
     // Ações da ficha (ordem dos botões navegáveis por D-pad; variantes depois).
     // 'restart' entra no FIM: o EPG chega assíncrono e inseri-lo no meio
@@ -440,6 +486,35 @@ export function LiveTV() {
         playArchive(selectedChannel, programs, index);
     };
 
+    // Lembrete de programa (item 3)
+    const toggleReminder = useCallback((channel: LiveStream, program: { title: string; start: number }) => {
+        const active = reminderService.toggle({
+            streamId: channel.stream_id,
+            channelName: channel.name,
+            programTitle: program.title,
+            startMs: program.start,
+        });
+        setToast(active
+            ? `🔔 Lembrete criado: ${program.title}`
+            : `🔕 Lembrete removido: ${program.title}`);
+        return active;
+    }, []);
+
+    // Reordenar favoritos (item 17)
+    const moveFavorite = useCallback((channel: LiveStream, direction: -1 | 1) => {
+        const ids = favoriteChannels.map(c => c.stream_id);
+        favoriteOrder.move(ids, channel.stream_id, direction);
+        setFavOrderTick(t => t + 1);
+    }, [favoriteChannels]);
+
+    // Pause live via timeshift (item 8): só em canal com catch-up
+    const handleRequestPauseLive = useCallback((pausedAtMs: number): string | null => {
+        if (!playingChannel || Number(playingChannel.tv_archive) <= 0) return null;
+        // pausedAtMs é Date.now() REAL — o offset de EPG só corrige horários
+        // vindos do guia, nunca o relógio do aparelho
+        return api.getTimeshiftUrl(playingChannel.stream_id, pausedAtMs, 180);
+    }, [playingChannel]);
+
     const randomZap = useCallback(() => {
         const pool = filteredStreams.filter(s => s.stream_id !== playingChannel?.stream_id);
         if (pool.length === 0) return;
@@ -469,10 +544,10 @@ export function LiveTV() {
                 if (focusedCategoryIndex === 0) {
                     setFocusZone('sidebar');
                 } else {
-                    setFocusedCategoryIndex(0);
+                    setFocusedCategoryIndex(prev => prev - 1);
                 }
             } else if (direction === 'right') {
-                setFocusedCategoryIndex(1);
+                setFocusedCategoryIndex(prev => Math.min(HEADER_BASE + toolbarItems.length - 1, prev + 1));
             } else if (direction === 'down') {
                 setFocusArea('channels');
                 setFocusedChannelIndex(0);
@@ -547,8 +622,16 @@ export function LiveTV() {
         if (focusArea === 'categories') {
             if (focusedCategoryIndex === 0) {
                 searchRef.current?.open();
-            } else {
+            } else if (focusedCategoryIndex === 1) {
                 categoryMenuRef.current?.open();
+            } else {
+                const item = toolbarItems[focusedCategoryIndex - HEADER_BASE];
+                if (item === 'variants') toggleGroupVariants();
+                else if (item === 'onlyepg') toggleOnlyEpg();
+                else if (item === 'random') randomZap();
+                else if (item === 'hidden') setShowOnlyHidden(prev => !prev);
+                else if (item === 'favpanel') setShowFavoritesPanel(true);
+                else if (item === 'sports') setShowSportsPanel(true);
             }
         } else if (focusArea === 'preview') {
             if (!selectedChannel) return;
@@ -602,7 +685,7 @@ export function LiveTV() {
         onEnter: handleEnter,
         onBack: handleBack,
         onAction: handleAction,
-        enabled: focusZone === 'content' && !playingChannel && !archivePlayback && !showAgenda && !categoryMenuOpen,
+        enabled: focusZone === 'content' && !playingChannel && !archivePlayback && !showAgenda && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel,
     });
 
     const handleImageError = (streamId: number) => {
@@ -697,21 +780,21 @@ export function LiveTV() {
             {/* Toolbar de filtros */}
             <div className="livetv-toolbar">
                 <button
-                    className={`toolbar-btn ${groupVariantsOn ? 'active' : ''}`}
+                    className={`toolbar-btn ${groupVariantsOn ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('variants') ? 'tv-focused' : ''}`}
                     onClick={toggleGroupVariants}
                     title="Agrupar variantes de qualidade (FHD/HD/SD)"
                 >
                     🧬
                 </button>
                 <button
-                    className={`toolbar-btn ${onlyWithEpg ? 'active' : ''}`}
+                    className={`toolbar-btn ${onlyWithEpg ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('onlyepg') ? 'tv-focused' : ''}`}
                     onClick={toggleOnlyEpg}
                     title="Só canais com EPG (🔴)"
                 >
                     📅
                 </button>
                 <button
-                    className="toolbar-btn"
+                    className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('random') ? 'tv-focused' : ''}`}
                     onClick={randomZap}
                     title="Canal aleatório (🟢)"
                 >
@@ -719,11 +802,29 @@ export function LiveTV() {
                 </button>
                 {hiddenIds.size > 0 && (
                     <button
-                        className={`toolbar-btn ${showOnlyHidden ? 'active' : ''}`}
+                        className={`toolbar-btn ${showOnlyHidden ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('hidden') ? 'tv-focused' : ''}`}
                         onClick={() => setShowOnlyHidden(prev => !prev)}
                         title="Ver canais ocultos"
                     >
                         🙈 {hiddenIds.size}
+                    </button>
+                )}
+                {favoriteChannels.length > 0 && (
+                    <button
+                        className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('favpanel') ? 'tv-focused' : ''}`}
+                        onClick={() => setShowFavoritesPanel(true)}
+                        title="Agora nos favoritos"
+                    >
+                        ⭐ Agora
+                    </button>
+                )}
+                {sportsChannels.length > 0 && (
+                    <button
+                        className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('sports') ? 'tv-focused' : ''}`}
+                        onClick={() => setShowSportsPanel(true)}
+                        title="Jogos de hoje"
+                    >
+                        ⚽ Jogos
                     </button>
                 )}
             </div>
@@ -907,6 +1008,12 @@ export function LiveTV() {
                     onPlayArchive={(programs, index) => {
                         if (selectedChannel) playArchive(selectedChannel, programs, index);
                     }}
+                    onToggleReminder={(program) => {
+                        if (!selectedChannel) return false;
+                        return toggleReminder(selectedChannel, program);
+                    }}
+                    isReminded={(program) =>
+                        !!selectedChannel && reminderService.has(selectedChannel.stream_id, program.start)}
                 />
             )}
 
@@ -937,6 +1044,34 @@ export function LiveTV() {
                 );
             })()}
 
+            {/* Agora nos favoritos (item 7) + reordenar (item 17) */}
+            {showFavoritesPanel && (
+                <FavoritesNowPanel
+                    channels={favoriteChannels}
+                    onClose={() => setShowFavoritesPanel(false)}
+                    onPlay={(channel) => {
+                        setShowFavoritesPanel(false);
+                        playChannel(channel);
+                    }}
+                    onMove={moveFavorite}
+                />
+            )}
+
+            {/* Jogos de hoje (item 12) */}
+            {showSportsPanel && (
+                <SportsPanel
+                    channels={sportsChannels}
+                    onClose={() => setShowSportsPanel(false)}
+                    onPlay={(channel) => {
+                        setShowSportsPanel(false);
+                        playChannel(channel);
+                    }}
+                    onRemind={(event: SportsEvent) => toggleReminder(event.channel, event.program)}
+                    isReminded={(event: SportsEvent) =>
+                        reminderService.has(event.channel.stream_id, event.program.start)}
+                />
+            )}
+
             {toast && <div className="livetv-toast">{toast}</div>}
 
             {playingChannel && !archivePlayback && (
@@ -953,6 +1088,8 @@ export function LiveTV() {
                     onSwitchChannel={handleSwitchChannel}
                     contentKey={`live-${playingChannel.stream_id}`}
                     onStreamFailed={handleStreamFailed}
+                    onRequestPauseLive={handleRequestPauseLive}
+                    isRadio={isRadioChannel(playingChannel, categoryNameById.get(playingChannel.category_id))}
                     onClose={() => setPlayingChannel(null)}
                 />
             )}

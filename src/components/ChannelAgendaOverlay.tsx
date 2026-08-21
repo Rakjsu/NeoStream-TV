@@ -13,6 +13,9 @@ interface ChannelAgendaOverlayProps {
     onClose: () => void;
     /** Tocar um programa do arquivo (a página monta a URL de timeshift) */
     onPlayArchive: (programs: EpgProgram[], index: number) => void;
+    /** Liga/desliga lembrete de programa futuro (item 3); devolve se ficou ativo */
+    onToggleReminder?: (program: EpgProgram) => boolean;
+    isReminded?: (program: EpgProgram) => boolean;
 }
 
 function formatClock(ms: number): string {
@@ -20,13 +23,15 @@ function formatClock(ms: number): string {
     return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
-export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive }: ChannelAgendaOverlayProps) {
+export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive, onToggleReminder, isReminded }: ChannelAgendaOverlayProps) {
     const [programs, setPrograms] = useState<EpgProgram[] | null>(null);
     const [focusedIndex, setFocusedIndex] = useState(0);
     const listRef = useRef<HTMLDivElement>(null);
     // Date.now() no render viola react-hooks/purity — congelado em state
     // e atualizado por tick de 30s (o NO AR acompanha o relógio)
     const [nowMs, setNowMs] = useState(() => Date.now());
+    const [reminderTick, setReminderTick] = useState(0);
+    void reminderTick; // força re-render depois de ligar/desligar lembrete
     useEffect(() => {
         const interval = setInterval(() => setNowMs(Date.now()), 30000);
         return () => clearInterval(interval);
@@ -68,8 +73,13 @@ export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive }: Channe
         onEnter: () => {
             if (!programs) return;
             const program = programs[focusedIndex];
-            if (program && isPlayable(program)) {
+            if (!program) return;
+            if (isPlayable(program)) {
                 onPlayArchive(programs, focusedIndex);
+            } else if (program.start > nowMs && onToggleReminder) {
+                // Programa futuro: OK vira 🔔 lembrete (item 3)
+                onToggleReminder(program);
+                setReminderTick(t => t + 1);
             }
         },
         onBack: onClose,
@@ -108,6 +118,11 @@ export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive }: Channe
                                 <span className="agenda-name">{program.title}</span>
                                 {isCurrent && <span className="agenda-badge-live">NO AR</span>}
                                 {playable && !isCurrent && <span className="agenda-badge-replay">⏮ Replay</span>}
+                                {program.start > now && onToggleReminder && (
+                                    <span className="agenda-badge-bell">
+                                        {isReminded?.(program) ? '🔔 Lembrete' : 'OK lembrar'}
+                                    </span>
+                                )}
                             </div>
                         );
                     })}
@@ -115,7 +130,7 @@ export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive }: Channe
 
                 <div className="agenda-hints">
                     <span>↑↓ Navegar</span>
-                    <span>OK Assistir replay</span>
+                    <span>OK Replay / 🔔 Lembrete</span>
                     <span>← Fechar</span>
                 </div>
             </div>

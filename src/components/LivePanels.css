@@ -1,0 +1,242 @@
+/* Painéis da TV ao vivo: favoritos agora + jogos de hoje */
+
+.live-panel-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 5, 15, 0.9);
+    z-index: 4200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.live-panel {
+    width: 900px;
+    max-width: 94vw;
+    max-height: 86vh;
+    display: flex;
+    flex-direction: column;
+    background: rgba(20, 20, 35, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.live-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.live-panel-title {
+    color: #fff;
+    font-size: 25px;
+    margin: 0;
+}
+
+.live-panel-close {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #fff;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.live-panel-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+    min-height: 260px;
+}
+
+.live-panel-empty {
+    padding: 48px 24px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 17px;
+}
+
+.live-panel-hints {
+    display: flex;
+    justify-content: center;
+    padding: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
+}
+
+.live-panel-hints > * + * {
+    margin-left: 20px;
+}
+
+/* Linha do painel de favoritos */
+.fav-now-row {
+    display: flex;
+    align-items: center;
+    padding: 12px 24px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 17px;
+    cursor: pointer;
+}
+
+.fav-now-row > * + * {
+    margin-left: 14px;
+}
+
+.fav-now-row.tv-focused {
+    background: rgba(var(--ns-accent-rgb), 0.3);
+    box-shadow: inset 3px 0 0 var(--ns-accent);
+}
+
+.fav-now-row.reordering.tv-focused {
+    background: rgba(250, 204, 21, 0.25);
+    box-shadow: inset 3px 0 0 #facc15;
+}
+
+.fav-now-name {
+    min-width: 200px;
+    max-width: 200px;
+    font-weight: 700;
+    color: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fav-now-program {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fav-now-time {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.fav-now-progress {
+    display: inline-block;
+    width: 110px;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.fav-now-progress-fill {
+    display: block;
+    height: 100%;
+    background: var(--ns-accent);
+}
+
+.fav-now-move {
+    color: #facc15;
+    font-size: 20px;
+}
+
+/* Linha do painel de jogos */
+.sports-row {
+    display: flex;
+    align-items: center;
+    padding: 12px 24px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 17px;
+    cursor: pointer;
+}
+
+.sports-row > * + * {
+    margin-left: 14px;
+}
+
+.sports-row.tv-focused {
+    background: rgba(var(--ns-accent-rgb), 0.3);
+    box-shadow: inset 3px 0 0 var(--ns-accent);
+}
+
+.sports-time {
+    min-width: 62px;
+    font-weight: 700;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+}
+
+.sports-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sports-channel {
+    min-width: 170px;
+    max-width: 170px;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sports-badge-live {
+    background: #dc2626;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 800;
+    padding: 3px 9px;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+
+.sports-badge-bell {
+    color: #facc15;
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.sports-badge-hint {
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+/* Aviso de lembrete (item 3) */
+.reminder-toast {
+    position: fixed;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 20, 35, 0.97);
+    border: 2px solid #facc15;
+    border-radius: 14px;
+    padding: 16px 24px;
+    z-index: 12000;
+    display: flex;
+    align-items: center;
+    max-width: 80vw;
+}
+
+.reminder-toast > * + * {
+    margin-left: 16px;
+}
+
+.reminder-toast-text {
+    color: #fff;
+    font-size: 18px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.reminder-toast-hint {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 14px;
+    white-space: nowrap;
+}

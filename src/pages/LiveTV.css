@@ -872,3 +872,9 @@
     color: var(--ns-accent);
     font-size: 13px;
 }
+
+/* Foco de D-pad na toolbar (R4: painéis eram só-mouse) */
+.livetv-toolbar .toolbar-btn.tv-focused {
+    box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.85);
+    transform: scale(1.06);
+}

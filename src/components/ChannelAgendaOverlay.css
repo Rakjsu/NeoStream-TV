@@ -133,3 +133,11 @@
 .agenda-hints > * + * {
     margin-left: 20px;
 }
+
+/* Lembrete de programa futuro (item 3) */
+.agenda-badge-bell {
+    color: #facc15;
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+}

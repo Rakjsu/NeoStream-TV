@@ -38,6 +38,13 @@ export interface VideoPlayerProps {
     contentKey?: string;
     /** Todas as tentativas de reconexão falharam (LiveTV usa pra failover de variante) */
     onStreamFailed?: () => void;
+    /**
+     * Pause live (item 8): o canal tem catch-up, então pausar troca pro
+     * timeshift daquele instante. A página devolve a URL; null = sem suporte.
+     */
+    onRequestPauseLive?: (pausedAtMs: number) => string | null;
+    /** Canal de rádio (item 13): UI de áudio, sem vídeo */
+    isRadio?: boolean;
 }
 
 // Control buttons: close, prev, play, next, quality, channels, sleep, aspect
@@ -90,6 +97,20 @@ function epgProgressPct(program: EpgProgram): number {
     return Math.max(0, Math.min(100, ((Date.now() - program.start) / total) * 100));
 }
 
+/** Relógio do modo rádio: a tela fica parada, então o horário é o conteúdo. */
+function RadioClock() {
+    const [now, setNow] = useState(() => new Date());
+    useEffect(() => {
+        const interval = setInterval(() => setNow(new Date()), 30000);
+        return () => clearInterval(interval);
+    }, []);
+    return (
+        <div className="radio-clock">
+            {now.getHours().toString().padStart(2, '0')}:{now.getMinutes().toString().padStart(2, '0')}
+        </div>
+    );
+}
+
 export function VideoPlayer({
     src,
     title,
@@ -109,7 +130,9 @@ export function VideoPlayer({
     currentChannelId,
     onSwitchChannel,
     contentKey,
-    onStreamFailed
+    onStreamFailed,
+    onRequestPauseLive,
+    isRadio = false
 }: VideoPlayerProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -210,10 +233,18 @@ export function VideoPlayer({
         setReconnectAttempt(0);
         setReconnecting(false);
         setIsBehindLive(false);
+        setPausedLiveSrc(null);
     }, [src]);
 
     // Atrás do vivo? (pausou/atrasou num canal ao vivo → botão AO VIVO)
     const [isBehindLive, setIsBehindLive] = useState(false);
+    // Pause live (item 8): URL de timeshift criada ao pausar o ao vivo
+    const [pausedLiveSrc, setPausedLiveSrc] = useState<string | null>(null);
+    // Espelho em ref: listeners de deps vazias precisam do valor atual
+    const pausedLiveSrcRef = useRef<string | null>(null);
+    useEffect(() => {
+        pausedLiveSrcRef.current = pausedLiveSrc;
+    }, [pausedLiveSrc]);
 
     // Reconexão com backoff (R1 itens 43/44/74): tentativa visível + watchdog
     const [reconnectAttempt, setReconnectAttempt] = useState(0);
@@ -224,6 +255,9 @@ export function VideoPlayer({
     const reloadResumeRef = useRef<number | null>(null);
     // Terminal: tentativas esgotadas — watchdog para de re-agendar
     const streamFailedRef = useRef(false);
+
+    // Enquanto pausado-no-vivo, a fonte é o timeshift daquele instante
+    const effectiveSrc = pausedLiveSrc || src;
 
     // HLS hook with quality support
     const {
@@ -236,9 +270,11 @@ export function VideoPlayer({
         isAutoQuality,
         setAutoQuality
     } = useHls({
-        src,
+        src: effectiveSrc,
         videoRef,
-        autoPlay,
+        // Ao trocar pro timeshift da PAUSA o autoplay não pode disparar —
+        // senão o vídeo volta a tocar sozinho e a pausa não acontece
+        autoPlay: autoPlay && !pausedLiveSrc,
         isLive: isLive || contentType === 'live',
         onError: (cause) => setError(CAUSE_MESSAGES[cause || 'fatal']),
         onStreamError: (cause) => scheduleReconnect(cause || 'fatal'),
@@ -294,6 +330,11 @@ export function VideoPlayer({
             if (reloadResumeRef.current != null && video) {
                 video.currentTime = reloadResumeRef.current;
                 reloadResumeRef.current = null;
+            }
+            // Cinto e suspensório do pause live: a fonte de pausa nunca
+            // pode começar tocando (o usuário acabou de apertar pausa)
+            if (pausedLiveSrcRef.current && video && !video.paused) {
+                video.pause();
             }
         };
         video.addEventListener('playing', handlePlaying);
@@ -495,6 +536,8 @@ export function VideoPlayer({
         }
         video.play().catch(() => { });
         setIsBehindLive(false);
+        // Volta pro stream ao vivo de verdade (larga o timeshift da pausa)
+        setPausedLiveSrc(null);
         // O botão golive some — foco não pode ficar órfão nele
         setFocusedControl(prev => (prev === 'golive' ? 'play' : prev));
     }, [hlsRef]);
@@ -662,10 +705,20 @@ export function VideoPlayer({
         if (!video) return;
         if (video.paused) {
             video.play();
-        } else {
-            video.pause();
+            return;
         }
-    }, []);
+        video.pause();
+        // Canal ao vivo com catch-up: troca pro timeshift do instante da
+        // pausa, então retomar continua de onde parou (item 8)
+        if (isLiveContent && !pausedLiveSrc && onRequestPauseLive) {
+            const url = onRequestPauseLive(Date.now());
+            if (url) {
+                setPausedLiveSrc(url);
+                setIsBehindLive(true);
+            }
+        }
+         
+    }, [isLiveContent, pausedLiveSrc, onRequestPauseLive]);
 
     const seek = useCallback((time: number) => {
         const video = videoRef.current;
@@ -886,11 +939,22 @@ export function VideoPlayer({
                     inline sem !important perderia — achado da revisão) */}
                 <video
                     ref={videoRef}
-                    className={`video-element aspect-${aspectMode}`}
-                    poster={poster}
+                    className={`video-element aspect-${aspectMode} ${isRadio ? 'radio-hidden' : ''}`}
+                    poster={isRadio ? undefined : poster}
                     onClick={togglePlay}
                     playsInline
                 />
+                {/* Modo rádio (item 13): sem imagem no stream — logo + relógio */}
+                {isRadio && (
+                    <div className="radio-stage">
+                        {poster
+                            ? <img className="radio-logo" src={poster} alt={title || 'Rádio'} />
+                            : <div className="radio-logo radio-logo-fallback">📻</div>}
+                        <div className="radio-name">{title}</div>
+                        <RadioClock />
+                        <div className="radio-hint">CH+ / CH− trocam de estação</div>
+                    </div>
+                )}
             </div>
 
             {/* Aviso "a seguir" perto do fim do programa (item 9) */}
@@ -960,6 +1024,13 @@ export function VideoPlayer({
                         <div className="spinner-ring"></div>
                     </div>
                     <span className="loading-text">Carregando...</span>
+                </div>
+            )}
+
+            {/* Pausado no ao vivo (item 8) */}
+            {pausedLiveSrc && !playing && (
+                <div className="paused-live-badge">
+                    ⏸ Pausado — retomar continua de onde parou
                 </div>
             )}
 
