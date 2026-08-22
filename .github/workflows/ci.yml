@@ -56,8 +56,9 @@ jobs:
       - name: CSS contra Chromium 69
         run: node scripts/check-tizen-css.mjs
 
-      # Também confere que tizen/index.html aponta pra assets que existem —
-      # sem isso o .wgt sai com tela preta e sem erro nenhum.
+      # Confere duas coisas de uma vez: que tizen/index.html aponta pra assets
+      # que existem (sem isso o .wgt sai com tela preta e sem erro nenhum), e
+      # que os polyfills que o lint silencia estão MESMO no bundle.
       - name: Build Tizen
         run: npm run build:tizen
 

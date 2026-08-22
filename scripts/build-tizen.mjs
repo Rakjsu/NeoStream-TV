@@ -12,6 +12,7 @@ import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, mkdirSync, cpSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { POLYFILLS_DO_BUILD, MARCA_NO_BUNDLE } from './tizen-polyfills.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const distDir = join(root, 'dist-tizen', 'assets');
@@ -81,6 +82,25 @@ ERRO: tizen/index.html referencia assets que o build nao produziu: ${missing.joi
     process.exit(1);
 }
 console.log(`index.html: ${[...new Set(referenced)].length} referencia(s) conferida(s).
+`);
+
+// ---- 4b. a lista de polyfills declarada bate com o bundle? ----
+// O eslint-plugin-compat silencia estes nomes por CONFIAR que o build os entrega.
+// Se alguém mexer no `modernPolyfills` do vite.tizen.config.ts, a confiança vira
+// mentira e o lint passa a esconder um erro real — que só aparece na TV.
+const polyfillFile = readdirSync(assetsDir).find(name => name.startsWith('polyfills'));
+const polyfillSource = polyfillFile ? readFileSync(join(assetsDir, polyfillFile), 'utf8') : '';
+const naoEntregues = POLYFILLS_DO_BUILD.filter(
+    nome => !polyfillSource.includes(MARCA_NO_BUNDLE[nome] ?? nome)
+);
+if (naoEntregues.length > 0) {
+    console.error(`
+ERRO: scripts/tizen-polyfills.mjs declara polyfills que o bundle NAO entrega: ${naoEntregues.join(', ')}`);
+    console.error('O eslint-plugin-compat esta silenciando estes nomes por confiar nesta lista.');
+    console.error('Ou o build parou de polifilar, ou a lista esta errada. Nao ignore.');
+    process.exit(1);
+}
+console.log(`polyfills: ${POLYFILLS_DO_BUILD.length} declarado(s) e conferido(s) no bundle.
 `);
 
 // ---- 5. o .wgt em si ----
