@@ -457,6 +457,58 @@
 }
 
 /* Episode List */
+/* Lista "rica" (item 36): só quando o painel manda sinopse ou miniatura por
+   episódio. Sem esse gate, painéis que não mandam nada ficariam com linhas
+   altas e vazias — menos episódios na tela em troca de espaço em branco. */
+.episode-list.rica {
+    max-height: calc(38 * var(--ns-vh));
+}
+
+.episode-list.rica .episode-item {
+    align-items: flex-start;
+    padding: 10px 14px;
+}
+
+/* A miniatura é 16/9. Largura e altura FIXAS de propósito: `aspect-ratio` não
+   existe no Chromium 69, e aqui não há como usar o truque do padding
+   percentual — o elemento é item flex e a porcentagem resolveria contra o
+   container. 112 x 63 = 16/9 exato. */
+.episode-thumb {
+    flex: 0 0 auto;
+    width: 112px;
+    height: 63px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.06);
+    display: block;
+}
+
+.episode-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.episode-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.episode-plot {
+    margin-top: 4px;
+    font-size: 14px;
+    line-height: 1.35;
+    color: rgba(255, 255, 255, 0.6);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
 .episode-list {
     max-height: 180px;
     overflow-y: auto;

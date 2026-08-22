@@ -212,6 +212,49 @@ describe('progressService', () => {
         expect(progressService.getFinishedSeriesIds().has('s3')).toBe(false);
     });
 
+    // Item 27: a semente da fileira "Porque você assistiu X". A diferença pro
+    // "Continuar assistindo" é o ponto do recurso — quem TERMINOU o filme é a
+    // melhor semente, e é exatamente quem o outro método esconde.
+    it('a semente inclui o que já foi CONCLUÍDO', () => {
+        filme('terminado', 7150);         // concluído
+        filme('nometade', 600);           // no meio
+        const sementes = progressService.getWatchSeeds();
+        expect(sementes.map(s => s.id).sort()).toEqual(['nometade', 'terminado']);
+        // e o "continuar assistindo" segue escondendo o concluído
+        expect(progressService.getContinueWatching().map(e => e.progress).length).toBe(1);
+    });
+
+    it('a semente vem do mais recente pro mais antigo', () => {
+        vi.setSystemTime(new Date(2026, 7, 21, 10, 0, 0));
+        filme('velho', 600);
+        vi.setSystemTime(new Date(2026, 7, 21, 18, 0, 0));
+        filme('novo', 600);
+        expect(progressService.getWatchSeeds().map(s => s.id)).toEqual(['novo', 'velho']);
+    });
+
+    it('filme e série entram na mesma lista de sementes', () => {
+        filme('f1', 600);
+        serie(1, 1, 900);
+        const sementes = progressService.getWatchSeeds();
+        expect(sementes.map(s => s.kind).sort()).toEqual(['movie', 'series']);
+    });
+
+    it('respeita o limite pedido', () => {
+        for (let i = 0; i < 12; i++) {
+            vi.setSystemTime(new Date(2026, 7, 21, 12, i, 0));
+            filme(`f${i}`, 600);
+        }
+        expect(progressService.getWatchSeeds(5)).toHaveLength(5);
+    });
+
+    // Entrada sem nome viraria o título "Porque você assistiu " na Home
+    it('descarta entrada sem nome', () => {
+        localStorage.setItem('neostream_movie_progress', JSON.stringify({
+            x: { id: 'x', name: '', time: 600, duration: 7200, completed: false, updatedAt: 1 },
+        }));
+        expect(progressService.getWatchSeeds()).toEqual([]);
+    });
+
     // O escopo por perfil vale também aqui: o progresso do pai não pode
     // aparecer no perfil das crianças.
     it('o progresso é de quem assiste, não do aparelho', () => {

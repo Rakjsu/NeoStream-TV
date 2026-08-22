@@ -229,6 +229,15 @@ export function ContentDetailModal({
         [seriesInfo, selectedSeason]
     );
 
+    // A lista só cresce quando há o que mostrar (item 36). Metade dos painéis
+    // Xtream não manda nada por episódio: nesses, linhas altas e vazias seriam
+    // uma piora — menos episódios na tela em troca de espaço em branco.
+    const episodiosComDetalhe = useMemo(() => ({
+        temSinopse: episodes.some(ep => (ep.info?.plot || '').trim().length > 0),
+        temImagem: episodes.some(ep => !!ep.info?.movie_image),
+    }), [episodes]);
+    const listaRica = episodiosComDetalhe.temSinopse || episodiosComDetalhe.temImagem;
+
     // TV Navigation handlers
     const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
         if (!isOpen) return;
@@ -500,7 +509,10 @@ export function ContentDetailModal({
                             </div>
 
                             {/* Episode List */}
-                            <div className="episode-list" ref={episodeListRef}>
+                            <div
+                                className={`episode-list ${listaRica ? 'rica' : ''}`}
+                                ref={episodeListRef}
+                            >
                                 {episodes.map((ep, index: number) => {
                                     const epNum = Number(ep.episode_num);
                                     const isSelected = epNum === selectedEpisode;
@@ -512,7 +524,31 @@ export function ContentDetailModal({
                                             onClick={() => setSelectedEpisode(epNum)}
                                         >
                                             <span className="episode-number default">{epNum}</span>
-                                            <span className="episode-title">{getEpisodeTitle(ep)}</span>
+                                            {episodiosComDetalhe.temImagem && (
+                                                <span className="episode-thumb">
+                                                    {ep.info?.movie_image && (
+                                                        <img
+                                                            src={ep.info.movie_image}
+                                                            alt=""
+                                                            loading="lazy"
+                                                            // Miniatura quebrada é comum: o provedor
+                                                            // aponta pra um host que já saiu do ar.
+                                                            // Some sem deixar o ícone de imagem quebrada.
+                                                            onError={(e) => {
+                                                                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                                            }}
+                                                        />
+                                                    )}
+                                                </span>
+                                            )}
+                                            <span className="episode-text">
+                                                <span className="episode-title">{getEpisodeTitle(ep)}</span>
+                                                {episodiosComDetalhe.temSinopse && (
+                                                    <span className="episode-plot">
+                                                        {(ep.info?.plot || '').trim() || 'Sem sinopse.'}
+                                                    </span>
+                                                )}
+                                            </span>
                                             {isSelected && (
                                                 <span className="episode-play-indicator">▶</span>
                                             )}

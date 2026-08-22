@@ -161,6 +161,26 @@ export const progressService = {
     },
 
     /** Itens pra fileira "Continuar Assistindo", mais recentes primeiro. */
+    /**
+     * Títulos assistidos recentemente, para servirem de SEMENTE explícita da
+     * fileira "Porque você assistiu X" (item 27).
+     *
+     * Diferente de getContinueWatching de propósito: aquele filtra
+     * `!completed`, e o filme CONCLUÍDO é justamente a melhor semente — dizer
+     * "porque você assistiu Duna" faz sentido quando a pessoa terminou Duna,
+     * não quando ela parou nos 20 minutos.
+     */
+    getWatchSeeds(limit = 8): Array<{ id: string; name: string; kind: 'movie' | 'series'; updatedAt: number }> {
+        const filmes = Object.values(readMap<MovieProgress>(MOVIE_KEY()))
+            .map(p => ({ id: p.id, name: p.name, kind: 'movie' as const, updatedAt: p.updatedAt }));
+        const series = Object.values(readMap<SeriesProgress>(SERIES_KEY()))
+            .map(p => ({ id: p.seriesId, name: p.seriesName, kind: 'series' as const, updatedAt: p.updatedAt }));
+        return [...filmes, ...series]
+            .filter(entrada => entrada.id && entrada.name)
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .slice(0, limit);
+    },
+
     getContinueWatching(): Array<
         | { kind: 'movie'; progress: MovieProgress }
         | { kind: 'series'; progress: SeriesProgress }

@@ -49,6 +49,9 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     const [recentMovies, setRecentMovies] = useState<VODStream[]>([]);
     const [recentSeries, setRecentSeries] = useState<Series[]>([]);
     const [recommendations, setRecommendations] = useState<(VODStream | Series)[]>([]);
+    // "Porque você assistiu X" (item 27): semente EXPLÍCITA e nomeada, ao
+    // contrário da fileira de recomendações, que é afinidade anônima
+    const [seedRow, setSeedRow] = useState<{ nome: string; itens: (VODStream | Series)[] } | null>(null);
     const [currentTime, setCurrentTime] = useState(new Date());
     // Foco por ID de seção: as seções condicionais (continue/newepisodes)
     // entram ASSINCRONAMENTE e deslocariam um índice posicional
@@ -169,6 +172,34 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 }
                 setRecommendations(recommended);
 
+                // Fileira com SEMENTE nomeada (item 27). Resolver a semente
+                // contra `movies`/`series` — que já passaram pelo gate kids —
+                // é o que impede o título "Porque você assistiu <adulto>" de
+                // aparecer num perfil infantil: o progresso não passa por gate
+                // nenhum, o catálogo passa.
+                const sementes = progressService.getWatchSeeds();
+                let fileiraDaSemente: { nome: string; itens: (VODStream | Series)[] } | null = null;
+                for (const semente of sementes) {
+                    const noCatalogo: VODStream | Series | undefined = semente.kind === 'movie'
+                        ? movies.find(m => String(m.stream_id) === semente.id)
+                        : series.find(sr => String(sr.series_id) === semente.id);
+                    if (!noCatalogo) continue;
+
+                    const categoria = noCatalogo.category_id;
+                    const candidatos: (VODStream | Series)[] = [
+                        ...unwatchedMovies.filter(m => m.category_id === categoria),
+                        ...unwatchedSeries.filter(sr => sr.category_id === categoria),
+                    ].filter(item => getId(item) !== getId(noCatalogo));
+
+                    // Menos de 4 não vira fileira: uma linha com dois cards
+                    // parece defeito e ainda rouba um degrau do D-pad
+                    if (candidatos.length < 4) continue;
+                    candidatos.sort((a, b) => (b.rating_5based || 0) - (a.rating_5based || 0));
+                    fileiraDaSemente = { nome: semente.name, itens: candidatos.slice(0, 12) };
+                    break;
+                }
+                setSeedRow(fileiraDaSemente);
+
                 // Top 10 (item 33): mais assistidos pelo tempo local, casados
                 // com o catálogo por nome normalizado
                 // Pede folga: entradas 'live' e sem match no catálogo comem vagas
@@ -248,6 +279,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     const sections = [
         { id: 'stats', items: 3 },
         ...(continueItems.length > 0 ? [{ id: 'continue', items: continueItems.length }] : []),
+        ...(seedRow ? [{ id: 'seed', items: seedRow.itens.length }] : []),
         ...(topItems.length > 0 ? [{ id: 'top10', items: topItems.length }] : []),
         ...(newEpisodesList.length > 0 ? [{ id: 'newepisodes', items: newEpisodesList.length }] : []),
         ...(recommendations.length > 0 ? [{ id: 'recommendations', items: recommendations.length }] : []),
@@ -367,6 +399,9 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
             onNavigate?.(pages[focusedItem] || 'live');
         } else if (section?.id === 'movies') {
             const item = recentMovies[focusedItem];
+            if (item) openDetail(item);
+        } else if (section?.id === 'seed') {
+            const item = seedRow?.itens[focusedItem];
             if (item) openDetail(item);
         } else if (section?.id === 'recommendations') {
             const item = recommendations[focusedItem];
@@ -555,6 +590,33 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     </div>
                 )}
 
+                {/* Porque você assistiu X (item 27). A condição aqui é a MESMA
+                    do array `sections`: seção que existe no DOM e não existe na
+                    lista de foco vira uma fileira que o D-pad nunca alcança. */}
+                {seedRow && (
+                    <div id="home-seed" className="content-section">
+                        <h2 className="section-title">▶ Porque você assistiu {seedRow.nome}</h2>
+                        <div className="content-row">
+                            {seedRow.itens.map((item, index) => (
+                                <button
+                                    key={getId(item)}
+                                    className={`content-card ${focusedSection === sectionIndex('seed') && focusedItem === index ? 'tv-focused' : ''}`}
+                                    onClick={() => openDetail(item)}
+                                >
+                                    <div className="card-image card-image-poster">
+                                        <img decoding="async"
+                                            src={getCover(item)}
+                                            alt={getName(item)}
+                                            onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">🎬</text></svg>'; }}
+                                        />
+                                    </div>
+                                    <div className="card-title">{getName(item)}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Top 10 (item 33) */}
                 {topItems.length > 0 && (
                     <div id="home-top10" className="content-section">
@@ -610,7 +672,10 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     </div>
                 )}
 
-                {/* Recommendations */}
+                {/* Recommendations — condicional IGUAL ao array `sections`.
+                    Sem isto, uma playlist sem recomendações desenhava o título
+                    "Recomendados Para Você" com uma fileira vazia embaixo. */}
+                {recommendations.length > 0 && (
                 <div id="home-recommendations" className="content-section">
                     <h2 className="section-title">💡 Recomendados Para Você</h2>
                     <div className="content-row">
@@ -632,6 +697,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                         ))}
                     </div>
                 </div>
+                )}
 
                 {/* Recent Series */}
                 <div id="home-series" className="content-section">

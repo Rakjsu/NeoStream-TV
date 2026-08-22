@@ -78,6 +78,14 @@ export interface Episode {
     duration: string;
     plot: string;
     releasedate: string;
+    /**
+     * Campos que os painéis Xtream mandam por episódio e que ninguém declarava
+     * (item 36). São OPCIONAIS de propósito: metade dos painéis não os envia,
+     * e assumir que existem faria a ficha renderizar buraco.
+     */
+    movie_image?: string;
+    cover_big?: string;
+    rating?: string | number;
   };
   custom_sid: string;
   added: string;
