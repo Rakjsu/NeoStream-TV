@@ -443,3 +443,98 @@
     color: rgba(255, 255, 255, 0.6);
     font-weight: 500;
 }
+
+/* ---- Listas nomeadas (item 30) ----
+   Espaçamento por `margin`: sem `gap` em flexbox, sem depender do fallback do
+   Chromium 69. */
+.mylist-aviso {
+    margin: 0 48px 12px;
+    padding: 10px 16px;
+    background: rgba(var(--ns-accent-rgb), 0.14);
+    border: 1px solid rgba(var(--ns-accent-rgb), 0.35);
+    border-radius: 10px;
+    color: #fff;
+    font-size: 16px;
+}
+
+.mylist-overlay {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: rgba(6, 8, 16, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9000;
+}
+
+.mylist-overlay-painel {
+    width: 78%;
+    max-width: 980px;
+    max-height: calc(80 * var(--ns-vh));
+    overflow-y: auto;
+    background: linear-gradient(160deg, #14162a 0%, #0c0e1a 100%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 18px;
+    padding: 26px 30px;
+}
+
+.mylist-overlay-titulo {
+    margin: 0 0 6px;
+    font-size: 24px;
+    color: #fff;
+}
+
+.mylist-overlay-dica {
+    margin: 0 0 18px;
+    font-size: 15px;
+    color: #8b93b5;
+}
+
+.mylist-sugestoes {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.mylist-sugestao {
+    margin: 0 10px 10px 0;
+    padding: 14px 20px;
+    font-size: 18px;
+    color: #e8ecff;
+    background: rgba(255, 255, 255, 0.06);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.mylist-sugestao.tv-focused {
+    background: rgba(var(--ns-accent-rgb), 0.28);
+    border-color: var(--ns-accent);
+}
+
+.mylist-destinos {
+    display: block;
+}
+
+.mylist-destino {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 14px 18px;
+    font-size: 18px;
+    color: #e8ecff;
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid transparent;
+    border-radius: 12px;
+    cursor: pointer;
+    text-align: left;
+}
+
+.mylist-destino.tv-focused {
+    background: rgba(var(--ns-accent-rgb), 0.24);
+    border-color: var(--ns-accent);
+}

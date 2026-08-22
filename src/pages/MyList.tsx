@@ -5,6 +5,7 @@ import { storage, type WatchLaterItem } from '../services/storage';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
 import { kidsFilter } from '../services/kidsFilter';
+import { listsService, NOMES_SUGERIDOS, MAX_LISTAS, type ListaNomeada } from '../services/listsService';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
@@ -17,7 +18,17 @@ interface MyListProps {
 
 export function MyList({ onNavigate }: MyListProps) {
     const [items, setItems] = useState<WatchLaterItem[]>(() => storage.getWatchLater());
-    const [activeTab, setActiveTab] = useState<'all' | 'movies' | 'series'>('all');
+    // Abas: os três filtros de tipo E as listas nomeadas (item 30). É UMA
+    // dimensão só — "o que mostrar" —, então cabe numa fileira de abas sem
+    // inventar uma segunda zona de foco.
+    const [activeTab, setActiveTab] = useState<string>('all');
+    const [listas, setListas] = useState<ListaNomeada[]>(() => listsService.list());
+    // Overlays do D-pad: criar lista (sugestões) e "adicionar a…"
+    const [criandoLista, setCriandoLista] = useState(false);
+    const [sugestaoIndex, setSugestaoIndex] = useState(0);
+    const [addAlvo, setAddAlvo] = useState<WatchLaterItem | null>(null);
+    const [addIndex, setAddIndex] = useState(0);
+    const [aviso, setAviso] = useState('');
     const [removingId, setRemovingId] = useState<string | null>(null);
     const { focusZone, setFocusZone } = useFocusZone();
     const [kidsActive] = useState(() => kidsFilter.isKidsActive());
@@ -57,17 +68,31 @@ export function MyList({ onNavigate }: MyListProps) {
 
     const movies = items.filter(item => item.type === 'movie');
     const series = items.filter(item => item.type === 'series');
+    const listaAtiva = activeTab.startsWith('list:')
+        ? listas.find(lista => `list:${lista.id}` === activeTab) || null
+        : null;
 
-    const displayItems = activeTab === 'all' ? items :
-        activeTab === 'movies' ? movies : series;
+    const displayItems = listaAtiva ? listaAtiva.itens
+        : activeTab === 'all' ? items
+        : activeTab === 'movies' ? movies
+        : series;
 
     // Indice focado sempre no range (a lista encolhe ao remover itens)
     const safeItemIndex = Math.min(focusedItemIndex, Math.max(0, displayItems.length - 1));
 
-    const tabs = ['all', 'movies', 'series'] as const;
+    // Abas ancoradas por ID, nunca por posição: as listas nomeadas entram e
+    // saem, e índice posicional com item condicional é o defeito que já mandou
+    // o foco pro botão errado neste repositório.
+    const tabs: string[] = [
+        'all', 'movies', 'series',
+        ...listas.map(lista => `list:${lista.id}`),
+        ...(listas.length < MAX_LISTAS ? ['new'] : []),
+    ];
     // Slots da faixa do cabeçalho: as abas + "Limpar Tudo" (que só existe
     // quando há algo pra limpar — slot invisível vira parada morta do D-pad)
     const headerSlots = tabs.length + (items.length > 0 ? 1 : 0);
+
+    const recarregarListas = () => setListas(listsService.list());
 
     // Abrir item: ambos os tipos abrem a ficha (o modal resolve episódios)
     const openItem = (item: WatchLaterItem) => {
@@ -95,14 +120,37 @@ export function MyList({ onNavigate }: MyListProps) {
         }
     };
 
+    // Remove o item da VISTA atual: dentro de uma lista nomeada, 🔴 tira dali
+    // — apagar da lista padrão seria destruir o que a pessoa não pediu
+    const removerDaVista = (item: WatchLaterItem) => {
+        if (listaAtiva) {
+            listsService.toggleItem(listaAtiva.id, item);
+            recarregarListas();
+            return;
+        }
+        removeItem(item);
+    };
+
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
+        setAviso('');
+        // Overlays são donos exclusivos das teclas enquanto estão na tela
+        if (criandoLista) {
+            if (direction === 'left') setSugestaoIndex(prev => Math.max(0, prev - 1));
+            else if (direction === 'right') setSugestaoIndex(prev => Math.min(NOMES_SUGERIDOS.length - 1, prev + 1));
+            return;
+        }
+        if (addAlvo) {
+            if (direction === 'up') setAddIndex(prev => Math.max(0, prev - 1));
+            else if (direction === 'down') setAddIndex(prev => Math.min(listas.length - 1, prev + 1));
+            return;
+        }
         setClearArmed(false); // sair da linha cancela a confirmação
         if (kidsActive) {
             if (direction === 'left') setFocusZone('sidebar');
             return;
         }
-        if (items.length === 0) {
+        if (items.length === 0 && listas.length === 0) {
             if (direction === 'left') {
                 if (emptyFocusIndex === 0) setFocusZone('sidebar');
                 else setEmptyFocusIndex(0);
@@ -147,8 +195,33 @@ export function MyList({ onNavigate }: MyListProps) {
 
     const handleEnter = () => {
         if (kidsActive) return;
-        if (items.length === 0) {
+        if (items.length === 0 && listas.length === 0) {
             onNavigate?.(emptyFocusIndex === 0 ? 'movies' : 'series');
+            return;
+        }
+
+        if (criandoLista) {
+            const criada = listsService.create(NOMES_SUGERIDOS[sugestaoIndex]);
+            setCriandoLista(false);
+            if (!criada) {
+                setAviso('Você já tem o máximo de listas.');
+                return;
+            }
+            recarregarListas();
+            setActiveTab(`list:${criada.id}`);
+            setAviso(`Lista "${criada.nome}" criada.`);
+            return;
+        }
+        if (addAlvo) {
+            const destino = listas[addIndex];
+            if (destino) {
+                const dentro = listsService.toggleItem(destino.id, addAlvo);
+                recarregarListas();
+                setAviso(dentro
+                    ? `Adicionado a "${destino.nome}".`
+                    : `Removido de "${destino.nome}".`);
+            }
+            setAddAlvo(null);
             return;
         }
 
@@ -163,7 +236,13 @@ export function MyList({ onNavigate }: MyListProps) {
                 }
                 return;
             }
-            setActiveTab(tabs[focusedTabIndex]);
+            const aba = tabs[focusedTabIndex];
+            if (aba === 'new') {
+                setSugestaoIndex(0);
+                setCriandoLista(true);
+                return;
+            }
+            setActiveTab(aba);
         } else if (focusArea === 'items') {
             const item = displayItems[safeItemIndex];
             if (item) openItem(item);
@@ -174,15 +253,30 @@ export function MyList({ onNavigate }: MyListProps) {
         onNavigate: handleNavigate,
         onEnter: handleEnter,
         onBack: () => {
+            // Voltar fecha primeiro o que está por cima
+            if (criandoLista) { setCriandoLista(false); return; }
+            if (addAlvo) { setAddAlvo(null); return; }
             // Sem isto a tecla nao fazia nada e o usuario ficava preso na
             // pagina. Voltar devolve o foco pra sidebar; de la vai pra Home.
             setFocusZone('sidebar');
         },
         onAction: (action) => {
-            // 🔴 remove o item em foco — mesma convenção do resto do app
-            if (action !== 'red' || focusArea !== 'items') return;
+            if (criandoLista || addAlvo) return;
+            if (focusArea !== 'items') return;
             const item = displayItems[safeItemIndex];
-            if (item) removeItem(item);
+            if (!item) return;
+            // 🔴 remove o item em foco — mesma convenção do resto do app
+            if (action === 'red') {
+                removerDaVista(item);
+            } else if (action === 'yellow') {
+                // 🟡 adicionar a uma lista nomeada (item 30)
+                if (listas.length === 0) {
+                    setAviso('Crie uma lista primeiro no botão ＋.');
+                    return;
+                }
+                setAddIndex(0);
+                setAddAlvo(item);
+            }
         },
         enabled: focusZone === 'content' && !modalItem && !playingMovie && !seriesQueue,
     });
@@ -207,8 +301,10 @@ export function MyList({ onNavigate }: MyListProps) {
         );
     }
 
-    // Empty State
-    if (items.length === 0) {
+    // Empty State — só quando NÃO há nada em lugar nenhum. Sem a segunda
+    // condição, quem esvaziasse a lista padrão mas tivesse listas nomeadas
+    // cheias veria "sua lista está vazia" e nunca mais alcançaria as listas.
+    if (items.length === 0 && listas.length === 0) {
         return (
             <div className="mylist-page">
                 <div className="mylist-backdrop" />
@@ -253,7 +349,11 @@ export function MyList({ onNavigate }: MyListProps) {
                     <div className="title-icon">📑</div>
                     <div>
                         <h1>Minha Lista</h1>
-                        <p className="subtitle">{items.length} itens para assistir</p>
+                        <p className="subtitle">
+                            {listaAtiva
+                                ? `${listaAtiva.itens.length} em “${listaAtiva.nome}”`
+                                : `${items.length} itens para assistir`}
+                        </p>
                     </div>
                 </div>
                 {items.length > 0 && (
@@ -290,7 +390,79 @@ export function MyList({ onNavigate }: MyListProps) {
                     <span>📺 Séries</span>
                     <span className="tab-count">{series.length}</span>
                 </button>
+
+                {/* Listas nomeadas (item 30) */}
+                {listas.map(lista => {
+                    const aba = `list:${lista.id}`;
+                    return (
+                        <button
+                            key={lista.id}
+                            className={`tab ${activeTab === aba ? 'active' : ''} ${focusArea === 'tabs' && tabs[focusedTabIndex] === aba ? 'tv-focused' : ''}`}
+                            onClick={() => setActiveTab(aba)}
+                        >
+                            <span>📌 {lista.nome}</span>
+                            <span className="tab-count">{lista.itens.length}</span>
+                        </button>
+                    );
+                })}
+                {listas.length < MAX_LISTAS && (
+                    <button
+                        className={`tab ${focusArea === 'tabs' && tabs[focusedTabIndex] === 'new' ? 'tv-focused' : ''}`}
+                        onClick={() => { setSugestaoIndex(0); setCriandoLista(true); }}
+                    >
+                        <span>＋ Nova lista</span>
+                    </button>
+                )}
             </div>
+
+            {aviso && <div className="mylist-aviso">{aviso}</div>}
+
+            {/* Criar lista: sugestões navegáveis por ←→. Sem digitação livre —
+                o IME nativo do Tizen já rendeu quatro armadilhas neste repo. */}
+            {criandoLista && (
+                <div className="mylist-overlay">
+                    <div className="mylist-overlay-painel">
+                        <h2 className="mylist-overlay-titulo">Nova lista</h2>
+                        <p className="mylist-overlay-dica">← → escolhe · OK cria · Voltar cancela</p>
+                        <div className="mylist-sugestoes">
+                            {NOMES_SUGERIDOS.map((nome, index) => (
+                                <button
+                                    key={nome}
+                                    className={`mylist-sugestao ${index === sugestaoIndex ? 'tv-focused' : ''}`}
+                                    onClick={() => setSugestaoIndex(index)}
+                                >
+                                    {nome}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Adicionar a uma lista (🟡 no card) */}
+            {addAlvo && (
+                <div className="mylist-overlay">
+                    <div className="mylist-overlay-painel">
+                        <h2 className="mylist-overlay-titulo">Adicionar “{addAlvo.title}” a…</h2>
+                        <p className="mylist-overlay-dica">↑ ↓ escolhe · OK liga/desliga · Voltar cancela</p>
+                        <div className="mylist-destinos">
+                            {listas.map((lista, index) => (
+                                <button
+                                    key={lista.id}
+                                    className={`mylist-destino ${index === addIndex ? 'tv-focused' : ''}`}
+                                    onClick={() => setAddIndex(index)}
+                                >
+                                    <span>
+                                        {listsService.has(lista.id, addAlvo.id, addAlvo.type) ? '☑' : '☐'}
+                                        {' '}📌 {lista.nome}
+                                    </span>
+                                    <span className="tab-count">{lista.itens.length}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Cards Grid */}
             <div className="cards-grid">
@@ -349,6 +521,7 @@ export function MyList({ onNavigate }: MyListProps) {
                 <span>↑↓←→ Navegar</span>
                 <span>OK Selecionar</span>
                 <span className="hint-red">🔴 Remover</span>
+                <span className="hint-yellow">🟡 Adicionar a uma lista</span>
                 <span>← Voltar</span>
             </div>
 

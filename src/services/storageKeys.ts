@@ -56,6 +56,9 @@ export const KEYS_LISTAS = [
     'neostream_fav_channel_order',
     'neostream_reminders',
     'neostream_last_channel',
+    // Listas nomeadas do item 30. Chave NOVA: a lista padrao continua sendo
+    // neostream_watch_later, byte por byte — zero migracao, zero risco
+    'neostream_lists',
 ] as const;
 
 /** Ajustes do aparelho: é isto que o snapshot e o backup por QR carregam. */
