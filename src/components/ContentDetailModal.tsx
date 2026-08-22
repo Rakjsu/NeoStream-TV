@@ -7,6 +7,9 @@ import { searchMovieByName, searchSeriesByName, fetchMovieDetails, fetchSeriesDe
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { fetchColecao } from '../services/tmdb';
 import { indexarCatalogo, cruzarComCatalogo } from '../services/tmdbMatch';
+import { abrirExterno, podeAbrirExterno } from '../services/tizenApp';
+import { TrailerOverlay } from './TrailerOverlay';
+import { extrairChaveYoutube } from '../services/trailer';
 import { progressService } from '../services/progressService';
 import type { Episode, SeriesInfo } from '../types';
 import './ContentDetailModal.css';
@@ -30,6 +33,12 @@ interface ContentDetailModalProps {
         runtime?: string;
         /** id TMDB do provedor: evita match errado por nome — item 20 */
         tmdbId?: string;
+        /**
+         * URL de trailer que o PRÓPRIO provedor manda (item 18). O campo
+         * existe no Xtream desde sempre e ninguém lia; usá-lo custa zero
+         * requisição e funciona sem chave do TMDB.
+         */
+        youtubeTrailer?: string;
     };
     onPlay: (season?: number, episode?: number) => void;
     /** Versões do mesmo título (DUB/LEG/4K) — item 21 */
@@ -88,7 +97,7 @@ export function ContentDetailModal({
     const [tmdbLoading, setTmdbLoading] = useState(false);
 
     // Focus management for TV navigation
-    type FocusZone = 'play' | 'watchLater' | 'favorite' | 'close' | 'season' | 'episode' | 'version' | 'collection';
+    type FocusZone = 'play' | 'watchLater' | 'favorite' | 'close' | 'season' | 'episode' | 'version' | 'collection' | 'trailer';
     const [focusZone, setFocusZone] = useState<FocusZone>('play');
     const [seasonFocusIndex, setSeasonFocusIndex] = useState(0);
     const [episodeFocusIndex, setEpisodeFocusIndex] = useState(0);
@@ -119,6 +128,20 @@ export function ContentDetailModal({
 
     const [versionFocusIndex, setVersionFocusIndex] = useState(0);
     const hasVersions = !!(versions && versions.length > 1 && onSelectVersion);
+
+    // ---- Trailer (item 18) ----
+    // A chave vem primeiro do PROVEDOR (custo zero) e só depois do TMDB, que
+    // agora chega de graça no mesmo append_to_response da ficha.
+    const [trailerAberto, setTrailerAberto] = useState(false);
+    const trailerKey = useMemo(() => {
+        const doProvedor = extrairChaveYoutube(contentData.youtubeTrailer || '');
+        return doProvedor || tmdbData?.trailerKey || '';
+    }, [contentData.youtubeTrailer, tmdbData]);
+
+    // Na TV o botão só existe se a TV souber abrir um app externo — ver a nota
+    // em services/tizenApp.abrirExterno. No navegador o embed sempre serve.
+    const naTv = typeof __BUILD_TARGET__ === 'string' && __BUILD_TARGET__ === 'tizen';
+    const hasTrailer = !!trailerKey && (!naTv || podeAbrirExterno());
 
     // ---- Elenco (item 34, versão reduzida) ----
     // Faixa VISÍVEL, sem foco próprio. Torná-la navegável exigiria uma
@@ -341,6 +364,10 @@ export function ContentDetailModal({
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'favorite') {
                 if (direction === 'left') setFocusZone('watchLater');
+                else if (direction === 'right' && hasTrailer) setFocusZone('trailer');
+                else if (direction === 'up') setFocusZone('close');
+            } else if (focusZone === 'trailer') {
+                if (direction === 'left') setFocusZone('favorite');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'close') {
                 if (direction === 'down') setFocusZone('play');
@@ -401,13 +428,17 @@ export function ContentDetailModal({
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'favorite') {
                 if (direction === 'left') setFocusZone('watchLater');
+                else if (direction === 'right' && hasTrailer) setFocusZone('trailer');
+                else if (direction === 'up') setFocusZone('close');
+            } else if (focusZone === 'trailer') {
+                if (direction === 'left') setFocusZone('favorite');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'close') {
                 if (direction === 'down') setFocusZone(abaixoDoClose);
             }
         }
     }, [isOpen, focusZone, contentType, seasons.length, episodes.length, episodeFocusIndex,
-        hasVersions, versions?.length, hasCollection, saga?.itens.length]);
+        hasVersions, versions?.length, hasCollection, saga?.itens.length, hasTrailer]);
 
     // Item completo pra salvar em Favoritos/Minha Lista (com pôster e título —
     // a página de listas depende desses campos pra renderizar o card)
@@ -435,6 +466,15 @@ export function ContentDetailModal({
         } else if (focusZone === 'favorite') {
             storage.toggleFavorite(buildSavedItem());
             setRefresh(r => r + 1);
+        } else if (focusZone === 'trailer') {
+            if (!trailerKey) return;
+            // Na TV, entrega a URL pro sistema e sai do caminho; no navegador,
+            // abre o embed. Nunca um iframe na TV: ver services/tizenApp.
+            if (naTv) {
+                abrirExterno(`https://www.youtube.com/watch?v=${encodeURIComponent(trailerKey)}`);
+            } else {
+                setTrailerAberto(true);
+            }
         } else if (focusZone === 'collection') {
             const filme = saga?.itens[collectionFocusIndex];
             if (filme && onOpenRelated) onOpenRelated(String(filme.stream_id));
@@ -458,7 +498,8 @@ export function ContentDetailModal({
         }
     }, [isOpen, focusZone, contentType, selectedSeason, selectedEpisode, buildSavedItem, seasons,
         seasonFocusIndex, episodes, episodeFocusIndex, onPlay, handleClose, versions,
-        versionFocusIndex, onSelectVersion, saga, collectionFocusIndex, onOpenRelated]);
+        versionFocusIndex, onSelectVersion, saga, collectionFocusIndex, onOpenRelated,
+        trailerKey, naTv]);
 
     const handleBack = useCallback(() => {
         handleClose();
@@ -469,7 +510,10 @@ export function ContentDetailModal({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
         onBack: handleBack,
-        enabled: isOpen
+        // O overlay do trailer tem hook PRÓPRIO. O listener do useTVNavigation
+        // é global no window: dois hooks ligados = uma tecla, duas ações — a
+        // armadilha mais recorrente deste repositório.
+        enabled: isOpen && !trailerAberto
     });
 
     // Helper function for episode titles
@@ -796,9 +840,37 @@ export function ContentDetailModal({
                         >
                             {storage.isFavorite(contentId, contentType) ? '♥' : '♡'}
                         </button>
+
+                        {/* Trailer (item 18). A MESMA expressão `hasTrailer`
+                            governa este botão e a zona de foco: na TV ele só
+                            existe quando o aparelho sabe abrir um app externo. */}
+                        {hasTrailer && (
+                            <button
+                                className={`action-btn secondary-btn ${focusZone === 'trailer' ? 'focused' : ''}`}
+                                onClick={() => {
+                                    if (naTv) {
+                                        abrirExterno(`https://www.youtube.com/watch?v=${encodeURIComponent(trailerKey)}`);
+                                    } else {
+                                        setTrailerAberto(true);
+                                    }
+                                }}
+                                title="Ver o trailer"
+                            >
+                                ▶ Trailer
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
+
+            {/* No navegador o trailer abre aqui; na TV quem abre é o sistema */}
+            {trailerAberto && trailerKey && (
+                <TrailerOverlay
+                    youtubeKey={trailerKey}
+                    title={contentData.name}
+                    onClose={() => setTrailerAberto(false)}
+                />
+            )}
         </div>
     );
 }

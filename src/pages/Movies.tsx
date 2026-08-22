@@ -698,6 +698,8 @@ export function Movies() {
                         container_extension: selectedMovie.container_extension,
                         runtime: selectedMovie.episode_run_time,
                         tmdbId: selectedMovie.tmdb_id,
+                        // Item 18: o campo existe no Xtream e ninguém lia
+                        youtubeTrailer: selectedMovie.youtube_trailer,
                     }}
                     onPlay={() => {
                         // Start video playback

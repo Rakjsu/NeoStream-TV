@@ -574,6 +574,8 @@ export function Series() {
                         release_date: selectedSeries.release_date,
                         runtime: selectedSeries.episode_run_time,
                         tmdbId: selectedSeries.tmdb_id,
+                        // Item 18: o campo existe no Xtream e ninguém lia
+                        youtubeTrailer: selectedSeries.youtube_trailer,
                     }}
                     onPlay={async (season, episode) => {
                         // Monta a fila de episódios (habilita próximo/anterior + resume)

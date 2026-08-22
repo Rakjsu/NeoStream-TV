@@ -8,6 +8,10 @@
     <!-- Sem este privilégio o tvinputdevice.registerKey é NO-OP na TV real:
          CH+/-, dígitos e color keys nunca chegam ao app -->
     <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <!-- Abrir o trailer no app externo (item 18). Sem este privilegio o
+         launchAppControl lanca SecurityError e o botao de trailer some
+         sozinho na TV, porque podeAbrirExterno() passa a devolver false. -->
+    <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
     <tizen:profile name="tv-samsung"/>
     <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
 </widget>

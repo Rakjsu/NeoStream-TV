@@ -1,0 +1,59 @@
+/* Trailer (item 18) — só no build de navegador; ver TrailerOverlay.tsx.
+   Sem `gap` e sem `aspect-ratio`: o quadro 16/9 é feito com o truque do
+   padding percentual, que AQUI é seguro porque `.trailer-quadro` é um filho
+   BLOCO e a porcentagem resolve contra a largura dele mesmo. */
+.trailer-overlay {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: rgba(0, 0, 0, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 11000;
+}
+
+.trailer-painel {
+    width: 86%;
+    max-width: 1400px;
+    outline: none;
+}
+
+.trailer-topo {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.trailer-titulo {
+    font-size: 22px;
+    color: #fff;
+}
+
+.trailer-dica {
+    font-size: 15px;
+    color: #8b93b5;
+    margin-left: 16px;
+}
+
+.trailer-quadro {
+    position: relative;
+    display: block;
+    height: 0;
+    padding-top: 56.25%;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #000;
+}
+
+.trailer-quadro iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
