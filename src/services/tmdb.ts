@@ -17,7 +17,8 @@ const CACHE_KEYS = {
     MOVIE_DETAILS: 'tmdb_movie_details_v2',
     SERIES_DETAILS: 'tmdb_series_details_v2',
     MOVIE_SEARCH: 'tmdb_movie_search',
-    SERIES_SEARCH: 'tmdb_series_search'
+    SERIES_SEARCH: 'tmdb_series_search',
+    COLLECTION: 'tmdb_collection'
 };
 
 interface CacheEntry<T> {
@@ -45,11 +46,13 @@ const memoryCache: {
     seriesDetails: CacheStore<TMDBSeriesDetails>;
     movieSearch: CacheStore<string | null>;
     seriesSearch: CacheStore<string | null>;
+    collection: CacheStore<TMDBColecao>;
 } = {
     movieDetails: {},
     seriesDetails: {},
     movieSearch: {},
-    seriesSearch: {}
+    seriesSearch: {},
+    collection: {}
 };
 
 // Load cache from localStorage
@@ -97,6 +100,7 @@ function initCache(): void {
     memoryCache.seriesDetails = loadCacheFromStorage(CACHE_KEYS.SERIES_DETAILS);
     memoryCache.movieSearch = loadCacheFromStorage(CACHE_KEYS.MOVIE_SEARCH);
     memoryCache.seriesSearch = loadCacheFromStorage(CACHE_KEYS.SERIES_SEARCH);
+    memoryCache.collection = loadCacheFromStorage(CACHE_KEYS.COLLECTION);
 }
 
 initCache();
@@ -232,6 +236,22 @@ export const IMAGE_SIZE_FUNDO = 'w1280';
 export function getImageUrl(path: string | null, size: string = IMAGE_SIZE_FICHA): string | null {
     if (!path) return null;
     return `${TMDB_IMAGE_BASE_URL}/${size}${path}`;
+}
+
+/**
+ * Teto PRÓPRIO da loja de sagas, bem menor que os 120 das outras.
+ *
+ * Uma saga é um objeto com N filmes dentro; 120 delas pesariam mais que as
+ * 120 fichas somadas. E o padrão de uso é diferente: o usuário abre a mesma
+ * saga poucas vezes, não navega por dezenas delas.
+ */
+const MAX_COLECOES = 30;
+
+/** Uma saga, já podada: só o que a fileira precisa pra cruzar e desenhar. */
+export interface TMDBColecao {
+    id: number;
+    name: string;
+    parts: Array<{ id: number; title: string; year: string; poster_path: string | null }>;
 }
 
 /** Quantos atores a faixa de elenco mostra. Além disso é peso morto no cache. */
@@ -417,6 +437,53 @@ export async function fetchSeriesDetails(tmdbId: string): Promise<TMDBSeriesDeta
         return result;
     } catch (error) {
         console.error('Error fetching series details:', error);
+        return null;
+    }
+}
+
+/**
+ * Os filmes de uma saga (item 29).
+ *
+ * O `belongs_to_collection` da ficha só traz id e nome — os filmes exigem esta
+ * chamada. É UMA requisição a mais, e só para filme que pertence a saga.
+ *
+ * A resposta crua traz `overview` de cada filme (parágrafos inteiros) e
+ * `backdrop_path`, que esta fileira não usa: guardar isso multiplicaria por
+ * cinco o peso da loja numa quota de ~5 MB.
+ */
+export async function fetchColecao(collectionId: number | string): Promise<TMDBColecao | null> {
+    const chave = String(collectionId);
+    if (!chave || chave === '0') return null;
+
+    const cached = getCached<TMDBColecao>(memoryCache.collection, chave);
+    if (cached) return cached;
+
+    try {
+        const url = buildTmdbUrl(`/collection/${chave}`, { language: 'pt-BR' });
+        if (!url) return null;
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        const data = await response.json();
+
+        const partes = Array.isArray(data?.parts) ? data.parts : [];
+        const resultado: TMDBColecao = {
+            id: Number(data?.id) || Number(chave),
+            name: String(data?.name || ''),
+            parts: partes
+                .filter((parte: { id?: number; title?: string }) => parte?.id != null && parte.title)
+                .map((parte: { id: number; title: string; release_date?: string; poster_path?: string | null }) => ({
+                    id: Number(parte.id),
+                    title: String(parte.title),
+                    year: String(parte.release_date || '').slice(0, 4),
+                    poster_path: parte.poster_path ?? null,
+                }))
+                // Ordem cronológica: numa saga é a ordem que a pessoa espera
+                .sort((a: { year: string }, b: { year: string }) => (a.year || '9999').localeCompare(b.year || '9999')),
+        };
+        setCache(memoryCache.collection, chave, resultado, CACHE_KEYS.COLLECTION, MAX_COLECOES);
+        return resultado;
+    } catch (error) {
+        console.error('Error fetching collection:', error);
         return null;
     }
 }

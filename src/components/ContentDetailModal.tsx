@@ -5,6 +5,8 @@ import { api } from '../services/api';
 import { storage } from '../services/storage';
 import { searchMovieByName, searchSeriesByName, fetchMovieDetails, fetchSeriesDetails, getImageUrl, formatGenres, type TMDBMovieDetails, type TMDBSeriesDetails, IMAGE_SIZE_FICHA, IMAGE_SIZE_FUNDO } from '../services/tmdb';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { fetchColecao } from '../services/tmdb';
+import { indexarCatalogo, cruzarComCatalogo } from '../services/tmdbMatch';
 import { progressService } from '../services/progressService';
 import type { Episode, SeriesInfo } from '../types';
 import './ContentDetailModal.css';
@@ -33,6 +35,20 @@ interface ContentDetailModalProps {
     /** Versões do mesmo título (DUB/LEG/4K) — item 21 */
     versions?: Array<{ id: string; label: string }>;
     onSelectVersion?: (versionId: string) => void;
+    /**
+     * Catálogo de filmes da tela, para cruzar com a saga do TMDB (item 29).
+     * Junto com `onOpenRelated`, é o que decide se a fileira existe: quatro das
+     * seis telas que abrem esta ficha não têm o catálogo em mãos, e uma fileira
+     * focável que não abre nada é o defeito mais comum deste repositório.
+     */
+    catalogoFilmes?: ReadonlyArray<{
+        stream_id: number | string;
+        name: string;
+        tmdb_id?: string | number;
+        stream_icon?: string;
+    }>;
+    /** Abrir outro filme do catálogo (um da saga) */
+    onOpenRelated?: (streamId: string) => void;
 }
 
 function formatRuntime(minutes: number): string {
@@ -55,7 +71,9 @@ export function ContentDetailModal({
     contentData,
     onPlay,
     versions,
-    onSelectVersion
+    onSelectVersion,
+    catalogoFilmes,
+    onOpenRelated
 }: ContentDetailModalProps) {
     const [seriesInfo, setSeriesInfo] = useState<SeriesInfo | null>(null);
     const [selectedSeason, setSelectedSeason] = useState(1);
@@ -70,7 +88,7 @@ export function ContentDetailModal({
     const [tmdbLoading, setTmdbLoading] = useState(false);
 
     // Focus management for TV navigation
-    type FocusZone = 'play' | 'watchLater' | 'favorite' | 'close' | 'season' | 'episode' | 'version';
+    type FocusZone = 'play' | 'watchLater' | 'favorite' | 'close' | 'season' | 'episode' | 'version' | 'collection';
     const [focusZone, setFocusZone] = useState<FocusZone>('play');
     const [seasonFocusIndex, setSeasonFocusIndex] = useState(0);
     const [episodeFocusIndex, setEpisodeFocusIndex] = useState(0);
@@ -102,6 +120,44 @@ export function ContentDetailModal({
     const [versionFocusIndex, setVersionFocusIndex] = useState(0);
     const hasVersions = !!(versions && versions.length > 1 && onSelectVersion);
 
+    // ---- Elenco (item 34, versão reduzida) ----
+    // Faixa VISÍVEL, sem foco próprio. Torná-la navegável exigiria uma
+    // requisição /person/{id}/combined_credits por ator focado, um índice
+    // sobre milhares de itens do catálogo, e só funcionaria nas duas telas que
+    // passam o catálogo. Aqui o elenco é informação, como os selos de gênero.
+    // Sem chave do TMDB cai no `cast` que o próprio provedor manda.
+    const elenco = useMemo(() => {
+        const doTmdb = tmdbData?.cast;
+        if (doTmdb && doTmdb.length > 0) return doTmdb;
+        const doProvedor = (contentData.cast || '')
+            .split(',')
+            .map(nome => nome.trim())
+            .filter(Boolean)
+            .slice(0, 12);
+        return doProvedor.map((nome, i) => ({
+            id: -(i + 1), name: nome, character: '', profile_path: null,
+        }));
+    }, [tmdbData, contentData.cast]);
+
+    // ---- Saga / coleção (item 29) ----
+    // Só os filmes da saga que o usuário TEM. Mostrar os que ele não tem seria
+    // uma vitrine de coisas que não abrem.
+    const [saga, setSaga] = useState<{
+        nome: string;
+        itens: Array<{ stream_id: number | string; name: string; stream_icon?: string }>;
+    } | null>(null);
+    const [collectionFocusIndex, setCollectionFocusIndex] = useState(0);
+    const collectionRowRef = useRef<HTMLDivElement>(null);
+    // A MESMA expressão governa a zona de foco e o JSX. Predicado duplicado
+    // que diverge = zona inalcançável, ou foco parado no vazio.
+    const hasCollection = !!(saga && saga.itens.length > 0 && onOpenRelated);
+
+    useEffect(() => {
+        if (focusZone !== 'collection') return;
+        const item = collectionRowRef.current?.querySelectorAll('.saga-card')[collectionFocusIndex] as HTMLElement | undefined;
+        item?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }, [focusZone, collectionFocusIndex]);
+
     // Reset do foco ao abrir E ao trocar de conteúdo. Só `[isOpen]` não
     // bastava: escolher outra versão do mesmo filme troca o contentId sem
     // fechar a ficha, e o foco continuava numa zona do conteúdo anterior.
@@ -111,6 +167,7 @@ export function ContentDetailModal({
             setSeasonFocusIndex(0);
             setEpisodeFocusIndex(0);
             setVersionFocusIndex(0);
+            setCollectionFocusIndex(0);
         }
     }, [isOpen, contentId]);
 
@@ -191,6 +248,36 @@ export function ContentDetailModal({
         fetchTMDB();
         return () => { cancelado = true; };
     }, [isOpen, contentData.name, contentData.release_date, contentData.tmdbId, contentType]);
+
+    // ---- Saga (item 29): +1 requisição, e SÓ para filme que pertence a uma ----
+    const sagaId = contentType === 'movie'
+        ? (tmdbData as TMDBMovieDetails | null)?.belongs_to_collection?.id
+        : undefined;
+
+    useEffect(() => {
+        if (!isOpen || !sagaId || !catalogoFilmes || catalogoFilmes.length === 0 || !onOpenRelated) {
+            setSaga(null);
+            return;
+        }
+        let cancelado = false;
+        fetchColecao(sagaId)
+            .then(colecao => {
+                if (cancelado || !colecao) {
+                    if (!cancelado) setSaga(null);
+                    return;
+                }
+                const itens = cruzarComCatalogo(
+                    colecao.parts,
+                    indexarCatalogo(catalogoFilmes),
+                    contentId
+                );
+                // Uma saga com um filme só é o filme que já está na tela:
+                // a fileira ficaria vazia e ainda roubaria um degrau do D-pad
+                setSaga(itens.length > 0 ? { nome: colecao.name, itens } : null);
+            })
+            .catch(() => { if (!cancelado) setSaga(null); });
+        return () => { cancelado = true; };
+    }, [isOpen, sagaId, catalogoFilmes, onOpenRelated, contentId]);
 
     // Close with animation
     const handleClose = useCallback(() => {
@@ -287,15 +374,27 @@ export function ContentDetailModal({
                 }
             }
         } else {
-            // Movie modal navigation (simpler)
+            // Movie modal navigation. A cadeia vertical, de cima pra baixo,
+            // é a MESMA ordem do DOM: close → saga → versões → ações.
+            // Toda aresta usa o mesmo predicado que o JSX usa pra renderizar.
+            const acimaDasAcoes: FocusZone = hasVersions ? 'version'
+                : hasCollection ? 'collection' : 'close';
+            const abaixoDoClose: FocusZone = hasCollection ? 'collection'
+                : hasVersions ? 'version' : 'play';
+
             if (focusZone === 'play') {
                 if (direction === 'right') setFocusZone('watchLater');
-                else if (direction === 'up') setFocusZone(hasVersions ? 'version' : 'close');
+                else if (direction === 'up') setFocusZone(acimaDasAcoes);
+            } else if (focusZone === 'collection') {
+                if (direction === 'left') setCollectionFocusIndex(prev => Math.max(0, prev - 1));
+                else if (direction === 'right') setCollectionFocusIndex(prev => Math.min((saga?.itens.length || 1) - 1, prev + 1));
+                else if (direction === 'down') setFocusZone(hasVersions ? 'version' : 'play');
+                else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'version') {
                 if (direction === 'left') setVersionFocusIndex(prev => Math.max(0, prev - 1));
                 else if (direction === 'right') setVersionFocusIndex(prev => Math.min((versions?.length || 1) - 1, prev + 1));
                 else if (direction === 'down') setFocusZone('play');
-                else if (direction === 'up') setFocusZone('close');
+                else if (direction === 'up') setFocusZone(hasCollection ? 'collection' : 'close');
             } else if (focusZone === 'watchLater') {
                 if (direction === 'left') setFocusZone('play');
                 else if (direction === 'right') setFocusZone('favorite');
@@ -304,10 +403,11 @@ export function ContentDetailModal({
                 if (direction === 'left') setFocusZone('watchLater');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'close') {
-                if (direction === 'down') setFocusZone(hasVersions ? 'version' : 'play');
+                if (direction === 'down') setFocusZone(abaixoDoClose);
             }
         }
-    }, [isOpen, focusZone, contentType, seasons.length, episodes.length, episodeFocusIndex, hasVersions, versions?.length]);
+    }, [isOpen, focusZone, contentType, seasons.length, episodes.length, episodeFocusIndex,
+        hasVersions, versions?.length, hasCollection, saga?.itens.length]);
 
     // Item completo pra salvar em Favoritos/Minha Lista (com pôster e título —
     // a página de listas depende desses campos pra renderizar o card)
@@ -335,6 +435,9 @@ export function ContentDetailModal({
         } else if (focusZone === 'favorite') {
             storage.toggleFavorite(buildSavedItem());
             setRefresh(r => r + 1);
+        } else if (focusZone === 'collection') {
+            const filme = saga?.itens[collectionFocusIndex];
+            if (filme && onOpenRelated) onOpenRelated(String(filme.stream_id));
         } else if (focusZone === 'version') {
             const version = versions?.[versionFocusIndex];
             if (version && onSelectVersion) onSelectVersion(version.id);
@@ -353,7 +456,9 @@ export function ContentDetailModal({
                 onPlay(selectedSeason, Number(ep.episode_num));
             }
         }
-    }, [isOpen, focusZone, contentType, selectedSeason, selectedEpisode, buildSavedItem, seasons, seasonFocusIndex, episodes, episodeFocusIndex, onPlay, handleClose, versions, versionFocusIndex, onSelectVersion]);
+    }, [isOpen, focusZone, contentType, selectedSeason, selectedEpisode, buildSavedItem, seasons,
+        seasonFocusIndex, episodes, episodeFocusIndex, onPlay, handleClose, versions,
+        versionFocusIndex, onSelectVersion, saga, collectionFocusIndex, onOpenRelated]);
 
     const handleBack = useCallback(() => {
         handleClose();
@@ -488,6 +593,72 @@ export function ContentDetailModal({
 
                     {/* Overview */}
                     <p className="modal-overview">{overview}</p>
+
+                    {/* Elenco (item 34). Não é focável de propósito — ver a
+                        nota em `elenco`. Sem `<button>`, sem zona de D-pad. */}
+                    {elenco.length > 0 && (
+                        <div className="modal-cast">
+                            <span className="modal-cast-label">🎭 Elenco</span>
+                            <div className="cast-row">
+                                {elenco.map(pessoa => (
+                                    <div className="cast-card" key={pessoa.id} title={pessoa.name}>
+                                        <span className="cast-photo">
+                                            {pessoa.profile_path && (
+                                                <img
+                                                    src={getImageUrl(pessoa.profile_path, 'w185') || ''}
+                                                    alt=""
+                                                    loading="lazy"
+                                                    onError={(e) => {
+                                                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                                    }}
+                                                />
+                                            )}
+                                        </span>
+                                        <span className="cast-name">{pessoa.name}</span>
+                                        {pessoa.character && (
+                                            <span className="cast-character">{pessoa.character}</span>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Saga / coleção (item 29) — só os filmes que o usuário TEM.
+                        A condição é a MESMA de `hasCollection`, que governa a
+                        zona de foco: predicados que divergem deixam uma fileira
+                        que o D-pad não alcança, ou o foco parado no vazio. */}
+                    {hasCollection && saga && (
+                        <div className="modal-saga">
+                            <span className="modal-saga-label">
+                                📚 {saga.nome} · {saga.itens.length} na sua lista
+                            </span>
+                            <div className="saga-row" ref={collectionRowRef}>
+                                {saga.itens.map((filme, index) => (
+                                    <button
+                                        key={filme.stream_id}
+                                        className={`saga-card ${focusZone === 'collection' && collectionFocusIndex === index ? 'focused' : ''}`}
+                                        onClick={() => onOpenRelated?.(String(filme.stream_id))}
+                                        title={filme.name}
+                                    >
+                                        <span className="saga-poster">
+                                            {filme.stream_icon && (
+                                                <img
+                                                    src={filme.stream_icon}
+                                                    alt=""
+                                                    loading="lazy"
+                                                    onError={(e) => {
+                                                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                                    }}
+                                                />
+                                            )}
+                                        </span>
+                                        <span className="saga-name">{filme.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Series: Season & Episode Selector */}
                     {contentType === 'series' && !loading && seasons.length > 0 && (

@@ -705,6 +705,18 @@ export function Movies() {
                         setShowPlayer(true);
                         setShowModal(false);
                     }}
+                    // Saga (item 29): esta é a ÚNICA tela que tem o catálogo
+                    // de filmes inteiro em mãos. Nas outras cinco que abrem a
+                    // mesma ficha a fileira simplesmente não existe — melhor
+                    // que um card focável que não abre nada.
+                    catalogoFilmes={streams}
+                    onOpenRelated={(streamId) => {
+                        const alvo = streams.find(m => String(m.stream_id) === streamId);
+                        if (!alvo) return;
+                        // Troca o conteúdo da ficha sem fechá-la: o reset de
+                        // foco por contentId já cuida de reancorar o D-pad
+                        setSelectedMovie(alvo);
+                    }}
                     versions={(versionsOf.get(String(selectedMovie.stream_id)) || []).map(v => ({
                         id: String(v.stream_id),
                         label: versionLabel(v.name),

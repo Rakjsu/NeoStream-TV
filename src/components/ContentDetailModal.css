@@ -825,3 +825,150 @@
     box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.85);
     transform: scale(1.06);
 }
+
+/* ---- Saga / coleção (item 29) ----
+   Espaçamento por `margin`, nunca por `gap`: é o mesmo molde de
+   `.modal-versions`, que evita de propósito a dependência do fallback de
+   flex-gap do Chromium 69. */
+.modal-saga {
+    margin-bottom: 20px;
+}
+
+.modal-saga-label {
+    display: block;
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.65);
+    margin-bottom: 10px;
+}
+
+.saga-row {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 6px;
+}
+
+.saga-row::-webkit-scrollbar {
+    height: 5px;
+}
+
+.saga-row::-webkit-scrollbar-thumb {
+    background: rgba(var(--ns-accent-rgb), 0.4);
+    border-radius: 3px;
+}
+
+.saga-card {
+    flex: 0 0 auto;
+    width: 108px;
+    margin-right: 12px;
+    padding: 0;
+    background: none;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: left;
+    display: block;
+}
+
+/* 2/3 em pixels: `aspect-ratio` não existe no Chromium 69 e o truque do
+   padding percentual resolveria contra o container, não contra o card.
+   108 x 162 = 2/3 exato. */
+.saga-poster {
+    display: block;
+    width: 104px;
+    height: 156px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.saga-poster img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.saga-name {
+    display: block;
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.25;
+    color: rgba(255, 255, 255, 0.85);
+    max-height: 32px;
+    overflow: hidden;
+}
+
+.saga-card.focused {
+    border-color: var(--ns-accent);
+    box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.35);
+}
+
+/* ---- Elenco (item 34) ----
+   Sem `gap`: mesmo molde de `.modal-versions` e `.saga-row`. A foto é 2/3 em
+   pixels porque `aspect-ratio` não existe no Chromium 69. */
+.modal-cast {
+    margin-bottom: 20px;
+}
+
+.modal-cast-label {
+    display: block;
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.65);
+    margin-bottom: 10px;
+}
+
+.cast-row {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 6px;
+}
+
+.cast-row::-webkit-scrollbar {
+    height: 5px;
+}
+
+.cast-row::-webkit-scrollbar-thumb {
+    background: rgba(var(--ns-accent-rgb), 0.4);
+    border-radius: 3px;
+}
+
+.cast-card {
+    flex: 0 0 auto;
+    width: 92px;
+    margin-right: 12px;
+}
+
+.cast-photo {
+    display: block;
+    width: 92px;
+    height: 138px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.cast-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.cast-name {
+    display: block;
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.2;
+    color: rgba(255, 255, 255, 0.88);
+    max-height: 31px;
+    overflow: hidden;
+}
+
+.cast-character {
+    display: block;
+    font-size: 12px;
+    line-height: 1.2;
+    color: rgba(255, 255, 255, 0.5);
+    max-height: 29px;
+    overflow: hidden;
+}
