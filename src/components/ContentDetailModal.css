@@ -490,11 +490,19 @@
     display: block;
 }
 
+/* `flex: 1 1 0`, NUNCA `1 1 auto`.
+   Com base `auto` a base do item é o tamanho max-content, e dentro dele há um
+   título `white-space: nowrap` e uma sinopse corrida: a base passava de 1000px
+   numa linha de ~480px úteis. Isso cria espaço livre NEGATIVO, e aí o flex
+   encolhe todo mundo que pode encolher — o quadrado de 36x36 do número do
+   episódio virava uma pílula fina de ~15px e o círculo do ▶ virava uma elipse.
+   Antes do wrapper, o título era filho direto com `flex: 1` (base ZERO) e o
+   problema não existia. */
 .episode-text {
     display: flex;
     flex-direction: column;
     min-width: 0;
-    flex: 1 1 auto;
+    flex: 1 1 0;
 }
 
 .episode-plot {
@@ -554,6 +562,9 @@
 }
 
 .episode-number {
+    /* Caixa de tamanho fixo nunca deve encolher, aconteça o que acontecer
+       com o resto da linha */
+    flex: 0 0 auto;
     width: 36px;
     height: 36px;
     border-radius: 10px;
@@ -583,6 +594,7 @@
 }
 
 .episode-play-indicator {
+    flex: 0 0 auto;
     width: 26px;
     height: 26px;
     border-radius: 50%;
@@ -917,19 +929,15 @@
     margin-bottom: 10px;
 }
 
+/* NÃO rola. A faixa de elenco não é focável de propósito (ver a nota em
+   `elenco`, no TSX), e conteúdo que só o MOUSE alcança não existe numa TV:
+   sete dos doze atores ficavam fora da tela sem nenhuma tecla que chegasse
+   até eles. Então mostra-se o que cabe e ponto — `overflow: hidden` corta o
+   resto, e o TSX limita a lista ao mesmo número. */
 .cast-row {
     display: flex;
-    overflow-x: auto;
+    overflow: hidden;
     padding-bottom: 6px;
-}
-
-.cast-row::-webkit-scrollbar {
-    height: 5px;
-}
-
-.cast-row::-webkit-scrollbar-thumb {
-    background: rgba(var(--ns-accent-rgb), 0.4);
-    border-radius: 3px;
 }
 
 .cast-card {

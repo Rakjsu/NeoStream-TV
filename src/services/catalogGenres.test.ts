@@ -35,9 +35,6 @@ describe('generoDaCategoria', () => {
         expect(generoDaCategoria('AÇÃO')).toBe('acao');
     });
 
-    // A ordem de GENEROS é significativa: "Animes" contém "anime" mas também
-    // contém "anim", e "Animação" viria antes se a lista estivesse na ordem
-    // errada — o gênero mais pedido do catálogo cairia dentro de outro.
     it('anime não é engolido por animação', () => {
         expect(generoDaCategoria('ANIMES LEGENDADOS')).toBe('anime');
         expect(generoDaCategoria('ANIMAÇÃO INFANTIL')).toBe('animacao');
@@ -54,6 +51,26 @@ describe('generoDaCategoria', () => {
     ])('%s não cai em Ação por conter "acao": %s', (nome, esperado) => {
         expect(generoDaCategoria(nome)).toBe(esperado);
     });
+
+    // ACHADO DA REVISÃO: com dois gêneros no nome, quem vale é o que aparece
+    // PRIMEIRO — é a intenção de quem montou a lista. Pela ordem da tabela,
+    // "TERROR E SUSPENSE" caía em Suspense e o chip Terror nunca era
+    // oferecido, mesmo o provedor tendo terror.
+    it.each([
+        ['FILMES | TERROR E SUSPENSE', 'terror'],
+        ['SUSPENSE E TERROR', 'suspense'],
+        ['Sci-Fi & Fantasy', 'ficcao'],
+        ['Fantasia e Ficção', 'fantasia'],
+    ])('com dois gêneros no nome, vence o primeiro: %s → %s', (nome, esperado) => {
+        expect(generoDaCategoria(nome)).toBe(esperado);
+    });
+
+    // ACHADO DA REVISÃO: pistas curtas demais inventavam gêneros que o
+    // provedor não tem — e o botão passava a oferecer um filtro vazio.
+    it.each(['REALITY SHOWS', 'TALK SHOWS', 'STAR WARS', 'SHOW DA VIRADA'])(
+        'não inventa gênero a partir de nome de programa: %s', (nome) => {
+            expect(generoDaCategoria(nome)).toBeNull();
+        });
 
     // O outro lado da fronteira: nome de canal que COMEÇA com uma pista curta.
     it.each(['WARNER CHANNEL', 'Warner TV', 'Dramaturgia Brasileira'])(

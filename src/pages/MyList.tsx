@@ -1,6 +1,6 @@
 // MyList Page - Watch Later List - Matching NeoStream Desktop Style
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { storage, type WatchLaterItem } from '../services/storage';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
@@ -29,6 +29,13 @@ export function MyList({ onNavigate }: MyListProps) {
     const [addAlvo, setAddAlvo] = useState<WatchLaterItem | null>(null);
     const [addIndex, setAddIndex] = useState(0);
     const [aviso, setAviso] = useState('');
+    // Confirmacao de dois toques pra apagar uma lista (mesmo padrao do
+    // "Limpar Tudo"): guarda o id armado, nao um booleano
+    const [excluirArmado, setExcluirArmado] = useState<string | null>(null);
+    // O painel de destinos e a fileira de abas rolam: sem levar o foco
+    // junto, o realce sai da area visivel e o usuario navega as cegas
+    const destinosRef = useRef<HTMLDivElement>(null);
+    const abasRef = useRef<HTMLDivElement>(null);
     const [removingId, setRemovingId] = useState<string | null>(null);
     const { focusZone, setFocusZone } = useFocusZone();
     const [kidsActive] = useState(() => kidsFilter.isKidsActive());
@@ -47,6 +54,18 @@ export function MyList({ onNavigate }: MyListProps) {
     const [focusedItemIndex, setFocusedItemIndex] = useState(0);
     const [emptyFocusIndex, setEmptyFocusIndex] = useState(0);
 
+    useEffect(() => {
+        if (focusArea !== 'tabs') return;
+        const aba = abasRef.current?.querySelectorAll('.tab')[focusedTabIndex] as HTMLElement | undefined;
+        aba?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }, [focusArea, focusedTabIndex]);
+
+    useEffect(() => {
+        if (!addAlvo) return;
+        const alvo = destinosRef.current?.querySelectorAll('.mylist-destino')[addIndex] as HTMLElement | undefined;
+        alvo?.scrollIntoView({ block: 'nearest' });
+    }, [addAlvo, addIndex]);
+
     const loadItems = useCallback(() => {
         const saved = storage.getWatchLater();
         setItems(saved);
@@ -58,6 +77,10 @@ export function MyList({ onNavigate }: MyListProps) {
             storage.removeWatchLater(item.id, item.type);
             loadItems();
             setRemovingId(null);
+            // Reancora o indice REAL no saneado: sem isto, apagar itens do fim
+            // deixava focusedItemIndex alem da lista e as setas ficavam mortas
+            // por varios toques ate o numero voltar ao range
+            setFocusedItemIndex(prev => Math.max(0, Math.min(prev, displayItems.length - 2)));
         }, 300);
     };
 
@@ -94,6 +117,15 @@ export function MyList({ onNavigate }: MyListProps) {
 
     const recarregarListas = () => setListas(listsService.list());
 
+    // Ajustes de foco no RENDER (effect com setState e erro de lint aqui).
+    // Dois casos reais achados na revisao:
+    //  - o "Limpar Tudo" some quando a lista padrao esvazia, e o foco ficava
+    //    parado num slot que nao existe mais: nenhuma tecla saia dali;
+    //  - uma lista nomeada VAZIA deixava focusArea='items' sem card nenhum,
+    //    e a tela inteira ficava sem realce.
+    if (focusedTabIndex > headerSlots - 1) setFocusedTabIndex(Math.max(0, headerSlots - 1));
+    if (focusArea === 'items' && displayItems.length === 0) setFocusArea('tabs');
+
     // Abrir item: ambos os tipos abrem a ficha (o modal resolve episódios)
     const openItem = (item: WatchLaterItem) => {
         setModalItem(item);
@@ -126,6 +158,7 @@ export function MyList({ onNavigate }: MyListProps) {
         if (listaAtiva) {
             listsService.toggleItem(listaAtiva.id, item);
             recarregarListas();
+            setFocusedItemIndex(prev => Math.max(0, Math.min(prev, listaAtiva.itens.length - 2)));
             return;
         }
         removeItem(item);
@@ -134,6 +167,7 @@ export function MyList({ onNavigate }: MyListProps) {
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
         setAviso('');
+        setExcluirArmado(null); // mover o foco cancela a confirmacao
         // Overlays são donos exclusivos das teclas enquanto estão na tela
         if (criandoLista) {
             if (direction === 'left') setSugestaoIndex(prev => Math.max(0, prev - 1));
@@ -262,6 +296,28 @@ export function MyList({ onNavigate }: MyListProps) {
         },
         onAction: (action) => {
             if (criandoLista || addAlvo) return;
+            // 🔵 na aba de uma lista nomeada: exclui a lista (dois toques).
+            // Sem isto, lista criada nunca mais saia — e uma lista criada por
+            // engano ficava ocupando uma aba pra sempre.
+            if (action === 'blue' && focusArea === 'tabs') {
+                const aba = tabs[focusedTabIndex];
+                if (!aba || !aba.startsWith('list:')) return;
+                const id = aba.slice(5);
+                const alvo = listas.find(lista => lista.id === id);
+                if (!alvo) return;
+                if (excluirArmado !== id) {
+                    setExcluirArmado(id);
+                    setAviso('🔵 de novo apaga a lista "' + alvo.nome + '".');
+                    return;
+                }
+                listsService.remove(id);
+                setExcluirArmado(null);
+                recarregarListas();
+                setActiveTab('all');
+                setFocusedTabIndex(0);
+                setAviso('Lista "' + alvo.nome + '" apagada.');
+                return;
+            }
             if (focusArea !== 'items') return;
             const item = displayItems[safeItemIndex];
             if (!item) return;
@@ -368,7 +424,7 @@ export function MyList({ onNavigate }: MyListProps) {
             </header>
 
             {/* Tabs */}
-            <div className="tabs-container">
+            <div className="tabs-container" ref={abasRef}>
                 <button
                     className={`tab ${activeTab === 'all' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 0 ? 'tv-focused' : ''}`}
                     onClick={() => setActiveTab('all')}
@@ -445,7 +501,7 @@ export function MyList({ onNavigate }: MyListProps) {
                     <div className="mylist-overlay-painel">
                         <h2 className="mylist-overlay-titulo">Adicionar “{addAlvo.title}” a…</h2>
                         <p className="mylist-overlay-dica">↑ ↓ escolhe · OK liga/desliga · Voltar cancela</p>
-                        <div className="mylist-destinos">
+                        <div className="mylist-destinos" ref={destinosRef}>
                             {listas.map((lista, index) => (
                                 <button
                                     key={lista.id}
@@ -453,7 +509,9 @@ export function MyList({ onNavigate }: MyListProps) {
                                     onClick={() => setAddIndex(index)}
                                 >
                                     <span>
-                                        {listsService.has(lista.id, addAlvo.id, addAlvo.type) ? '☑' : '☐'}
+                                        {lista.itens.some(guardado =>
+                                            guardado.id === addAlvo.id && guardado.type === addAlvo.type
+                                        ) ? '☑' : '☐'}
                                         {' '}📌 {lista.nome}
                                     </span>
                                     <span className="tab-count">{lista.itens.length}</span>
@@ -522,6 +580,7 @@ export function MyList({ onNavigate }: MyListProps) {
                 <span>OK Selecionar</span>
                 <span className="hint-red">🔴 Remover</span>
                 <span className="hint-yellow">🟡 Adicionar a uma lista</span>
+                <span className="hint-blue">🔵 Apagar lista</span>
                 <span>← Voltar</span>
             </div>
 

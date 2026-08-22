@@ -22,9 +22,9 @@ export interface Genero {
 }
 
 /**
- * Ordem importa: a primeira pista que casar vence. "Anime" TEM que vir antes
- * de "Animação" — senão todo anime cairia em Animação, e anime é dos gêneros
- * mais procurados numa lista IPTV.
+ * A ordem desta tabela NÃO decide o vencedor — quem decide é a posição da
+ * pista dentro do nome da categoria (ver `generoDaCategoria`). A tabela só
+ * define o vocabulário e a ordem em que os gêneros são OFERECIDOS no botão.
  */
 export const GENEROS: readonly Genero[] = [
     { id: 'acao', rotulo: 'Ação', pistas: ['acao', 'action'] },
@@ -35,14 +35,15 @@ export const GENEROS: readonly Genero[] = [
     { id: 'crime', rotulo: 'Crime', pistas: ['crime', 'policial', 'policia'] },
     { id: 'documentario', rotulo: 'Documentário', pistas: ['documentario', 'documentary', 'docs'] },
     { id: 'drama', rotulo: 'Drama', pistas: ['drama'] },
-    // Ficção antes de Fantasia por causa de "Sci-Fi & Fantasy", que é o nome
-    // de gênero do próprio TMDB e cita os dois: quem manda é o primeiro termo
     { id: 'ficcao', rotulo: 'Ficção', pistas: ['ficcao', 'sci-fi', 'scifi', 'sci fi'] },
     { id: 'fantasia', rotulo: 'Fantasia', pistas: ['fantasia', 'fantasy'] },
-    { id: 'guerra', rotulo: 'Guerra', pistas: ['guerra', 'war'] },
+    // 'war' fora: com o rabo de flexão, "STAR WARS" virava Guerra — e "Star
+    // Wars" é nome de coleção, não gênero. Categoria em inglês de guerra é
+    // rara em painel brasileiro; um gênero a menos é melhor que um errado.
+    { id: 'guerra', rotulo: 'Guerra', pistas: ['guerra', 'belico'] },
     { id: 'infantil', rotulo: 'Infantil', pistas: ['infantil', 'kids', 'crianca'] },
-    // 'show' solto não entra: "REALITY SHOW" viraria categoria de música
-    { id: 'musica', rotulo: 'Música', pistas: ['musica', 'music', 'shows'] },
+    // Nem 'show' nem 'shows': "REALITY SHOWS" e "TALK SHOWS" viravam Música
+    { id: 'musica', rotulo: 'Música', pistas: ['musica', 'music'] },
     { id: 'romance', rotulo: 'Romance', pistas: ['romance', 'romantico'] },
     { id: 'suspense', rotulo: 'Suspense', pistas: ['suspense', 'thriller'] },
     { id: 'terror', rotulo: 'Terror', pistas: ['terror', 'horror'] },
@@ -74,7 +75,7 @@ function normalizar(texto: string): string {
  * ~40 pistas, e um catálogo grande tem centenas de categorias.
  */
 const regexDaPista = new Map<string, RegExp>();
-function casaComoPalavra(nome: string, pista: string): boolean {
+function regexDe(pista: string): RegExp {
     let regex = regexDaPista.get(pista);
     if (!regex) {
         // Sem escape: nenhuma pista da tabela tem metacaractere de regex — o
@@ -83,7 +84,16 @@ function casaComoPalavra(nome: string, pista: string): boolean {
         regex = new RegExp(`(^|[^a-z0-9])${pista}[a-z]{0,2}([^a-z0-9]|$)`);
         regexDaPista.set(pista, regex);
     }
-    return regex.test(nome);
+    return regex;
+}
+
+/** Onde a pista aparece no nome (-1 se não aparece). */
+function posicaoDaPista(nome: string, pista: string): number {
+    const achado = regexDe(pista).exec(nome);
+    if (!achado) return -1;
+    // `index` aponta pro separador quando existe; +1 aproxima do começo da
+    // palavra. A precisão exata não importa — o que importa é a ORDEM.
+    return achado.index;
 }
 
 /**
@@ -93,10 +103,24 @@ function casaComoPalavra(nome: string, pista: string): boolean {
 export function generoDaCategoria(nomeDaCategoria: string): string | null {
     const nome = normalizar(nomeDaCategoria || '');
     if (!nome) return null;
+
+    // Quem casa PRIMEIRO NO NOME vence, não quem vem primeiro na tabela.
+    // "FILMES | TERROR E SUSPENSE" é uma categoria de terror que também cita
+    // suspense; pela ordem da tabela ela caía em Suspense, e aí o chip Terror
+    // nunca era oferecido mesmo o provedor tendo terror. A posição no nome é
+    // a intenção de quem montou a lista.
+    let melhorId: string | null = null;
+    let melhorPosicao = Infinity;
     for (const genero of GENEROS) {
-        if (genero.pistas.some(pista => casaComoPalavra(nome, pista))) return genero.id;
+        for (const pista of genero.pistas) {
+            const posicao = posicaoDaPista(nome, pista);
+            if (posicao >= 0 && posicao < melhorPosicao) {
+                melhorPosicao = posicao;
+                melhorId = genero.id;
+            }
+        }
     }
-    return null;
+    return melhorId;
 }
 
 /**

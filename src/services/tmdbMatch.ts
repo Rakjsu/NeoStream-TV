@@ -46,8 +46,17 @@ export interface IndiceDoCatalogo<T extends ItemDoCatalogo> {
  * que é a maioria. Aqui a chave é quebrada nas duas partes.
  */
 function baseEAno(nome: string): { base: string; ano: string } {
-    const [base, ano = ''] = versionBaseName(nome || '').split('|');
-    return { base: normalizeSearch(base), ano };
+    const chave = versionBaseName(nome || '');
+    // O separador é o ÚLTIMO '|', e só vale se o que vem depois for mesmo um
+    // ano de 4 dígitos. Partir no PRIMEIRO quebrava com nome que já contém
+    // pipe — "FILMES | Matrix" virava base "filmes", e todo o catálogo de um
+    // provedor que prefixa a categoria no nome colapsava numa chave só.
+    const corte = chave.lastIndexOf('|');
+    const cauda = corte >= 0 ? chave.slice(corte + 1) : '';
+    if (corte >= 0 && /^(19|20)\d{2}$/.test(cauda)) {
+        return { base: normalizeSearch(chave.slice(0, corte)), ano: cauda };
+    }
+    return { base: normalizeSearch(chave), ano: '' };
 }
 
 /**

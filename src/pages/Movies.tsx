@@ -191,6 +191,9 @@ export function Movies() {
     const chaveDosFiltros = [
         searchQuery, selectedCategory, sortMode,
         filters.decade, filters.minRating, activeTags.join('+'), genero,
+        // 🙈 e o fim de um filme também mudam a lista debaixo da letra: sem
+        // isto, a grade ficava vazia com a letra presa e nada explicando
+        hideWatchedOn, completedMovieIds?.size ?? -1,
     ].join('|');
     const [lastFilterKey, setLastFilterKey] = useState(chaveDosFiltros);
     const filterKey = chaveDosFiltros;
@@ -208,6 +211,20 @@ export function Movies() {
             return letra === letterFilter;
         });
     }, [groupedStreams, sortMode, letterFilter]);
+
+    // Grade vazia numa TV e indistinguivel de defeito. Dizer QUAIS filtros
+    // estao ligados e o que fecha a duvida — o caso classico e genero e
+    // categoria se contradizendo ("Comedia" com a categoria "Terror" aberta).
+    const filtrosLigados = [
+        searchQuery ? `busca "${searchQuery}"` : '',
+        selectedCategory !== 'all' ? 'categoria' : '',
+        genero ? `genero ${rotuloDoGenero(genero)}` : '',
+        letterFilter ? `letra ${letterFilter}` : '',
+        activeTags.length > 0 ? activeTags.join('+') : '',
+        filters.decade > 0 ? `${filters.decade}s` : '',
+        filters.minRating > 0 ? `nota ${filters.minRating}+` : '',
+        hideWatchedOn ? 'esconder assistidos' : '',
+    ].filter(Boolean);
 
     // Barra A-Z (item 23): navegável por D-pad (→ da última coluna entra)
     const alphabetIndex = useMemo(() => {
@@ -652,7 +669,7 @@ export function Movies() {
                     {activeTags.length > 0 ? activeTags.join('+') : '🏷 Tags'}
                 </button>
                 <button
-                    className={`toolbar-btn ${filters.decade > 0 || filters.minRating > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('decade') ? 'tv-focused' : ''}`}
+                    className={`toolbar-btn ${filters.decade > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('decade') ? 'tv-focused' : ''}`}
                     onClick={cycleFilters}
                     title="Filtrar por década"
                 >
@@ -763,7 +780,11 @@ export function Movies() {
                     <div className="no-results">
                         <div className="no-results-icon">🎬</div>
                         <p>Nenhum filme encontrado</p>
-                        <span>Tente buscar por outro termo</span>
+                        <span>
+                            {filtrosLigados.length > 0
+                                ? `Filtros ligados: ${filtrosLigados.join(' · ')}`
+                                : 'Tente buscar por outro termo'}
+                        </span>
                     </div>
                 ) : (
                     <div className="movies-grid">

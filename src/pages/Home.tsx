@@ -699,7 +699,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 </div>
                 )}
 
-                {/* Recent Series */}
+                {/* Recent Series — condicional IGUAL ao array `sections` */}
+                {recentSeries.length > 0 && (
                 <div id="home-series" className="content-section">
                     <h2 className="section-title">🆕 Séries Recentes</h2>
                     <div className="content-row">
@@ -722,7 +723,10 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     </div>
                 </div>
 
-                {/* Recent Movies */}
+                )}
+
+                {/* Recent Movies — condicional IGUAL ao array `sections` */}
+                {recentMovies.length > 0 && (
                 <div id="home-movies" className="content-section">
                     <h2 className="section-title">🎬 Filmes Recentes</h2>
                     <div className="content-row">
@@ -744,6 +748,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                         ))}
                     </div>
                 </div>
+                )}
             </section>
 
             {/* Quick Access */}

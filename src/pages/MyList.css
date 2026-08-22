@@ -102,6 +102,11 @@
     display: flex;
     gap: 12px;
     margin-bottom: 28px;
+    /* A fileira cresce com as listas nomeadas e passa da largura da tela.
+       Sem rolar, a aba focada saia de vista — e o scrollIntoView do TSX
+       so funciona se houver por onde rolar. */
+    overflow-x: auto;
+    scrollbar-width: none;
 }
 
 .tab {
@@ -537,4 +542,14 @@
 .mylist-destino.tv-focused {
     background: rgba(var(--ns-accent-rgb), 0.24);
     border-color: var(--ns-accent);
+}
+
+.tabs-container::-webkit-scrollbar {
+    height: 0;
+}
+
+/* A aba nao pode encolher: com muitas listas, o flex espremia todas ate o
+   texto virar reticencias e nenhuma ficar legivel a tres metros. */
+.tabs-container .tab {
+    flex: 0 0 auto;
 }

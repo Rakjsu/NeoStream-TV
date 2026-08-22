@@ -101,6 +101,25 @@ function initCache(): void {
     memoryCache.movieSearch = loadCacheFromStorage(CACHE_KEYS.MOVIE_SEARCH);
     memoryCache.seriesSearch = loadCacheFromStorage(CACHE_KEYS.SERIES_SEARCH);
     memoryCache.collection = loadCacheFromStorage(CACHE_KEYS.COLLECTION);
+    limparCacheAntigo();
+}
+
+/**
+ * Apaga as lojas da versão anterior das chaves de detalhes.
+ *
+ * O bump para _v2 deixou `tmdb_movie_details` e `tmdb_series_details` no
+ * armazenamento sem ninguém que os leia — e elas guardavam a resposta CRUA do
+ * TMDB, que era justamente o problema: 2-3 MB congelados numa quota de ~5 MB,
+ * espremendo o resto do app até o `pruneCaches` derrubar tudo.
+ */
+function limparCacheAntigo(): void {
+    for (const antiga of ['tmdb_movie_details', 'tmdb_series_details']) {
+        try {
+            if (localStorage.getItem(antiga) !== null) localStorage.removeItem(antiga);
+        } catch {
+            // quota/segurança: não é corretude, é faxina
+        }
+    }
 }
 
 initCache();
@@ -372,6 +391,11 @@ export async function fetchMovieDetails(tmdbId: string): Promise<TMDBMovieDetail
             // custa requisição extra, e é isso que torna elenco e trailer de
             // graça em vez de mais duas viagens por ficha aberta.
             append_to_response: 'release_dates,external_ids,credits,videos',
+            // Sem isto o `videos` HERDA o language=pt-BR e volta VAZIO na
+            // maioria dos filmes — a maior parte dos trailers do TMDB está
+            // cadastrada em inglês. O sintoma seria o botão de trailer
+            // simplesmente não aparecer, sem erro nenhum.
+            include_video_language: 'pt-BR,pt,en,null',
         });
         if (!detailsUrl) return null;
 
@@ -413,6 +437,7 @@ export async function fetchSeriesDetails(tmdbId: string): Promise<TMDBSeriesDeta
         const detailsUrl = buildTmdbUrl(`/tv/${tmdbId}`, {
             language: 'pt-BR',
             append_to_response: 'content_ratings,external_ids,credits,videos',
+            include_video_language: 'pt-BR,pt,en,null',
         });
         if (!detailsUrl) return null;
 

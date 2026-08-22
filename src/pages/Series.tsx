@@ -185,6 +185,17 @@ export function Series() {
         return list;
     }, [sortedSeries, searchQuery, selectedCategory, finishedSeriesIds, filters, genero, generoPorCategoria]);
 
+    // Grade vazia numa TV e indistinguivel de defeito: dizer QUAIS filtros
+    // estao ligados e o que fecha a duvida
+    const filtrosLigados = [
+        searchQuery ? `busca "${searchQuery}"` : '',
+        selectedCategory !== 'all' ? 'categoria' : '',
+        genero ? `genero ${rotuloDoGenero(genero)}` : '',
+        filters.decade > 0 ? `${filters.decade}s` : '',
+        filters.minRating > 0 ? `nota ${filters.minRating}+` : '',
+        hideWatchedOn ? 'esconder assistidos' : '',
+    ].filter(Boolean);
+
     // Índice focado sempre no range (lista encolhe ao esconder assistidos)
     const safeSeriesIndex = Math.min(focusedSeriesIndex, Math.max(0, filteredSeries.length - 1));
 
@@ -610,7 +621,11 @@ export function Series() {
                     <div className="no-results">
                         <div className="no-results-icon">📺</div>
                         <p>Nenhuma série encontrada</p>
-                        <span>Tente buscar por outro termo</span>
+                        <span>
+                            {filtrosLigados.length > 0
+                                ? `Filtros ligados: ${filtrosLigados.join(' · ')}`
+                                : 'Tente buscar por outro termo'}
+                        </span>
                     </div>
                 ) : (
                     <div className="series-grid">

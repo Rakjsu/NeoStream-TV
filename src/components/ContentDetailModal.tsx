@@ -92,8 +92,22 @@ export function ContentDetailModal({
     const [, setRefresh] = useState(0);
     const modalRef = useRef<HTMLDivElement>(null);
 
-    // TMDB data states
-    const [tmdbData, setTmdbData] = useState<TMDBMovieDetails | TMDBSeriesDetails | null>(null);
+    // TMDB data states.
+    //
+    // O dado guarda a IDENTIDADE de quem ele descreve. Antes era só o dado, e
+    // isso bastava enquanto o contentId nunca trocava com a ficha aberta. A
+    // fileira da saga (item 29) criou esse caminho: escolher outro filme troca
+    // o conteúdo sem desmontar a ficha, e o pôster, a sinopse, o elenco e a
+    // CHAVE DO TRAILER do filme anterior continuavam na tela durante todo o
+    // fetch novo. Pior: `buildSavedItem` lê daqui, então dois toques em
+    // "Assistir Depois" GRAVAVAM o pôster e a nota do filme errado sob o id do
+    // novo. A guarda `cancelado` mata a resposta velha; ela não mata o estado.
+    const chaveDoConteudo = `${contentType}:${contentId}`;
+    const [tmdbState, setTmdbState] = useState<{
+        chave: string;
+        dados: TMDBMovieDetails | TMDBSeriesDetails | null;
+    }>({ chave: '', dados: null });
+    const tmdbData = tmdbState.chave === chaveDoConteudo ? tmdbState.dados : null;
     const [tmdbLoading, setTmdbLoading] = useState(false);
 
     // Focus management for TV navigation
@@ -121,10 +135,6 @@ export function ContentDetailModal({
         const item = lista?.querySelectorAll('.episode-item')[episodeFocusIndex] as HTMLElement | undefined;
         item?.scrollIntoView({ block: 'nearest' });
     }, [focusZone, episodeFocusIndex]);
-    useEffect(() => {
-        if (focusZone !== 'play' && focusZone !== 'watchLater' && focusZone !== 'favorite') return;
-        actionsRef.current?.scrollIntoView({ block: 'nearest' });
-    }, [focusZone]);
 
     const [versionFocusIndex, setVersionFocusIndex] = useState(0);
     const hasVersions = !!(versions && versions.length > 1 && onSelectVersion);
@@ -162,13 +172,21 @@ export function ContentDetailModal({
         }));
     }, [tmdbData, contentData.cast]);
 
+    // Quantos CABEM na faixa. A ficha tem ~528px úteis ao lado do pôster e
+    // cada card ocupa 104px: mostrar doze deixaria sete fora da tela, e a
+    // faixa não é focável — seriam sete atores que nenhuma tecla alcança.
+    const elencoVisivel = useMemo(() => elenco.slice(0, 5), [elenco]);
+
     // ---- Saga / coleção (item 29) ----
     // Só os filmes da saga que o usuário TEM. Mostrar os que ele não tem seria
     // uma vitrine de coisas que não abrem.
-    const [saga, setSaga] = useState<{
+    const [sagaState, setSagaState] = useState<{
+        chave: string;
         nome: string;
         itens: Array<{ stream_id: number | string; name: string; stream_icon?: string }>;
     } | null>(null);
+    // Mesma regra do tmdbData: a saga do filme ANTERIOR não pode ficar na tela
+    const saga = sagaState?.chave === chaveDoConteudo ? sagaState : null;
     const [collectionFocusIndex, setCollectionFocusIndex] = useState(0);
     const collectionRowRef = useRef<HTMLDivElement>(null);
     // A MESMA expressão governa a zona de foco e o JSX. Predicado duplicado
@@ -239,6 +257,9 @@ export function ContentDetailModal({
         // anterior voltar. Sem isto, a resposta ATRASADA do filme antigo
         // sobrescrevia a do novo — pôster e sinopse do título errado na ficha.
         let cancelado = false;
+        // Congelado na entrada: se o conteúdo trocar no meio, a resposta que
+        // voltar é gravada sob a chave DELA e o render simplesmente a ignora
+        const chave = chaveDoConteudo;
         const fetchTMDB = async () => {
             try {
                 // Extract year from release_date if available
@@ -253,16 +274,16 @@ export function ContentDetailModal({
                     const data = providerTmdbId
                         ? (await fetchMovieDetails(providerTmdbId)) || (await searchMovieByName(contentData.name, year))
                         : await searchMovieByName(contentData.name, year);
-                    if (!cancelado) setTmdbData(data);
+                    if (!cancelado) setTmdbState({ chave, dados: data });
                 } else {
                     const data = providerTmdbId
                         ? (await fetchSeriesDetails(providerTmdbId)) || (await searchSeriesByName(contentData.name, year))
                         : await searchSeriesByName(contentData.name, year);
-                    if (!cancelado) setTmdbData(data);
+                    if (!cancelado) setTmdbState({ chave, dados: data });
                 }
             } catch (err) {
                 console.error('Error fetching TMDB data:', err);
-                if (!cancelado) setTmdbData(null);
+                if (!cancelado) setTmdbState({ chave, dados: null });
             } finally {
                 if (!cancelado) setTmdbLoading(false);
             }
@@ -270,7 +291,7 @@ export function ContentDetailModal({
 
         fetchTMDB();
         return () => { cancelado = true; };
-    }, [isOpen, contentData.name, contentData.release_date, contentData.tmdbId, contentType]);
+    }, [isOpen, contentData.name, contentData.release_date, contentData.tmdbId, contentType, chaveDoConteudo]);
 
     // ---- Saga (item 29): +1 requisição, e SÓ para filme que pertence a uma ----
     const sagaId = contentType === 'movie'
@@ -279,14 +300,15 @@ export function ContentDetailModal({
 
     useEffect(() => {
         if (!isOpen || !sagaId || !catalogoFilmes || catalogoFilmes.length === 0 || !onOpenRelated) {
-            setSaga(null);
+            setSagaState(null);
             return;
         }
         let cancelado = false;
+        const chave = chaveDoConteudo;
         fetchColecao(sagaId)
             .then(colecao => {
                 if (cancelado || !colecao) {
-                    if (!cancelado) setSaga(null);
+                    if (!cancelado) setSagaState(null);
                     return;
                 }
                 const itens = cruzarComCatalogo(
@@ -296,11 +318,11 @@ export function ContentDetailModal({
                 );
                 // Uma saga com um filme só é o filme que já está na tela:
                 // a fileira ficaria vazia e ainda roubaria um degrau do D-pad
-                setSaga(itens.length > 0 ? { nome: colecao.name, itens } : null);
+                setSagaState(itens.length > 0 ? { chave, nome: colecao.name, itens } : null);
             })
-            .catch(() => { if (!cancelado) setSaga(null); });
+            .catch(() => { if (!cancelado) setSagaState(null); });
         return () => { cancelado = true; };
-    }, [isOpen, sagaId, catalogoFilmes, onOpenRelated, contentId]);
+    }, [isOpen, sagaId, catalogoFilmes, onOpenRelated, contentId, chaveDoConteudo]);
 
     // Close with animation
     const handleClose = useCallback(() => {
@@ -347,6 +369,17 @@ export function ContentDetailModal({
         temImagem: episodes.some(ep => !!ep.info?.movie_image),
     }), [episodes]);
     const listaRica = episodiosComDetalhe.temSinopse || episodiosComDetalhe.temImagem;
+
+    useEffect(() => {
+        if (focusZone !== 'play' && focusZone !== 'watchLater' && focusZone !== 'favorite'
+            && focusZone !== 'trailer') return;
+        actionsRef.current?.scrollIntoView({ block: 'nearest' });
+        // As dependencias incluem o que CRESCE depois: elenco, saga e a lista
+        // de episodios chegam por rede, segundos depois do foco ja estar nos
+        // botoes. So `[focusZone]` rolava antes da ficha crescer, e o efeito
+        // nunca mais rodava — o foco acabava num botao fora da tela.
+    }, [focusZone, elencoVisivel.length, saga?.itens.length, episodes.length, listaRica]);
+
 
     // TV Navigation handlers
     const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
@@ -640,11 +673,11 @@ export function ContentDetailModal({
 
                     {/* Elenco (item 34). Não é focável de propósito — ver a
                         nota em `elenco`. Sem `<button>`, sem zona de D-pad. */}
-                    {elenco.length > 0 && (
+                    {elencoVisivel.length > 0 && (
                         <div className="modal-cast">
                             <span className="modal-cast-label">🎭 Elenco</span>
                             <div className="cast-row">
-                                {elenco.map(pessoa => (
+                                {elencoVisivel.map(pessoa => (
                                     <div className="cast-card" key={pessoa.id} title={pessoa.name}>
                                         <span className="cast-photo">
                                             {pessoa.profile_path && (
@@ -846,7 +879,7 @@ export function ContentDetailModal({
                             existe quando o aparelho sabe abrir um app externo. */}
                         {hasTrailer && (
                             <button
-                                className={`action-btn secondary-btn ${focusZone === 'trailer' ? 'focused' : ''}`}
+                                className={`action-btn favorite-btn ${focusZone === 'trailer' ? 'focused' : ''}`}
                                 onClick={() => {
                                     if (naTv) {
                                         abrirExterno(`https://www.youtube.com/watch?v=${encodeURIComponent(trailerKey)}`);
@@ -856,7 +889,7 @@ export function ContentDetailModal({
                                 }}
                                 title="Ver o trailer"
                             >
-                                ▶ Trailer
+                                ▶
                             </button>
                         )}
                     </div>
