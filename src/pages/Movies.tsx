@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import type { VODStream, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
+import { mapaDeGeneros, generosDisponiveis, rotuloDoGenero } from '../services/catalogGenres';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { ContentDetailModal } from '../components/ContentDetailModal';
@@ -12,7 +13,7 @@ import { MoviePlayer } from '../components/MoviePlayer';
 import {
     catalogSort, sortCatalog, hideWatched, isRecentlyAdded, SORT_LABELS, type CatalogSort,
     catalogFilters, matchesFilters, normalizeSearch, fuzzyMatches,
-    DECADES, type CatalogFilters,
+    DECADES, MIN_RATINGS, type CatalogFilters,
 } from '../services/catalogExtras';
 import { groupVodVersions, tagsOf, hasTag, versionLabel, ALL_VOD_TAGS, type VodTag } from '../services/vodVariants';
 // versionLabel é usado nos botões de versão da ficha (abaixo)
@@ -58,6 +59,9 @@ export function Movies() {
     const [alphabetIndexFocus, setAlphabetIndexFocus] = useState(0);
     // Letra escolhida na barra A-Z (null = todas)
     const [letterFilter, setLetterFilter] = useState<string | null>(null);
+    // Gênero (item 31): sai do NOME da categoria, não do TMDB — assim o filtro
+    // existe para quem não cadastrou chave da API, que é a maioria
+    const [genero, setGenero] = useState<string | null>(null);
     const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
     const [focusedMovieIndex, setFocusedMovieIndex] = useState(0);
     const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
@@ -126,6 +130,27 @@ export function Movies() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [hideWatchedOn, showPlayer]);
 
+    // Categoria → gênero, calculado UMA vez. Refazer a varredura de pistas por
+    // item travaria a grade num catálogo de milhares de títulos.
+    const generoPorCategoria = useMemo(() => mapaDeGeneros(categories), [categories]);
+    // Só os gêneros que ESTE provedor realmente tem: oferecer "Guerra" numa
+    // lista sem nenhum filme de guerra devolve uma grade vazia e parece bug
+    const generosDoCatalogo = useMemo(() => generosDisponiveis(categories), [categories]);
+
+    // Botões da barra na ORDEM do JSX, ancorados por id e não por posição.
+    // O botão de gênero é condicional (some quando o provedor não organiza o
+    // catálogo por gênero) — e índice posicional com item condicional é
+    // exatamente o defeito que já mandou o foco pro botão errado neste repo.
+    const toolbarItems = [
+        'sort', 'hidewatched', 'tags', 'decade',
+        ...(generosDoCatalogo.length > 0 ? ['genero'] : []),
+        'nota',
+    ] as const;
+    const HEADER_BASE = 2; // 0 = busca, 1 = menu de categorias
+    const toolbarFocusIndex = (item: string) =>
+        HEADER_BASE + toolbarItems.indexOf(item as typeof toolbarItems[number]);
+    const maxHeaderIndex = HEADER_BASE + toolbarItems.length - 1;
+
     // ORDEM IMPORTA: filtra PRIMEIRO, agrupa DEPOIS. Agrupar antes fazia o
     // filtro olhar só o representante — o chip DUB escondia o filme inteiro
     // mesmo existindo versão DUB no grupo, e categorias perdiam títulos.
@@ -139,13 +164,14 @@ export function Movies() {
             // Chips de tag: item precisa ter TODAS as tags marcadas
             if (activeTags.length > 0 && !activeTags.every(tag => hasTag(stream.name || '', tag))) return false;
             if (hasFilters && !matchesFilters(stream, filters)) return false;
+            if (genero && generoPorCategoria.get(stream.category_id) !== genero) return false;
             return true;
         });
         if (completedMovieIds) {
             list = list.filter(stream => !completedMovieIds.has(String(stream.stream_id)));
         }
         return list;
-    }, [streams, searchQuery, selectedCategory, completedMovieIds, activeTags, filters]);
+    }, [streams, searchQuery, selectedCategory, completedMovieIds, activeTags, filters, genero, generoPorCategoria]);
 
     // Agrupa versões do mesmo filme (DUB/LEG/4K) sobre a lista JÁ filtrada
     const { groups: groupedStreams, versionsOf } = useMemo(
@@ -159,8 +185,15 @@ export function Movies() {
     // deixaria "nenhum filme encontrado" sem nada na tela explicando por quê.
     // Ajuste durante o render (mesmo padrão do lastSrc do player); effect com
     // setState é proibido pela regra react-hooks/set-state-in-effect.
-    const [lastFilterKey, setLastFilterKey] = useState(`${searchQuery}|${selectedCategory}|${sortMode}`);
-    const filterKey = `${searchQuery}|${selectedCategory}|${sortMode}`;
+    // A chave precisa citar TODOS os filtros. Antes só tinha busca, categoria
+    // e ordenação: trocar a década com a letra "S" ativa deixava a grade vazia
+    // pelo mesmo motivo, e o bug seguia vivo num caminho diferente.
+    const chaveDosFiltros = [
+        searchQuery, selectedCategory, sortMode,
+        filters.decade, filters.minRating, activeTags.join('+'), genero,
+    ].join('|');
+    const [lastFilterKey, setLastFilterKey] = useState(chaveDosFiltros);
+    const filterKey = chaveDosFiltros;
     if (filterKey !== lastFilterKey) {
         setLastFilterKey(filterKey);
         if (letterFilter !== null) setLetterFilter(null);
@@ -238,7 +271,7 @@ export function Movies() {
                     setFocusedCategoryIndex(prev => prev - 1);
                 }
             } else if (direction === 'right') {
-                setFocusedCategoryIndex(prev => Math.min(5, prev + 1));
+                setFocusedCategoryIndex(prev => Math.min(maxHeaderIndex, prev + 1));
             } else if (direction === 'down') {
                 setFocusArea('movies');
                 setFocusedMovieIndex(0);
@@ -365,6 +398,27 @@ export function Movies() {
         });
     };
 
+    // Gênero (item 31): OK cicla pelos gêneros que o catálogo tem
+    const cycleGenero = () => {
+        if (generosDoCatalogo.length === 0) return;
+        setGenero(atual => {
+            const i = generosDoCatalogo.findIndex(g => g.id === atual);
+            return i + 1 >= generosDoCatalogo.length ? null : generosDoCatalogo[i + 1].id;
+        });
+    };
+
+    // Nota mínima (item 32): o filtro EXISTIA em matchesFilters e nenhuma tela
+    // o escrevia — filtro morto atrás de um comentário que prometia "← → ajustam
+    // nota mínima". Agora tem botão próprio, igual a todos os outros.
+    const cycleNota = () => {
+        setFilters(prev => {
+            const i = MIN_RATINGS.indexOf(prev.minRating);
+            const next = { ...prev, minRating: MIN_RATINGS[(i + 1) % MIN_RATINGS.length] };
+            catalogFilters.set('movies', next);
+            return next;
+        });
+    };
+
     // Menu de contexto no card (item 24): 🟡 abre sem entrar na ficha
     const openContextMenu = () => {
         const movie = filteredStreams[safeMovieIndex];
@@ -420,14 +474,16 @@ export function Movies() {
                 searchRef.current?.open();
             } else if (focusedCategoryIndex === 1) {
                 categoryMenuRef.current?.open();
-            } else if (focusedCategoryIndex === 2) {
-                cycleSort();
-            } else if (focusedCategoryIndex === 3) {
-                toggleHideWatched();
-            } else if (focusedCategoryIndex === 4) {
-                cycleTagFilter();
             } else {
-                cycleFilters();
+                // Sem fallback destrutivo: item novo sem branch não pode cair
+                // numa ação alheia (lição registrada na R2)
+                const item = toolbarItems[focusedCategoryIndex - HEADER_BASE];
+                if (item === 'sort') cycleSort();
+                else if (item === 'hidewatched') toggleHideWatched();
+                else if (item === 'tags') cycleTagFilter();
+                else if (item === 'decade') cycleFilters();
+                else if (item === 'genero') cycleGenero();
+                else if (item === 'nota') cycleNota();
             }
         } else if (focusArea === 'alphabet') {
             const entries = alphabetIndex ? [...alphabetIndex.entries()] : [];
@@ -575,32 +631,48 @@ export function Movies() {
             {/* Toolbar: ordenar + esconder assistidos */}
             <div className="catalog-toolbar">
                 <button
-                    className={`toolbar-btn ${sortMode !== 'default' ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 2 ? 'tv-focused' : ''}`}
+                    className={`toolbar-btn ${sortMode !== 'default' ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('sort') ? 'tv-focused' : ''}`}
                     onClick={cycleSort}
                     title="Ordenar"
                 >
                     ↕ {SORT_LABELS[sortMode]}
                 </button>
                 <button
-                    className={`toolbar-btn ${hideWatchedOn ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 3 ? 'tv-focused' : ''}`}
+                    className={`toolbar-btn ${hideWatchedOn ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('hidewatched') ? 'tv-focused' : ''}`}
                     onClick={toggleHideWatched}
                     title="Esconder assistidos"
                 >
                     🙈
                 </button>
                 <button
-                    className={`toolbar-btn ${activeTags.length > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 4 ? 'tv-focused' : ''}`}
+                    className={`toolbar-btn ${activeTags.length > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('tags') ? 'tv-focused' : ''}`}
                     onClick={cycleTagFilter}
                     title="Filtrar por Dublado/Legendado/qualidade"
                 >
                     {activeTags.length > 0 ? activeTags.join('+') : '🏷 Tags'}
                 </button>
                 <button
-                    className={`toolbar-btn ${filters.decade > 0 || filters.minRating > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 5 ? 'tv-focused' : ''}`}
+                    className={`toolbar-btn ${filters.decade > 0 || filters.minRating > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('decade') ? 'tv-focused' : ''}`}
                     onClick={cycleFilters}
                     title="Filtrar por década"
                 >
                     {filters.decade > 0 ? `${filters.decade}s` : '📅 Década'}
+                </button>
+                {generosDoCatalogo.length > 0 && (
+                    <button
+                        className={`toolbar-btn ${genero ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('genero') ? 'tv-focused' : ''}`}
+                        onClick={cycleGenero}
+                        title="Filtrar por gênero"
+                    >
+                        {genero ? rotuloDoGenero(genero) : '🎭 Gênero'}
+                    </button>
+                )}
+                <button
+                    className={`toolbar-btn ${filters.minRating > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('nota') ? 'tv-focused' : ''}`}
+                    onClick={cycleNota}
+                    title="Nota mínima"
+                >
+                    {filters.minRating > 0 ? `⭐ ${filters.minRating}+` : '⭐ Nota'}
                 </button>
             </div>
 

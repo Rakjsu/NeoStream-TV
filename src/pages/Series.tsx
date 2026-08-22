@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import type { Series as SeriesType, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
+import { mapaDeGeneros, generosDisponiveis, rotuloDoGenero } from '../services/catalogGenres';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { ContentDetailModal } from '../components/ContentDetailModal';
@@ -12,7 +13,8 @@ import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
 import {
     catalogSort, sortCatalog, hideWatched, isRecentlyAdded, newEpisodes, SORT_LABELS, type CatalogSort,
-    catalogFilters, matchesFilters, normalizeSearch, fuzzyMatches, DECADES, type CatalogFilters,
+    catalogFilters, matchesFilters, normalizeSearch, fuzzyMatches, DECADES, MIN_RATINGS,
+    type CatalogFilters,
 } from '../services/catalogExtras';
 import { kidsFilter } from '../services/kidsFilter';
 import { progressService } from '../services/progressService';
@@ -26,6 +28,8 @@ export function Series() {
     const [error, setError] = useState('');
     const [series, setSeries] = useState<SeriesType[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
+    // Gênero (item 31): extraído do NOME da categoria — ver catalogGenres.ts
+    const [genero, setGenero] = useState<string | null>(null);
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedSeries, setSelectedSeries] = useState<SeriesType | null>(null);
@@ -143,6 +147,21 @@ export function Series() {
     // tecla da busca) preserva a ordem — nunca re-ordenar por tecla
     const sortedSeries = useMemo(() => sortCatalog(series, sortMode), [series, sortMode]);
 
+    const generoPorCategoria = useMemo(() => mapaDeGeneros(categories), [categories]);
+    const generosDoCatalogo = useMemo(() => generosDisponiveis(categories), [categories]);
+
+    // Botões da barra ancorados por id (o de gênero é condicional; índice
+    // posicional com item condicional já mandou o foco pro botão errado aqui)
+    const toolbarItems = [
+        'sort', 'hidewatched', 'decade',
+        ...(generosDoCatalogo.length > 0 ? ['genero'] : []),
+        'nota',
+    ] as const;
+    const HEADER_BASE = 2; // 0 = busca, 1 = menu de categorias
+    const toolbarFocusIndex = (item: string) =>
+        HEADER_BASE + toolbarItems.indexOf(item as typeof toolbarItems[number]);
+    const maxHeaderIndex = HEADER_BASE + toolbarItems.length - 1;
+
     // Filter series (memoizado — recalcular a cada tecla do D-pad trava TVs antigas)
     const filteredSeries = useMemo(() => {
         const query = normalizeSearch(searchQuery);
@@ -152,6 +171,7 @@ export function Series() {
             const matchesCategory = selectedCategory === 'all' || s.category_id === selectedCategory;
             if (!matchesSearch || !matchesCategory) return false;
             if (hasFilters && !matchesFilters(s, filters)) return false;
+            if (genero && generoPorCategoria.get(s.category_id) !== genero) return false;
             return true;
         });
         if (finishedSeriesIds) {
@@ -163,7 +183,7 @@ export function Series() {
             );
         }
         return list;
-    }, [sortedSeries, searchQuery, selectedCategory, finishedSeriesIds, filters]);
+    }, [sortedSeries, searchQuery, selectedCategory, finishedSeriesIds, filters, genero, generoPorCategoria]);
 
     // Índice focado sempre no range (lista encolhe ao esconder assistidos)
     const safeSeriesIndex = Math.min(focusedSeriesIndex, Math.max(0, filteredSeries.length - 1));
@@ -213,7 +233,7 @@ export function Series() {
                     setFocusedCategoryIndex(prev => prev - 1);
                 }
             } else if (direction === 'right') {
-                setFocusedCategoryIndex(prev => Math.min(4, prev + 1));
+                setFocusedCategoryIndex(prev => Math.min(maxHeaderIndex, prev + 1));
             } else if (direction === 'down') {
                 setFocusArea('series');
                 setFocusedSeriesIndex(0);
@@ -294,6 +314,25 @@ export function Series() {
         });
     };
 
+    // Gênero (item 31): OK cicla pelos gêneros que o catálogo tem
+    const cycleGenero = () => {
+        if (generosDoCatalogo.length === 0) return;
+        setGenero(atual => {
+            const i = generosDoCatalogo.findIndex(g => g.id === atual);
+            return i + 1 >= generosDoCatalogo.length ? null : generosDoCatalogo[i + 1].id;
+        });
+    };
+
+    // Nota mínima (item 32): existia em matchesFilters e nenhuma tela escrevia
+    const cycleNota = () => {
+        setFilters(prev => {
+            const i = MIN_RATINGS.indexOf(prev.minRating);
+            const next = { ...prev, minRating: MIN_RATINGS[(i + 1) % MIN_RATINGS.length] };
+            catalogFilters.set('series', next);
+            return next;
+        });
+    };
+
     const cycleFilters = () => {
         setFilters(prev => {
             const index = DECADES.indexOf(prev.decade);
@@ -357,12 +396,14 @@ export function Series() {
                 searchRef.current?.open();
             } else if (focusedCategoryIndex === 1) {
                 categoryMenuRef.current?.open();
-            } else if (focusedCategoryIndex === 2) {
-                cycleSort();
-            } else if (focusedCategoryIndex === 3) {
-                toggleHideWatched();
             } else {
-                cycleFilters();
+                // Sem fallback destrutivo (lição da R2)
+                const item = toolbarItems[focusedCategoryIndex - HEADER_BASE];
+                if (item === 'sort') cycleSort();
+                else if (item === 'hidewatched') toggleHideWatched();
+                else if (item === 'decade') cycleFilters();
+                else if (item === 'genero') cycleGenero();
+                else if (item === 'nota') cycleNota();
             }
         } else if (focusArea === 'series') {
             const item = filteredSeries[safeSeriesIndex];
@@ -474,25 +515,41 @@ export function Series() {
             {/* Toolbar: ordenar + esconder assistidos */}
             <div className="catalog-toolbar">
                 <button
-                    className={`toolbar-btn ${sortMode !== 'default' ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 2 ? 'tv-focused' : ''}`}
+                    className={`toolbar-btn ${sortMode !== 'default' ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('sort') ? 'tv-focused' : ''}`}
                     onClick={cycleSort}
                     title="Ordenar"
                 >
                     ↕ {SORT_LABELS[sortMode]}
                 </button>
                 <button
-                    className={`toolbar-btn ${hideWatchedOn ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 3 ? 'tv-focused' : ''}`}
+                    className={`toolbar-btn ${hideWatchedOn ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('hidewatched') ? 'tv-focused' : ''}`}
                     onClick={toggleHideWatched}
                     title="Esconder assistidos"
                 >
                     🙈
                 </button>
                 <button
-                    className={`toolbar-btn ${filters.decade > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === 4 ? 'tv-focused' : ''}`}
+                    className={`toolbar-btn ${filters.decade > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('decade') ? 'tv-focused' : ''}`}
                     onClick={cycleFilters}
                     title="Filtrar por década"
                 >
                     {filters.decade > 0 ? `${filters.decade}s` : '📅 Década'}
+                </button>
+                {generosDoCatalogo.length > 0 && (
+                    <button
+                        className={`toolbar-btn ${genero ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('genero') ? 'tv-focused' : ''}`}
+                        onClick={cycleGenero}
+                        title="Filtrar por gênero"
+                    >
+                        {genero ? rotuloDoGenero(genero) : '🎭 Gênero'}
+                    </button>
+                )}
+                <button
+                    className={`toolbar-btn ${filters.minRating > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('nota') ? 'tv-focused' : ''}`}
+                    onClick={cycleNota}
+                    title="Nota mínima"
+                >
+                    {filters.minRating > 0 ? `⭐ ${filters.minRating}+` : '⭐ Nota'}
                 </button>
             </div>
 

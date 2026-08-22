@@ -77,17 +77,34 @@ export function ContentDetailModal({
     // A janela da lista tem ~180px: sem rolar, do 3º episódio em diante o
     // destaque saía da área visível e o usuário navegava às cegas
     const episodeListRef = useRef<HTMLDivElement>(null);
+    // A ficha rola: `.modal-content` corta em 90% da altura da tela. Enquanto
+    // ela tinha só sinopse + episódios os botões cabiam sempre; com elenco,
+    // saga e sinopse por episódio eles passam a ficar ABAIXO da dobra — e o
+    // foco ficava destacado num botão que não estava na tela, sem nada
+    // indicando que era só rolar. Este ref é o que traz a linha de volta.
+    const actionsRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (focusZone !== 'episode') return;
         const lista = episodeListRef.current;
-        const item = lista?.children[episodeFocusIndex] as HTMLElement | undefined;
+        // Por CLASSE, não por índice de filho: qualquer coisa acrescentada
+        // dentro da lista (cabeçalho, esqueleto de carregamento, um wrapper)
+        // faria `children[i]` apontar pro elemento errado — e o sintoma seria
+        // a lista rolando pro episódio errado, em silêncio.
+        const item = lista?.querySelectorAll('.episode-item')[episodeFocusIndex] as HTMLElement | undefined;
         item?.scrollIntoView({ block: 'nearest' });
     }, [focusZone, episodeFocusIndex]);
+    useEffect(() => {
+        if (focusZone !== 'play' && focusZone !== 'watchLater' && focusZone !== 'favorite') return;
+        actionsRef.current?.scrollIntoView({ block: 'nearest' });
+    }, [focusZone]);
+
     const [versionFocusIndex, setVersionFocusIndex] = useState(0);
     const hasVersions = !!(versions && versions.length > 1 && onSelectVersion);
 
-    // Reset focus when modal opens
+    // Reset do foco ao abrir E ao trocar de conteúdo. Só `[isOpen]` não
+    // bastava: escolher outra versão do mesmo filme troca o contentId sem
+    // fechar a ficha, e o foco continuava numa zona do conteúdo anterior.
     useEffect(() => {
         if (isOpen) {
             setFocusZone('play');
@@ -95,7 +112,7 @@ export function ContentDetailModal({
             setEpisodeFocusIndex(0);
             setVersionFocusIndex(0);
         }
-    }, [isOpen]);
+    }, [isOpen, contentId]);
 
     // Fetch series info
     useEffect(() => {
@@ -138,6 +155,10 @@ export function ContentDetailModal({
         if (!isOpen || !contentData.name) return;
 
         setTmdbLoading(true);
+        // Guarda de corrida: trocar de versão dispara um fetch novo antes de o
+        // anterior voltar. Sem isto, a resposta ATRASADA do filme antigo
+        // sobrescrevia a do novo — pôster e sinopse do título errado na ficha.
+        let cancelado = false;
         const fetchTMDB = async () => {
             try {
                 // Extract year from release_date if available
@@ -152,22 +173,23 @@ export function ContentDetailModal({
                     const data = providerTmdbId
                         ? (await fetchMovieDetails(providerTmdbId)) || (await searchMovieByName(contentData.name, year))
                         : await searchMovieByName(contentData.name, year);
-                    setTmdbData(data);
+                    if (!cancelado) setTmdbData(data);
                 } else {
                     const data = providerTmdbId
                         ? (await fetchSeriesDetails(providerTmdbId)) || (await searchSeriesByName(contentData.name, year))
                         : await searchSeriesByName(contentData.name, year);
-                    setTmdbData(data);
+                    if (!cancelado) setTmdbData(data);
                 }
             } catch (err) {
                 console.error('Error fetching TMDB data:', err);
-                setTmdbData(null);
+                if (!cancelado) setTmdbData(null);
             } finally {
-                setTmdbLoading(false);
+                if (!cancelado) setTmdbLoading(false);
             }
         };
 
         fetchTMDB();
+        return () => { cancelado = true; };
     }, [isOpen, contentData.name, contentData.release_date, contentData.tmdbId, contentType]);
 
     // Close with animation
@@ -526,7 +548,7 @@ export function ContentDetailModal({
                     )}
 
                     {/* Action Buttons */}
-                    <div className="modal-actions">
+                    <div className="modal-actions" ref={actionsRef}>
                         {/* Play Button */}
                         <button
                             className={`action-btn play-btn ${focusZone === 'play' ? 'focused' : ''}`}
