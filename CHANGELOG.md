@@ -8,6 +8,51 @@ Created by **Rakjsu**.
 
 ### Added
 
+- Genre filter on the movie and series catalogs, derived from the provider's own category names.
+  TMDB is deliberately not used for this: the key is optional and most people do not have one, and
+  the metadata cache holds 120 entries against catalogs of thousands. Only genres the provider
+  actually carries are offered — a genre that returns an empty grid is indistinguishable from a bug
+  on a TV.
+- Collection row in the content detail modal: the other films of the saga that exist in *your*
+  catalog, matched by TMDB id first and then by name plus year.
+- Cast strip with photos, falling back to the cast string the provider already sends.
+- Per-episode synopsis and thumbnail, from data `get_series_info` already returned and nobody read.
+  Zero extra network. The episode list only grows when there is something to show.
+- Trailer button. In the browser it opens an embed; on the TV it hands the URL to the system's own
+  app, because a cross-origin iframe inside a `file://` widget would swallow the remote's keys.
+- "Because you watched X" row on Home, seeded by an explicit, named title.
+- Named personal lists alongside the default one, with suggestion-based naming (no free typing on a
+  D-pad) and a per-item "add to…" picker on the yellow key.
+- `eslint-plugin-compat` pinned to Chrome 69, catching browser APIs the build cannot polyfill. The
+  list of APIs the lint is allowed to ignore is verified against the produced bundle during
+  `build:tizen`, so it cannot silently become a lie.
+
+### Changed
+
+- TMDB responses are now projected before being cached instead of stored whole. Cache keys were
+  bumped to `_v2` once, for all the new fields at the same time.
+- `credits` and `videos` ride along in the existing `append_to_response`, so cast and trailer cost no
+  extra request.
+- Collections get their own cache store with a smaller cap: a saga is an object with N films inside
+  and weighs far more than a single title's metadata.
+- Toolbar focus on the catalog pages is anchored by id instead of position, because the genre button
+  is conditional.
+
+### Fixed
+
+- The minimum-rating filter was dead: `matchesFilters` filtered by it and no screen ever wrote it,
+  behind a comment promising that left/right adjusted it. It now has its own button.
+- The content detail modal had no race guard on its TMDB fetch, so switching versions could let the
+  previous title's response overwrite the new one — wrong poster and synopsis on screen.
+- Focus in the modal reset only when it opened, not when the content changed underneath it.
+- The episode list scrolled by child index, so anything added inside the list would have scrolled to
+  the wrong episode.
+- The "Recommended for you" row on Home rendered unconditionally but only joined the focus list when
+  it had items, drawing an empty titled row that the D-pad skipped.
+- `neostream_scope_migrated_v2` was missing from the storage key inventory.
+
+### Added
+
 - Multi-channel program guide: channels as rows, time as columns, opened with the new toolbar button
   on the Live TV screen. EPG is fetched lazily per visible row (at most three requests in flight),
   and OK plays the on-air show, opens the archive for a past program, or sets a reminder for a

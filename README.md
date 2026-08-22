@@ -52,8 +52,21 @@ Use at your own risk. The creator and contributors are not responsible for how t
 - **Continue watching** with saved playback position for movies and episodes.
 - **Episode queue** with next/previous controls and automatic next episode.
 - New-episode detection for followed series, with badges and a dedicated Home row.
-- Local affinity-based recommendations and a weighted "surprise me" roulette.
-- Content detail modal with TMDB metadata, seasons, and episodes.
+- Local affinity-based recommendations, a **"because you watched X"** row with a named seed, and a
+  weighted "surprise me" roulette.
+- **Genre filter** derived from the provider's own category names, so it works without a TMDB key and
+  covers the whole catalog. Only genres the provider actually carries are offered.
+- Minimum-rating and decade filters, an A–Z jump bar, and Dubbed/Subtitled/4K chips.
+- Content detail modal with TMDB metadata, seasons, and episodes, plus:
+  - **Collection row**: the other films of the saga *that you have*, matched against your catalog by
+    TMDB id and then by name and year.
+  - **Cast strip** with photos, falling back to the cast the provider sends when there is no TMDB key.
+  - **Per-episode synopsis and thumbnail**, straight from the provider — the list only grows when
+    there is something to show.
+  - **Trailer**: an embed in the browser, and the system's own app on the TV (a cross-origin iframe
+    would swallow the remote's keys inside a `file://` widget).
+- **Named personal lists** ("Friday marathon", "Watch with the family") alongside the default one.
+  Names come from suggestions navigable with left/right — no free typing on a D-pad.
 
 ### Player
 - HLS.js playback with quality selection and TV-tuned buffer limits.
@@ -222,7 +235,9 @@ watching, profiles with parental filtering, themes, global search, multi-playlis
 resilience.
 
 Also delivered: the multi-channel program guide, program reminders, the "now on favorites" panel,
-embedded audio and subtitle track selection, per-profile data scoping, and the test suite with CI.
+embedded audio and subtitle track selection, per-profile data scoping, the test suite with CI, and
+the whole catalog-and-discovery set (genre filter, collections, cast, trailers, per-episode detail,
+named lists, and the "because you watched" row).
 
 Next up:
 
