@@ -17,7 +17,8 @@ navegação, foco, inputs ou player.
 - [ ] Ao fechar modal/player, o foco volta para o elemento que abriu
 
 ## Inputs (crítico no Tizen)
-- [ ] Inputs do Login continuam descontrolados (uncontrolled)
+- [ ] Backspace e IME seguem funcionando nos inputs do Login (que são
+      controlados — o que importa é o bypass do `useTVNavigation`, abaixo)
 - [ ] Sem `type="password"` (usar máscara manual) e sem `readOnly`
 - [ ] `tizenhwkey` capturado para fechar o teclado nativo
 - [ ] Backspace funciona durante digitação
