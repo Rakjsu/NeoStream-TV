@@ -423,9 +423,30 @@ export function Series() {
     };
 
     // Only enable when content is focused and no modal/player/panel is open
+    // Mesmo buraco do Movies: sem onBack no hook principal, Voltar na grade
+    // nao fazia nada (o unico onBack estava no menu de contexto, que so liga
+    // com o menu aberto).
+    const handleBack = () => {
+        if (focusArea !== 'series') {
+            setFocusArea('series');
+            return;
+        }
+        // Decada/nota minima ficam: sao preferencia gravada, nao filtro do
+        // momento.
+        if (searchQuery || genero || selectedCategory !== 'all') {
+            setSearchQuery('');
+            setGenero(null);
+            setSelectedCategory('all');
+            setFocusedSeriesIndex(0);
+            return;
+        }
+        setFocusZone('sidebar');
+    };
+
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
+        onBack: handleBack,
         onAction: (action) => {
             if (action === 'yellow' && focusArea === 'series') openContextMenu();
         },
@@ -445,16 +466,10 @@ export function Series() {
                 setContextItem(null);
             }
         },
-        onBack: () => {
-            // Voltar sobe um degrau: primeiro fecha o que estiver aberto por
-            // cima, depois devolve o foco pra sidebar (de lá, Voltar vai pra
-            // Home e só então pede pra sair).
-            if (contextItem) {
-                setContextItem(null);
-                return;
-            }
-            setFocusZone('sidebar');
-        },
+        // Este hook só existe com o menu aberto (enabled: !!contextItem), então
+        // Voltar aqui é sempre "fecha o menu". O degrau da PÁGINA está no hook
+        // principal, acima.
+        onBack: () => setContextItem(null),
     });
 
     const handleImageError = (seriesId: number) => {
