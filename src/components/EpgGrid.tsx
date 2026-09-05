@@ -18,7 +18,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { epgService, type EpgProgram } from '../services/epgService';
 import {
     programasNaJanela, faixaDoPrograma, noAr, alinharJanela, indiceNoInstante,
-    instanteNaJanela, moverJanela as moverJanelaPura,
+    instanteNaJanela, moverJanela as moverJanelaPura, podarPorAlcance,
 } from '../services/epgGridLayout';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import type { LiveStream } from '../types';
@@ -125,7 +125,10 @@ export function EpgGrid({
                 if (!canal) return;
                 const programas = await epgService.getDayEpg(canal.stream_id);
                 if (cancelado) return;
-                setEpgPorCanal(prev => new Map(prev).set(canal.stream_id, programas));
+                setEpgPorCanal(prev => podarPorAlcance(
+                    new Map(prev).set(canal.stream_id, programas),
+                    channels, inicio, fim, buscadosRef.current
+                ));
                 setCarregando(prev => {
                     const proximo = new Set(prev);
                     proximo.delete(canal.stream_id);

@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     programasNaJanela, faixaDoPrograma, noAr, alinharJanela, moverJanela,
-    indiceNoInstante, instanteNaJanela,
+    indiceNoInstante, instanteNaJanela, podarPorAlcance,
 } from './epgGridLayout';
 import type { EpgProgram } from './epgService';
 
@@ -204,5 +204,63 @@ describe('instanteNaJanela', () => {
     // no primeiro programa da janela SEGUINTE, que não está na tela.
     it('nunca devolve o limite superior cravado', () => {
         expect(instanteNaJanela(base + JANELA, base, JANELA)).toBeLessThan(base + JANELA);
+    });
+});
+
+describe('podarPorAlcance', () => {
+    const canais = Array.from({ length: 200 }, (_, i) => ({ stream_id: i + 1 }));
+    const programas = [{ title: 'x', description: '', start: 0, end: 1 }];
+
+    /** Mapa com EPG dos canais de id `ids`. */
+    const mapaCom = (ids: number[]) => new Map(ids.map(id => [id, programas]));
+
+    it('abaixo do teto não mexe em nada', () => {
+        const epg = mapaCom([1, 2, 3]);
+        const buscados = new Set([1, 2, 3]);
+        expect(podarPorAlcance(epg, canais, 0, 10, buscados).size).toBe(3);
+        expect(buscados.size).toBe(3);
+    });
+
+    it('acima do teto despeja até voltar ao teto', () => {
+        const ids = Array.from({ length: 60 }, (_, i) => i + 1);
+        const epg = mapaCom(ids);
+        const buscados = new Set(ids);
+        // Faixa visível no fim da lista: os canais 1..50 estão longe.
+        const podado = podarPorAlcance(epg, canais, 100, 110, buscados);
+        expect(podado.size).toBe(40);
+        expect(buscados.size).toBe(40);
+    });
+
+    // O canal que está na tela não pode perder o EPG — a linha ficaria vazia
+    // na frente do usuário.
+    it('nunca despeja quem está na faixa visível', () => {
+        const ids = Array.from({ length: 60 }, (_, i) => i + 1);
+        const epg = mapaCom(ids);
+        const buscados = new Set(ids);
+        const podado = podarPorAlcance(epg, canais, 0, 12, buscados);
+        for (let id = 1; id <= 12; id++) expect(podado.has(id)).toBe(true);
+    });
+
+    // O `buscados` é o que impede a rebusca. Despejar do mapa sem tirar de lá
+    // deixaria a linha daquele canal vazia PARA SEMPRE.
+    it('o despejado sai também do conjunto de já-buscados', () => {
+        const ids = Array.from({ length: 60 }, (_, i) => i + 1);
+        const epg = mapaCom(ids);
+        const buscados = new Set(ids);
+        const podado = podarPorAlcance(epg, canais, 100, 110, buscados);
+        for (const id of ids) {
+            expect(podado.has(id)).toBe(buscados.has(id));
+        }
+    });
+
+    it('despeja o mais distante da faixa primeiro', () => {
+        const ids = [1, 2, 3, ...Array.from({ length: 45 }, (_, i) => i + 100)];
+        const epg = mapaCom(ids);
+        const buscados = new Set(ids);
+        // Faixa em torno do 120: os canais 1..3 são os mais distantes.
+        const podado = podarPorAlcance(epg, canais, 115, 125, buscados);
+        expect(podado.has(1)).toBe(false);
+        expect(podado.has(2)).toBe(false);
+        expect(podado.has(120)).toBe(true);
     });
 });

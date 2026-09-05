@@ -2,7 +2,7 @@
 // com cache em memória (a busca abre e fecha toda hora; refetch seria brutal
 // numa TV). Ranking simples com normalização de acentos.
 
-import { api } from './api';
+import { api, aoLimparCacheDeCatalogo } from './api';
 import { kidsFilter } from './kidsFilter';
 import type { LiveStream, VODStream, Series } from '../types';
 
@@ -27,8 +27,12 @@ export function normalizeText(value: string): string {
 
 export async function loadSearchCatalog(): Promise<SearchCatalogData> {
     const kids = kidsFilter.isKidsActive();
-    if (cache && cache.kids === kids && Date.now() - cache.at < CACHE_TTL_MS) {
-        return cache.data;
+    if (cache) {
+        if (cache.kids === kids && Date.now() - cache.at < CACHE_TTL_MS) return cache.data;
+        // Vencida ou de outro perfil: soltar. Este cache guarda o catálogo
+        // INTEIRO — e as mesmas instâncias que o cache do api.ts, porque o
+        // kidsFilter devolve o array original com o modo infantil desligado.
+        cache = null;
     }
     if (inflight) return inflight;
 
@@ -79,3 +83,7 @@ export function searchIn<T extends { name: string }>(items: T[], query: string, 
 export function clearSearchCatalogCache(): void {
     cache = null;
 }
+
+// Sai junto com o catalogo do api (logout, troca de provedor): sao as MESMAS
+// instancias de lista, e antes disto ninguem chamava este clear em lugar nenhum.
+aoLimparCacheDeCatalogo(clearSearchCatalogCache);
