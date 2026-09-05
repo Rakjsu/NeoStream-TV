@@ -46,4 +46,5 @@ export const es = {
     sidebar_settings: "Ajustes",
     sidebar_profile: "Perfil",
     sidebar_logout: "Salir",
+    sidebar_logout_confirm: "Pulsa de nuevo para salir",
 };

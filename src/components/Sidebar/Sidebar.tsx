@@ -1,6 +1,7 @@
 // Sidebar Navigation Component - Matching NeoStream Desktop Design
 
 import { useState, useMemo } from 'react';
+import { useConfirmacaoDupla } from '../../hooks/useConfirmacaoDupla';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
 import { useFocusZone } from '../../contexts/FocusContext';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -59,7 +60,13 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
     );
     const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
+    // Sair da conta apaga credenciais e TODAS as playlists salvas, e era um
+    // OK só — a tecla mais apertada por engano num controle de TV.
+    const { armado: sairArmado, pedir: pedirSair, desarmar: desarmarSair } = useConfirmacaoDupla(onLogout);
+
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
+        // Mudar de item é sinal de que ele NÃO quer sair.
+        desarmarSair();
         if (direction === 'up') {
             setFocusedIndex(prev => Math.max(0, prev - 1));
         } else if (direction === 'down') {
@@ -72,8 +79,8 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
 
     const handleEnter = () => {
         if (focusedIndex === menuItems.length + 1) {
-            // Logout button
-            onLogout();
+            // Logout button — dois toques (ver useConfirmacaoDupla)
+            pedirSair();
         } else if (focusedIndex === menuItems.length) {
             // Profile button - open profile manager
             onProfileClick();
@@ -208,8 +215,8 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
 
                     {/* Logout */}
                     <button
-                        className={`logout-btn ${focused && focusedIndex === menuItems.length + 1 ? 'tv-focused' : ''}`}
-                        onClick={onLogout}
+                        className={`logout-btn ${focused && focusedIndex === menuItems.length + 1 ? 'tv-focused' : ''}${sairArmado ? ' armado' : ''}`}
+                        onClick={pedirSair}
                         onMouseEnter={() => setHoveredItem('logout')}
                         onMouseLeave={() => setHoveredItem(null)}
                         onFocus={() => setFocusedIndex(menuItems.length + 1)}
@@ -221,9 +228,9 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
                             <path d="M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                         </svg>
                         {/* Logout Tooltip */}
-                        <div className={`tooltip danger ${(focused && focusedIndex === menuItems.length + 1) || hoveredItem === 'logout' ? 'visible' : ''}`}>
+                        <div className={`tooltip danger ${(focused && focusedIndex === menuItems.length + 1) || hoveredItem === 'logout' || sairArmado ? 'visible' : ''}`}>
                             <span className="tooltip-emoji">🚪</span>
-                            <span className="tooltip-label">{t('sidebar_logout')}</span>
+                            <span className="tooltip-label">{sairArmado ? t('sidebar_logout_confirm') : t('sidebar_logout')}</span>
                         </div>
                     </button>
                 </div>
