@@ -532,6 +532,21 @@ export function VideoPlayer({
         }, delayMs);
     }, [reload, isLiveContent]);
 
+    // "Tentar de novo" da tela de erro. O watchdog desiste depois de
+    // MAX_RECONNECT_ATTEMPTS e marca streamFailedRef — a partir daí o
+    // scheduleReconnect retorna na primeira linha e NADA mais tenta sozinho.
+    // Sem zerar esses três, o reload() sairia mudo.
+    const tentarDeNovo = useCallback(() => {
+        streamFailedRef.current = false;
+        reconnectAttemptRef.current = 0;
+        setReconnectAttempt(0);
+        setError(null);
+        // Loading, não "Reconectando": o contador de tentativas acabou de ser
+        // zerado e o overlay sairia com "tentativa 0/4".
+        setLoading(true);
+        reload();
+    }, [reload]);
+
     // Voltou a tocar → zera o ciclo de reconexão
     useEffect(() => {
         const video = videoRef.current;
@@ -1321,6 +1336,7 @@ export function VideoPlayer({
     // TV Navigation handler
     const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
         if (stillWatching) return; // só OK (continuar) ou Voltar (sair)
+        if (error) return; // só OK (tentar de novo) ou Voltar (fechar)
         resetHideControlsTimer();
 
         if (playerFocus === 'zap-list') {
@@ -1387,11 +1403,17 @@ export function VideoPlayer({
         }
     }, [playerFocus, menu, menuEntries.length, channelList?.length, focusedControl, getControlButtons,
         resetHideControlsTimer, closeZapList, openMenu, closeMenu, nudgeSeek, commitSeek, isLiveContent,
-        duration, stillWatching]);
+        duration, stillWatching, error]);
 
     const handleEnter = useCallback(() => {
         if (stillWatching) {
             confirmStillWatching();
+            return;
+        }
+        // Com a tela de erro no ar, OK é "tentar de novo" — o único botão
+        // que existia ali era de mouse, e a TV não tem mouse.
+        if (error) {
+            tentarDeNovo();
             return;
         }
         // Com a barra escondida, o primeiro OK só TRAZ os controles de volta.
@@ -1420,10 +1442,14 @@ export function VideoPlayer({
         }
     }, [playerFocus, menuIndex, menuEntries, executeControlAction, resetHideControlsTimer,
         channelList, zapIndex, onSwitchChannel, closeZapList, commitSeek, togglePlay,
-        stillWatching, confirmStillWatching, showControls]);
+        stillWatching, confirmStillWatching, showControls, error, tentarDeNovo]);
 
     const handleBack = useCallback(() => {
         if (stillWatching) {
+            handleClose();
+            return;
+        }
+        if (error && onClose) {
             handleClose();
             return;
         }
@@ -1444,7 +1470,7 @@ export function VideoPlayer({
             handleClose();
         }
     }, [playerFocus, closeZapList, closeMenu, openMenu, menu, commitSeek, handleClose, onClose,
-        stillWatching, resetHideControlsTimer]);
+        stillWatching, resetHideControlsTimer, error]);
 
     // TV Navigation hook
     useTVNavigation({
@@ -1638,7 +1664,7 @@ export function VideoPlayer({
             )}
 
             {/* Loading Spinner */}
-            {loading && (
+            {loading && !error && (
                 <div className="video-player-loading">
                     <div className="modern-spinner">
                         <div className="spinner-ring"></div>
@@ -1667,7 +1693,10 @@ export function VideoPlayer({
             {error && (
                 <div className="video-player-error">
                     <p>⚠️ {error}</p>
-                    {onClose && <button onClick={handleClose}>Fechar</button>}
+                    <div className="video-player-error-actions">
+                        <button className="tv-focused" onClick={tentarDeNovo}>Tentar de novo (OK)</button>
+                        {onClose && <button onClick={handleClose}>Fechar (Voltar)</button>}
+                    </div>
                 </div>
             )}
 
