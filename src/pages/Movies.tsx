@@ -518,9 +518,34 @@ export function Movies() {
     // Only enable when content is focused and no modal/player/panel is open
     const navEnabled = !error && (focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen && !contextItem);
 
+    // Voltar na grade nao fazia NADA: o unico onBack da pagina vivia no hook do
+    // menu de contexto, que so liga com o menu aberto. Resultado: quem filtrou
+    // por letra/genero ficava preso na grade filtrada sem tecla de desfazer, e
+    // sem caminho de volta pra sidebar. Degrau igual ao do LiveTV.
+    const handleBack = () => {
+        if (focusArea !== 'movies') {
+            setFocusArea('movies');
+            return;
+        }
+        // So os filtros MOMENTANEOS saem aqui. Decada e nota minima ficam:
+        // sao preferencia gravada (catalogFilters.set) e apagar preferencia
+        // com a tecla Voltar seria surpresa ruim.
+        if (searchQuery || letterFilter || genero || activeTags.length > 0 || selectedCategory !== 'all') {
+            setSearchQuery('');
+            setLetterFilter(null);
+            setGenero(null);
+            setActiveTags([]);
+            setSelectedCategory('all');
+            setFocusedMovieIndex(0);
+            return;
+        }
+        setFocusZone('sidebar');
+    };
+
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
+        onBack: handleBack,
         onAction: (action) => {
             if (action === 'yellow' && focusArea === 'movies') openContextMenu();
         },
@@ -541,16 +566,10 @@ export function Movies() {
                 setContextItem(null);
             }
         },
-        onBack: () => {
-            // Voltar sobe um degrau: primeiro fecha o que estiver aberto por
-            // cima, depois devolve o foco pra sidebar (de lá, Voltar vai pra
-            // Home e só então pede pra sair).
-            if (contextItem) {
-                setContextItem(null);
-                return;
-            }
-            setFocusZone('sidebar');
-        },
+        // Este hook só existe com o menu aberto (enabled: !!contextItem), então
+        // Voltar aqui é sempre "fecha o menu". O degrau da PÁGINA está no hook
+        // principal, acima.
+        onBack: () => setContextItem(null),
     });
 
     // CH+/CH- pulam uma página inteira da grade (item 25)
