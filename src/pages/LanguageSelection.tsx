@@ -1,13 +1,16 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useMemo, useState } from 'react';
 import { storage } from '../services/storage';
 import { useTranslation } from '../hooks/useTranslation';
+import { useTVNavigation } from '../hooks/useTVNavigation';
 import './LanguageSelection.css';
 
 interface LanguageSelectionProps {
     onComplete: () => void;
+    /** Voltar aqui é a primeira tela do app: pede saída (dois toques). */
+    onRequestExit?: () => void;
 }
 
-export function LanguageSelection({ onComplete }: LanguageSelectionProps) {
+export function LanguageSelection({ onComplete, onRequestExit }: LanguageSelectionProps) {
     const { t } = useTranslation();
     const [focusedIndex, setFocusedIndex] = useState(0);
 
@@ -26,29 +29,22 @@ export function LanguageSelection({ onComplete }: LanguageSelectionProps) {
         onComplete();
     }, [onComplete]);
 
-    // We can't use useTVNavigation here directly if it relies on a specific generic zone, 
-    // but we can implement a simple keydown listener for this specific screen.
-    // This is the very first screen, so it needs to be self-contained in focus.
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            switch (e.key) {
-                case 'ArrowRight':
-                case 'ArrowDown':
-                    setFocusedIndex((prev) => (prev + 1) % languages.length);
-                    break;
-                case 'ArrowLeft':
-                case 'ArrowUp':
-                    setFocusedIndex((prev) => (prev - 1 + languages.length) % languages.length);
-                    break;
-                case 'Enter':
-                    handleSelect(languages[focusedIndex].code);
-                    break;
+    // Este é o PRIMEIRO contato do usuário com o app, e era a única tela que
+    // ouvia o teclado à mão: o switch só conhecia 'ArrowRight'/'Enter' e afins,
+    // que são nomes de tecla de NAVEGADOR. O controle da Samsung manda keycodes
+    // (setas 37-40, OK 13/29443/Select, Voltar 10009/461) — nenhum casava, e a
+    // tela ficava inerte no controle. O hook já tem a tabela inteira.
+    useTVNavigation({
+        onNavigate: direction => {
+            if (direction === 'right' || direction === 'down') {
+                setFocusedIndex(prev => (prev + 1) % languages.length);
+            } else if (direction === 'left' || direction === 'up') {
+                setFocusedIndex(prev => (prev - 1 + languages.length) % languages.length);
             }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [focusedIndex, languages, handleSelect]);
+        },
+        onEnter: () => handleSelect(languages[focusedIndex].code),
+        onBack: onRequestExit,
+    });
 
     return (
         <div className="language-selection-container">

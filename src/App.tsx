@@ -142,6 +142,23 @@ function ReminderToast({ reminder, onWatch, onDismiss }: {
   );
 }
 
+/**
+ * Aviso de "aperte Voltar de novo pra sair".
+ *
+ * Era JSX solto dentro do return do app principal — que as telas de idioma,
+ * boas-vindas e login nunca alcançam, porque elas saem por `return` antes.
+ * Resultado: nessas telas a saída podia ser armada sem nenhum aviso na tela.
+ * Como componente, o mesmo aviso serve os dois caminhos.
+ */
+function ExitToast({ visivel }: { visivel: boolean }) {
+  if (!visivel) return null;
+  return (
+    <div className="app-exit-toast" role="status">
+      Pressione Voltar de novo para sair do NeoStream
+    </div>
+  );
+}
+
 function App() {
   const [authState, setAuthState] = useState<AuthState>('loading');
   const [currentPage, setCurrentPage] = useState<Page>('home');
@@ -369,12 +386,22 @@ function App() {
 
   // Language selection screen (first time user)
   if (authState === 'languageSelection') {
-    return <LanguageSelection onComplete={checkAuth} />;
+    return (
+      <>
+        <LanguageSelection onComplete={checkAuth} onRequestExit={pedirSaida} />
+        <ExitToast visivel={exitArmado} />
+      </>
+    );
   }
 
   // Welcome screen (no playlist configured)
   if (authState === 'welcome') {
-    return <Welcome onGoToLogin={handleGoToLogin} />;
+    return (
+      <>
+        <Welcome onGoToLogin={handleGoToLogin} onRequestExit={pedirSaida} />
+        <ExitToast visivel={exitArmado} />
+      </>
+    );
   }
 
   // Login screen
@@ -411,11 +438,7 @@ function App() {
 
         {/* Aviso de saída: a Home era a dona dele, mas a cadeia de Voltar
             termina aqui e o aviso precisa aparecer com a sidebar focada. */}
-        {exitArmado && (
-          <div className="app-exit-toast" role="status">
-            Pressione Voltar de novo para sair do NeoStream
-          </div>
-        )}
+        <ExitToast visivel={exitArmado} />
 
         {/* Profile Manager Modal */}
         {/* Aviso de lembrete — acima de tudo, com D-pad próprio */}
