@@ -141,6 +141,11 @@ html[data-motion="reduzido"] .tv-focused {
     transform: none !important;
 }
 
+/* Movimento reduzido: o retorno do OK fica só no brilho, sem o "afundar". */
+html[data-motion="reduzido"] .ns-pressed {
+    transform: none !important;
+}
+
 /* ===================================================================
    Anti burn-in (item 78)
    =================================================================== */
