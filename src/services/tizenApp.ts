@@ -68,6 +68,11 @@ export function abrirExterno(url: string): boolean {
     }
 }
 
+/** A TV consegue fechar o app por conta própria? */
+export function podeSair(): boolean {
+    return typeof tizenGlobal()?.application?.getCurrentApplication === 'function';
+}
+
 /** Fecha o app na TV. Fora do Tizen (navegador) não faz nada. */
 export function exitApp(): boolean {
     try {
