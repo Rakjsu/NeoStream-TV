@@ -430,3 +430,9 @@
 .logout-btn.tv-focused .logout-icon {
     stroke: #f87171;
 }
+/* Sair da conta armado (1º toque): o botão avisa que o próximo OK executa.
+   Sem cor nova — reusa o vermelho de perigo que o tooltip já usa. */
+.logout-btn.armado {
+    border-color: #e2483f;
+    box-shadow: 0 0 0 2px rgba(226, 72, 63, 0.35);
+}
