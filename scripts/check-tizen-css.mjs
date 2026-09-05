@@ -81,6 +81,48 @@ const PROIBIDOS = [
         saida: 'remova — é só refinamento tipográfico',
     },
     {
+        nome: ':has()',
+        desde: 105,
+        regex: /:has\(/,
+        saida: 'decida no React e ponha uma classe no pai',
+    },
+    {
+        nome: '@container',
+        desde: 105,
+        regex: /@container/,
+        saida: 'use media query, ou decida o tamanho no componente',
+    },
+    {
+        nome: 'unidade de viewport dinâmica (dvh/svh/lvh)',
+        desde: 108,
+        regex: /:\s*[^;{}]*\d(dvh|svh|lvh|dvw|svw|lvw)\b/,
+        saida: 'use vh/vw — a TV não tem barra de navegador que some',
+    },
+    {
+        nome: 'propriedade lógica (inline/block)',
+        desde: 87,
+        regex: /(^|[;{\s])(inset|margin|padding|border)-(inline|block)(-(start|end))?\s*:|(^|[;{\s])(inline|block)-size\s*:/,
+        saida: 'use a versão física: top/right/bottom/left, width/height',
+    },
+    {
+        nome: '@layer',
+        desde: 99,
+        regex: /@layer/,
+        saida: 'ordene as regras à mão — a cascata do 69 não conhece camadas',
+    },
+    {
+        nome: ':focus-visible',
+        desde: 86,
+        regex: /:focus-visible/,
+        saida: 'este app pinta o foco por classe (.tv-focused); use ela, senão o foco SOME na TV',
+    },
+    {
+        nome: 'accent-color',
+        desde: 93,
+        regex: /(^|[;{\s])accent-color\s*:/,
+        saida: 'estilize o controle você mesmo',
+    },
+    {
         nome: '::backdrop',
         desde: 37,
         regex: /::backdrop/,
@@ -132,6 +174,8 @@ for (const caminho of lista) {
     let temFlex = false;
     let linhaGap = null;
     let linhaAspect = null;
+    let linhaBackdrop = null;
+    let temFundo = false;
 
     linhas.forEach((linha, i) => {
         const num = i + 1;
@@ -166,12 +210,20 @@ for (const caminho of lista) {
             temFlex = false;
             linhaGap = null;
             linhaAspect = null;
+            linhaBackdrop = null;
+            temFundo = false;
         }
         if (/display\s*:\s*(inline-)?flex/.test(texto)) temFlex = true;
         // gap: 0 não separa nada — não precisa de compensação
         if (/(^|[;{\s])(gap|row-gap|column-gap)\s*:/.test(texto)
             && !/:\s*0(px|rem|em|%)?\s*(;|$)/.test(texto)) linhaGap = num;
         if (/(^|[;{\s])aspect-ratio\s*:/.test(texto)) linhaAspect = num;
+        // `backdrop-filter` chegou no Chrome 76: no 69 ele nao embaca NADA. Isso
+        // so e aceitavel se a regra pinta um fundo proprio — senao o elemento
+        // fica transparente e o texto cai em cima da arte de fundo.
+        if (/(^|[;{\s])(-webkit-)?backdrop-filter\s*:/.test(texto) && linhaBackdrop === null) linhaBackdrop = num;
+        if (/(^|[;{\s])background(-color|-image)?\s*:/.test(texto)
+            && !/:\s*(none|transparent|inherit|initial|unset)\s*(;|$)/.test(texto)) temFundo = true;
 
         if (/\}/.test(texto) && seletor) {
             // `gap` em GRID funciona desde o Chrome 66; só flex precisa disto
@@ -181,6 +233,14 @@ for (const caminho of lista) {
                     `${curto}:${linhaGap}  gap em flexbox sem fallback (chegou no Chrome 84, `
                     + `a TV roda ${CHROMIUM_ALVO})\n      → acrescente `
                     + `\`html.no-flex-gap ${seletor.split(',')[0].trim()}\` em src/${FALLBACKS.gap}`
+                );
+            }
+            if (conferir && linhaBackdrop !== null && !temFundo) {
+                erros.push(
+                    `${curto}:${linhaBackdrop}  backdrop-filter sem fundo proprio (chegou no Chrome 76, `
+                    + `a TV roda ${CHROMIUM_ALVO})
+      → a regra \`${seletor.split(',')[0].trim()}\` precisa de um `
+                    + `\`background\` opaco o bastante pro texto ler sem o desfoque`
                 );
             }
             if (conferir && linhaAspect !== null && !cobre(arFallback, seletor, '')) {
