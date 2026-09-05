@@ -46,8 +46,6 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
     const [cardZone, setCardZone] = useState<'card' | 'edit' | 'delete'>('card');
     // Botão do diálogo de exclusão: 0 = cancelar, 1 = excluir
     const [deleteFocusIndex, setDeleteFocusIndex] = useState(0);
-    const [pinInput, setPinInput] = useState('');
-    const [pinError, setPinError] = useState('');
 
     // Delete confirm
     const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null);
@@ -80,8 +78,6 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         }
         if (profile.pin) {
             setPendingProfile(profile);
-            setPinInput('');
-            setPinError('');
             setMode('pin-verify');
             return;
         }
@@ -365,25 +361,22 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         onNavigate: handleNavigate,
         onEnter: handleEnter,
         onBack: handleBack,
-        // Com o PIN parental na tela, o OK aqui embaixo trocava o perfil
-        // focado por trás do diálogo
-        enabled: !parentalTarget,
+        // Com um diálogo de PIN na tela, o OK aqui embaixo trocava o perfil
+        // focado por trás dele — vale pro PIN parental e pro do perfil.
+        enabled: !parentalTarget && mode !== 'pin-verify',
     });
 
-    // Handle PIN verification
-    const handlePinSubmit = async () => {
-        if (!pendingProfile || pinInput.length !== 4) return;
-
-        const isValid = await profileService.verifyPin(pendingProfile.id, pinInput);
-        if (isValid) {
-            profileService.setActiveProfile(pendingProfile.id);
-            refreshProfiles();
-            onProfileSwitched?.();
-            onClose();
-        } else {
-            setPinError('PIN incorreto');
-            setPinInput('');
-        }
+    // Handle PIN verification. Devolve false pro PinPrompt mostrar "PIN
+    // incorreto" e limpar os dígitos — o estado do erro é dele.
+    const handlePinSubmit = async (pin: string): Promise<boolean> => {
+        if (!pendingProfile) return false;
+        const isValid = await profileService.verifyPin(pendingProfile.id, pin);
+        if (!isValid) return false;
+        profileService.setActiveProfile(pendingProfile.id);
+        refreshProfiles();
+        onProfileSwitched?.();
+        onClose();
+        return true;
     };
 
     // Handle delete profile
@@ -583,59 +576,21 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
             )}
 
             {/* PIN Verification Modal */}
+            {/* PIN de entrada do perfil: teclado na tela navegável por D-pad.
+                Antes era um <input> escondido com autoFocus — o IME nativo da
+                TV nem sempre abre, e sem ele NADA digitava: o perfil protegido
+                ficava inacessível no controle. */}
             {mode === 'pin-verify' && pendingProfile && (
-                <div className="pm-pin-modal">
-                    <div className="pm-pin-header">
-                        <span className="pm-pin-icon">PIN</span>
-                        <h2>Digite o PIN</h2>
-                        <p>Perfil: <strong>{pendingProfile.name}</strong></p>
-                    </div>
-
-                    <div className="pm-pin-input-container">
-                        {[0, 1, 2, 3].map((index) => (
-                            <div
-                                key={index}
-                                className={`pm-pin-digit ${pinInput.length > index ? 'filled' : ''} ${pinError ? 'error' : ''}`}
-                            >
-                                {pinInput[index] ? '•' : ''}
-                            </div>
-                        ))}
-                    </div>
-
-                    <input
-                        type="password"
-                        maxLength={4}
-                        value={pinInput}
-                        onChange={(e) => {
-                            setPinInput(e.target.value.replace(/\D/g, ''));
-                            setPinError('');
-                        }}
-                        onKeyPress={(e) => {
-                            if (e.key === 'Enter' && pinInput.length === 4) {
-                                handlePinSubmit();
-                            }
-                        }}
-                        autoFocus
-                        className="pm-hidden-input"
-                    />
-
-                    {pinError && (
-                        <p className="pm-pin-error">! {pinError}</p>
-                    )}
-
-                    <div className="pm-pin-buttons">
-                        <button className="pm-btn pm-btn-cancel" onClick={() => setMode('list')}>
-                            Cancelar
-                        </button>
-                        <button
-                            className="pm-btn pm-btn-save"
-                            onClick={handlePinSubmit}
-                            disabled={pinInput.length !== 4}
-                        >
-                            ✓ Entrar
-                        </button>
-                    </div>
-                </div>
+                <PinPrompt
+                    title="Digite o PIN"
+                    hint={`Perfil: ${pendingProfile.name}`}
+                    confirmLabel="Entrar"
+                    onSubmit={handlePinSubmit}
+                    onCancel={() => {
+                        setMode('list');
+                        setPendingProfile(null);
+                    }}
+                />
             )}
 
             {/* Delete Confirmation Modal */}
@@ -683,8 +638,6 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                         // O PIN do PRÓPRIO perfil ainda vale depois deste
                         if (target.pin) {
                             setPendingProfile(target);
-                            setPinInput('');
-                            setPinError('');
                             setMode('pin-verify');
                         } else {
                             commitSwitch(target);

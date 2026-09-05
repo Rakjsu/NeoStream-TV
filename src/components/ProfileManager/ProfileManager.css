@@ -387,8 +387,7 @@
 }
 
 /* Modal */
-.pm-modal,
-.pm-pin-modal {
+.pm-modal {
     position: relative;
     z-index: 2;
     width: 100%;
@@ -500,8 +499,7 @@
 }
 
 /* Modal Buttons */
-.pm-modal-buttons,
-.pm-pin-buttons {
+.pm-modal-buttons {
     display: flex;
     justify-content: flex-end;
     gap: 12px;
@@ -569,90 +567,6 @@
     border-color: #f87171;
     box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
     transform: scale(1.1);
-}
-
-/* PIN Input */
-.pm-pin-header {
-    text-align: center;
-    margin-bottom: 24px;
-}
-
-.pm-pin-icon {
-    font-size: 48px;
-    display: block;
-    margin-bottom: 12px;
-}
-
-.pm-pin-header h2 {
-    color: white;
-    font-size: 24px;
-    margin-bottom: 8px;
-}
-
-.pm-pin-header p {
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 14px;
-}
-
-.pm-pin-input-container {
-    display: flex;
-    justify-content: center;
-    gap: 12px;
-    margin-bottom: 20px;
-}
-
-.pm-pin-digit {
-    width: 56px;
-    height: 64px;
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 2px solid rgba(255, 255, 255, 0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 28px;
-    color: white;
-    transition: all 0.2s ease;
-}
-
-.pm-pin-digit.filled {
-    border-color: var(--ns-accent);
-    background: rgba(var(--ns-accent-rgb), 0.2);
-}
-
-.pm-pin-digit.error {
-    border-color: #ef4444;
-    background: rgba(239, 68, 68, 0.1);
-    animation: pmShake 0.5s ease;
-}
-
-@keyframes pmShake {
-
-    0%,
-    100% {
-        transform: translateX(0);
-    }
-
-    25% {
-        transform: translateX(-8px);
-    }
-
-    75% {
-        transform: translateX(8px);
-    }
-}
-
-.pm-hidden-input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
-}
-
-.pm-pin-error {
-    text-align: center;
-    color: #f87171;
-    font-size: 14px;
-    margin-bottom: 16px;
 }
 
 /* Delete Message */
