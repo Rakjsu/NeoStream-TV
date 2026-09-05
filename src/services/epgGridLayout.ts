@@ -111,3 +111,47 @@ export function indiceNoInstante(programas: readonly EpgProgram[], instante: num
 export function instanteNaJanela(instante: number, janelaInicio: number, janelaMs: number): number {
     return Math.max(janelaInicio, Math.min(janelaInicio + janelaMs - 1, instante));
 }
+
+/**
+ * Teto de canais com EPG guardado. Numa TV de 1 GB, rolar por 500 canais
+ * deixava 500 agendas de dia inteiro na memoria: o mapa so crescia, e o
+ * `buscadosRef` garantia que nada era descartado (nem rebuscado).
+ *
+ * 40 e ~3x a faixa que a tela alcanca (7 visiveis + 3 de margem de cada lado),
+ * entao rolar pra frente e voltar continua servindo do que ja esta guardado.
+ */
+const TETO_CANAIS_EPG = 40;
+
+/**
+ * Despeja as entradas mais distantes da faixa visivel quando o mapa passa do
+ * teto. PURO. Tira do `buscados` junto: sem isso o canal despejado nunca mais
+ * seria buscado e a linha dele ficaria vazia pra sempre.
+ */
+export function podarPorAlcance(
+    epg: Map<number, EpgProgram[]>,
+    channels: Array<{ stream_id: number }>,
+    inicio: number,
+    fim: number,
+    buscados: Set<number>
+): Map<number, EpgProgram[]> {
+    if (epg.size <= TETO_CANAIS_EPG) return epg;
+
+    const naFaixa = new Set(channels.slice(inicio, fim).map(canal => canal.stream_id));
+    const posicao = new Map(channels.map((canal, i) => [canal.stream_id, i]));
+    const centro = (inicio + fim) / 2;
+
+    const candidatos = [...epg.keys()]
+        .filter(id => !naFaixa.has(id))
+        .sort((a, b) => {
+            const da = Math.abs((posicao.get(a) ?? Number.MAX_SAFE_INTEGER) - centro);
+            const db = Math.abs((posicao.get(b) ?? Number.MAX_SAFE_INTEGER) - centro);
+            return db - da; // mais distante primeiro
+        });
+
+    for (const id of candidatos) {
+        if (epg.size <= TETO_CANAIS_EPG) break;
+        epg.delete(id);
+        buscados.delete(id);
+    }
+    return epg;
+}
