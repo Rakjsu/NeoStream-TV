@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # Semanal: uma CVE divulgada contra uma dependência que NAO mudou nao gera
+  # PR nenhum, e este repositorio pode passar semanas sem commit. Sem o cron,
+  # o audit so rodaria quando alguem mexesse no codigo.
+  schedule:
+    - cron: '0 6 * * 1' # segunda, 06:00 UTC
 
 # Um push novo cancela o CI do anterior no mesmo branch
 concurrency:
@@ -26,6 +31,19 @@ jobs:
       # `npm ci` e não `npm install`: garante que o lockfile é honrado. Já
       # aconteceu de os gates locais passarem e o CI nem instalar.
       - run: npm ci
+
+      # Só dependências de PRODUCAO: o que vai dentro do .wgt. Vulnerabilidade
+      # de ferramenta de build (servidor de dev, empacotador) nao viaja pra TV
+      # e bloquearia todo PR sem motivo.
+      #
+      # O app da TV nao tem updater: o que sai no .wgt fica na TV ate alguem
+      # instalar de novo. Uma CVE aqui vale mais que nas outras pontas.
+      #
+      # Se um dia aparecer um advisory HIGH+ que comprovadamente nao se aplica,
+      # o modelo pra nao afrouxar o resto e o `scripts/audit-prod.mjs` do
+      # desktop: allowlist explicita por GHSA, com o motivo escrito.
+      - name: Auditoria das dependências de produção
+        run: npm audit --omit=dev --audit-level=high
 
       # O MESMO comando do build. `tsc --noEmit` deixa erro passar em projeto
       # com references — foi assim que um build quebrado chegou ao main.
