@@ -1,0 +1,49 @@
+# 🤖 Atualização automática de dependências.
+#
+# Este repositório era o único dos três sem dependabot: desktop e mobile já
+# recebiam PR de atualização toda semana, a TV não recebia nenhum — e é onde
+# uma CVE passaria mais tempo sem ninguém notar, porque o app é entregue como
+# .wgt e não tem updater dentro.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 5
+    groups:
+      # Um PR por semana com todo o resto, em vez de uma dúzia de PRs de uma
+      # linha cada.
+      minor-e-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # ⛔ TypeScript travado até o typescript-eslint ESTÁVEL aceitar a próxima
+      # versão. O peer dele é `>=4.8.4 <6.1.0` (conferido com
+      # `npm view typescript-eslint peerDependencies`), então subir o TS
+      # sozinho faz o `npm ci` do CI morrer com ERESOLVE — e o gate local NÃO
+      # pega, porque node_modules velho resolve; só instalação limpa quebra.
+      #
+      # Isso já derrubou a main do DESKTOP duas vezes (v4.45.0 e 4.47.1), com
+      # o mesmo par de dependências. A TV entra travada de fábrica em vez de
+      # aprender do mesmo jeito.
+      #
+      # Cobre major E MINOR de propósito: o peer corta em 6.1, não em 7 —
+      # travar só a major deixaria o 6.1.0 passar e quebrar exatamente igual.
+      # Para destravar: conferir `npm view typescript-eslint peerDependencies`
+      # e só então remover esta entrada.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+  # As actions do CI também envelhecem — e é o que mantém os `@v4` deste
+  # repositório em dia sem ninguém lembrar deles.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
