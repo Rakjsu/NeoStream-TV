@@ -142,6 +142,37 @@ html[data-motion="reduzido"] .tv-focused {
 }
 
 /* ===================================================================
+   Reproducao: nada anima atras do video
+   =================================================================== */
+
+/* Sao 60 declaracoes `infinite` em 18 folhas — brilho de borda, pulsacao de
+   fundo, shimmer, spinner. Com o player aberto, a interface inteira fica
+   ATRAS dele e nao se ve nada disso: o compositor segue recalculando quadro a
+   quadro numa TV que precisa do orcamento inteiro pra decodificar video.
+
+   `paused`, e nao duracao zero como o modo "reduzir animacoes": a animacao
+   volta de onde parou quando o player fecha, sem pulo. O seletor universal e
+   o que torna a regra completa — folha nova nao precisa lembrar de nada.
+
+   `data-playing` e posto no <html> pelo VideoPlayer enquanto ele existe (o
+   mesmo sinal que o anti burn-in ja usa pra nao escurecer o video). */
+html[data-playing] *,
+html[data-playing] *::before,
+html[data-playing] *::after {
+    animation-play-state: paused !important;
+}
+
+/* O player anima, e e o que a pessoa esta olhando: o spinner de carregamento,
+   o brilho do botao focado, a deriva anti burn-in da tela de radio. Esta
+   regra e mais especifica que a de cima (`.video-player-container` vale uma
+   classe a mais), entao ela ganha independente da ordem. */
+html[data-playing] .video-player-container *,
+html[data-playing] .video-player-container *::before,
+html[data-playing] .video-player-container *::after {
+    animation-play-state: running !important;
+}
+
+/* ===================================================================
    Anti burn-in (item 78)
    =================================================================== */
 
