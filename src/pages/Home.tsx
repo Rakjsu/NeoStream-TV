@@ -9,6 +9,7 @@ import { progressService, type MovieProgress, type SeriesProgress } from '../ser
 import { storage } from '../services/storage';
 import { categoryAffinity, scoreRecommendations, spinRoulette, newEpisodes, normalizeSearch } from '../services/catalogExtras';
 import { usageStats } from '../services/usageStats';
+import { amostraAleatoria, maioresPor } from '../services/homeRanking';
 import { kidsFilter } from '../services/kidsFilter';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
@@ -120,14 +121,12 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     series: series.length
                 });
 
-                // Get recent items (newest first based on 'added' field)
-                const sortedMovies = [...movies].sort((a, b) =>
-                    parseInt(b.added || '0') - parseInt(a.added || '0')
-                ).slice(0, 15);
-
-                const sortedSeries = [...series].sort((a, b) =>
-                    new Date(b.last_modified || 0).getTime() - new Date(a.last_modified || 0).getTime()
-                ).slice(0, 15);
+                // Novidades: os 15 mais recentes. Escolha LINEAR, com a chave
+                // calculada uma vez por item — o que estava aqui copiava e
+                // ordenava o catálogo inteiro, e a das séries ainda construía
+                // um `Date` DENTRO do comparador (dois por comparação).
+                const sortedMovies = maioresPor(movies, m => parseInt(m.added || '0'), 15);
+                const sortedSeries = maioresPor(series, sr => new Date(sr.last_modified || 0).getTime(), 15);
 
                 setRecentMovies(sortedMovies);
                 setRecentSeries(sortedSeries);
@@ -166,9 +165,14 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     ];
                 }
                 if (recommended.length < 5) {
-                    const randomMovies = [...movies].sort(() => Math.random() - 0.5).slice(0, 8);
-                    const randomSeries = [...series].sort(() => Math.random() - 0.5).slice(0, 7);
-                    recommended = [...randomMovies, ...randomSeries].sort(() => Math.random() - 0.5);
+                    // Sorteio por índice. Ordenar o catálogo inteiro com um
+                    // comparador aleatório custava três varreduras e nem
+                    // embaralhava direito — comparador que muda de resposta
+                    // não produz permutação uniforme.
+                    recommended = amostraAleatoria(
+                        [...amostraAleatoria(movies, 8), ...amostraAleatoria(series, 7)],
+                        15,
+                    );
                 }
                 setRecommendations(recommended);
 
