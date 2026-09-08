@@ -48,6 +48,22 @@ describe('AppErrorBoundary', () => {
         expect(sair).toHaveBeenCalledTimes(1);
     });
 
+    it('o digito 8 do controle NAO fecha o app', () => {
+        // O `event.key` da tecla numerica 8 e literalmente '8', e a lista de
+        // Voltar precisa do '8' pelo keyCode do Backspace. Com as duas fontes
+        // no mesmo conjunto, digitar um numero de canal encerrava o app.
+        render(<AppErrorBoundary><Explode /></AppErrorBoundary>);
+        tecla('8', 56);
+        expect(sair).not.toHaveBeenCalled();
+    });
+
+    it('o Backspace continua fechando — pelo nome e pelo codigo', () => {
+        // A guarda do digito nao pode ter matado o Voltar de verdade.
+        render(<AppErrorBoundary><Explode /></AppErrorBoundary>);
+        tecla('Backspace', 8);
+        expect(sair).toHaveBeenCalled();
+    });
+
     it('seta nao fecha o app', () => {
         render(<AppErrorBoundary><Explode /></AppErrorBoundary>);
         tecla('ArrowDown');
