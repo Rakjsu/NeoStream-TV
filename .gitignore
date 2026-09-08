@@ -76,3 +76,17 @@ webos-package/
 # Claude Code (local agent config / memory)
 CLAUDE.md
 .claude/
+
+# 📦 Bundle do Tizen: artefato de build, não fonte.
+#
+# `tizen/assets/{index.js,polyfills.js,style.css}` sai inteiro do
+# `npm run build:tizen` — o script LIMPA o diretório e recopia (build-tizen.mjs),
+# o `tizen/index.html` aponta para nomes fixos (sem hash), o CI regenera a cada
+# run e o README manda rodar o build antes de empacotar com o Tizen Studio.
+# Nada nunca lê a versão commitada.
+#
+# Versionar custava caro: são três arquivos de UMA LINHA (1,0 MB, 152 KB e
+# 121 KB) que o git jamais auto-mescla, e 10 dos 14 PRs abertos os tocavam —
+# dez conflitos de merge, cada um pedindo "escolha um lado" sobre um megabyte
+# numa linha só. E o artefato já tinha divergido do fonte.
+tizen/assets/
