@@ -183,6 +183,19 @@ function App() {
   // aparece em cima de qualquer página.
   const { armado: exitArmado, pedirSaida, desarmar: desarmarSaida } = useExitPrompt();
 
+  // O armamento vive no App e sobrevive à troca de tela — trocar de
+  // `authState` não desmonta nada, só troca o ramo do render. Sem desarmar
+  // aqui, um Voltar apertado por engano na tela de idioma continuava valendo
+  // do outro lado: o usuário escolhia o idioma, caía na Welcome e o PRIMEIRO
+  // Voltar dela fechava o app, porque o hook via o timer ainda pendente.
+  //
+  // `desarmarSaida` é `useCallback` com deps vazias, então este efeito só roda
+  // quando `authState` muda de verdade — não a cada render, o que desarmaria
+  // no mesmo instante em que armou.
+  useEffect(() => {
+    desarmarSaida();
+  }, [authState, desarmarSaida]);
+
 
   // Enquanto o aviso está na tela ele é o dono das teclas. A zona muda JUNTO
   // com quem mostra e esconde o aviso — dentro de um effect a regra
@@ -388,7 +401,7 @@ function App() {
   if (authState === 'languageSelection') {
     return (
       <>
-        <LanguageSelection onComplete={checkAuth} onRequestExit={pedirSaida} />
+        <LanguageSelection onComplete={checkAuth} onRequestExit={pedirSaida} onCancelExit={desarmarSaida} />
         <ExitToast visivel={exitArmado} />
       </>
     );
@@ -398,7 +411,7 @@ function App() {
   if (authState === 'welcome') {
     return (
       <>
-        <Welcome onGoToLogin={handleGoToLogin} onRequestExit={pedirSaida} />
+        <Welcome onGoToLogin={handleGoToLogin} onRequestExit={pedirSaida} onCancelExit={desarmarSaida} />
         <ExitToast visivel={exitArmado} />
       </>
     );

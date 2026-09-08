@@ -7,11 +7,13 @@ import './Welcome.css';
 
 interface WelcomeProps {
     onGoToLogin: () => void;
+    /** Mexeu no controle = não estava tentando sair. Mesmo contrato da Home. */
+    onCancelExit?: () => void;
     /** Voltar aqui pede saída do app (dois toques), como a Samsung exige. */
     onRequestExit?: () => void;
 }
 
-export function Welcome({ onGoToLogin, onRequestExit }: WelcomeProps) {
+export function Welcome({ onGoToLogin, onRequestExit, onCancelExit }: WelcomeProps) {
     const { t } = useTranslation();
     const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -25,6 +27,7 @@ export function Welcome({ onGoToLogin, onRequestExit }: WelcomeProps) {
     }, []);
 
     useTVNavigation({
+        onNavigate: () => onCancelExit?.(),
         onEnter: () => {
             onGoToLogin();
         },

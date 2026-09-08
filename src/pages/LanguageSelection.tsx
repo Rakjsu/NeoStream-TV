@@ -6,11 +6,13 @@ import './LanguageSelection.css';
 
 interface LanguageSelectionProps {
     onComplete: () => void;
+    /** Mexeu no controle = não estava tentando sair. Mesmo contrato da Home. */
+    onCancelExit?: () => void;
     /** Voltar aqui é a primeira tela do app: pede saída (dois toques). */
     onRequestExit?: () => void;
 }
 
-export function LanguageSelection({ onComplete, onRequestExit }: LanguageSelectionProps) {
+export function LanguageSelection({ onComplete, onRequestExit, onCancelExit }: LanguageSelectionProps) {
     const { t } = useTranslation();
     const [focusedIndex, setFocusedIndex] = useState(0);
 
@@ -36,6 +38,10 @@ export function LanguageSelection({ onComplete, onRequestExit }: LanguageSelecti
     // tela ficava inerte no controle. O hook já tem a tabela inteira.
     useTVNavigation({
         onNavigate: direction => {
+            // Escolher idioma com as setas cancela um Voltar apertado por
+            // engano — como a Home já fazia. Sem isto, "Voltar, seta, seta,
+            // Voltar" fechava o app achando que era o segundo toque.
+            onCancelExit?.();
             if (direction === 'right' || direction === 'down') {
                 setFocusedIndex(prev => (prev + 1) % languages.length);
             } else if (direction === 'left' || direction === 'up') {
