@@ -93,6 +93,8 @@ export function LiveTV() {
     const [focusArea, setFocusArea] = useState<'categories' | 'channels' | 'preview'>('channels');
     const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
     const [focusedChannelIndex, setFocusedChannelIndex] = useState(0);
+    /** Canal a focar quando a lista renderizada existir (ver o efeito abaixo). */
+    const canalPraFocar = useRef<number | null>(null);
     const [previewFocusIndex, setPreviewFocusIndex] = useState(0);
     const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
     const searchRef = useRef<AnimatedSearchBarHandle>(null);
@@ -154,12 +156,23 @@ export function LiveTV() {
             sessionStorage.removeItem('neostream_autoplay_last');
             const lastId = storage.getLastChannel();
 
-            /** Pré-seleciona (e só no boot, dá play) o último canal assistido. */
+            /**
+             * Põe o FOCO no último canal assistido (e, só no boot, dá play).
+             *
+             * Não abre mais a ficha. O autoplay é consumido uma vez por sessão,
+             * mas a pré-seleção não era: toda visita à TV ao vivo abria sozinha
+             * a ficha do último canal — um painel grande, que empurra a grade
+             * pra baixo, que ninguém pediu. E como Voltar com ficha aberta
+             * significa "fechar a ficha", o primeiro Voltar de quem entrou na
+             * página era comido por ela em vez de devolver o foco à barra
+             * lateral. Quem quer a ficha aperta OK, que é o gesto que o rodapé
+             * da própria página ensina.
+             */
             const restoreLastChannel = (items: LiveStream[]) => {
                 if (!lastId) return;
                 const found = items.find(item => item.stream_id === lastId);
                 if (!found) return;
-                setSelectedChannel(found);
+                canalPraFocar.current = found.stream_id;
                 if (wantsAutoplay) {
                     setPlayingChannel(found);
                     storage.setLastChannel(found.stream_id);
@@ -334,6 +347,19 @@ export function LiveTV() {
     // Índice focado sempre dentro do range (a lista encolhe ao ocultar/
     // desfavoritar/agrupar sem passar pelo effect de reset)
     const safeChannelIndex = Math.min(focusedChannelIndex, Math.max(0, filteredStreams.length - 1));
+
+    // O foco no último canal só pode ser posicionado sobre a lista RENDERIZADA:
+    // `filteredStreams` já passou pelos filtros e pelo agrupamento de
+    // variantes, então o índice na lista crua do fetch apontaria pra outro
+    // canal. Uma vez só — depois disso o foco é de quem está com o controle.
+    useEffect(() => {
+        const alvo = canalPraFocar.current;
+        if (alvo === null || filteredStreams.length === 0) return;
+        canalPraFocar.current = null;
+        const representante = representativeOf.get(alvo) ?? alvo;
+        const indice = filteredStreams.findIndex(stream => stream.stream_id === representante);
+        if (indice >= 0) setFocusedChannelIndex(indice);
+    }, [filteredStreams, representativeOf]);
 
     // Variantes de qualidade do canal selecionado (botões da ficha)
     const selectedVariants = selectedChannel
