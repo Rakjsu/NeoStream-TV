@@ -207,7 +207,6 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
                                     <button
                                         key={cat.category_id}
                                         className={`category-item ${selectedCategory === cat.category_id ? 'selected' : ''} ${focusedIndex === index ? 'tv-focused' : ''} ${hiddenCategoryIds?.has(cat.category_id) ? 'category-hidden' : ''}`}
-                                        style={isAll ? undefined : { animationDelay: `${0.1 + index * 0.03}s` }}
                                         onClick={() => handleSelectCategory(cat.category_id)}
                                     >
                                         <div className="category-icon">
