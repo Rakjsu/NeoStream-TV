@@ -345,10 +345,70 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     return !prev;
                 });
             }
+            // 🔘 Numa TV, OK é a tecla de "acionar isto" — e a linha logo acima
+            // ensina exatamente isso. Sem os ramos abaixo, sete linhas de cara
+            // idêntica não respondiam a OK, só a ←→, sem nada na tela dizendo:
+            // a pessoa no sofá parava em "Alto contraste", apertava OK três
+            // vezes e concluía que a opção estava quebrada.
+            else if (focusZone === 'autonext') {
+                setPlayback(prev => {
+                    const autoNextEpisode = !prev.autoNextEpisode;
+                    playbackPrefs.set({ autoNextEpisode });
+                    return { ...prev, autoNextEpisode };
+                });
+            }
+            else if (focusZone === 'resume') {
+                setPlayback(prev => {
+                    const resume = !prev.resume;
+                    playbackPrefs.set({ resume });
+                    return { ...prev, resume };
+                });
+            }
+            else if (focusZone === 'contrast') {
+                const next: ContrastMode = contrast === 'alto' ? 'normal' : 'alto';
+                a11yService.setContrast(next);
+                setContrast(next);
+            }
+            else if (focusZone === 'motion') {
+                const next = !reduceMotion;
+                a11yService.setReduceMotion(next);
+                setReduceMotion(next);
+            }
+            else if (focusZone === 'burnin') {
+                const next = !dimmer;
+                burnIn.setEnabled(next);
+                setDimmer(next);
+            }
+            else if (focusZone === 'gatesettings' || focusZone === 'gatekids') {
+                const gate = focusZone === 'gatesettings' ? 'settings' as const : 'leaveKids' as const;
+                const value = !gates[gate];
+                if (!parentalUnlocked) {
+                    // Mesma trava do ←→: inverter a trava sem provar o PIN
+                    // esvaziava o controle parental inteiro em duas teclas.
+                    setAfterUnlock({ kind: 'gate', gate, value });
+                    setPinMode('unlock');
+                    return;
+                }
+                parentalService.setGates({ [gate]: value });
+                setGates(prev => ({ ...prev, [gate]: value }));
+            }
             else if (focusZone === 'qualitycap') {
                 qualityCap.set(0);
                 setCap(0);
                 setMessage('Teto de qualidade removido. Vale no próximo play.');
+            }
+            // Réguas de vários valores: OK volta ao padrão, o mesmo que o fuso
+            // do EPG e o teto de qualidade já fazem.
+            else if (focusZone === 'buffer') {
+                const bufferProfile: BufferProfile = 'equilibrado';
+                playbackPrefs.set({ bufferProfile });
+                setPlayback(prev => ({ ...prev, bufferProfile }));
+                setMessage('Buffer de volta ao padrão (equilibrado).');
+            }
+            else if (focusZone === 'textscale') {
+                a11yService.setTextScale(100);
+                setTextScale(100);
+                setMessage('Tamanho do texto de volta a 100%.');
             }
             else if (focusZone === 'parentalpin') {
                 if (pinSet) {
