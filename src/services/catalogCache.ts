@@ -10,7 +10,7 @@
 // Por isso cada item é PODADO para os campos que a grade realmente usa, e há
 // um teto de bytes por cima disso.
 
-import { readJson, writeJson, removeKey } from './safeStorage';
+import { readJson, writeRaw, removeKey } from './safeStorage';
 import { scopedKeyFor } from './profileScope';
 import { playlistService } from './playlistService';
 
@@ -45,12 +45,28 @@ function key(kind: CatalogKind): string {
     return scopedKeyFor(`${BASE_KEY}_${kind}_${playlist}`, 'default');
 }
 
+/**
+ * Carimbo de idade numa chave PRÓPRIA, minúscula.
+ *
+ * A guarda de regravação lia a entrada inteira só pra olhar o `at` e jogava o
+ * objeto fora na linha seguinte — ou seja, pra evitar reserializar ~1,2 MB ela
+ * parseava ~1,2 MB, em toda visita à TV ao vivo. O carimbo continua dentro da
+ * entrada (é o que o `readCatalog` usa pra vencer), mas quem só quer a data lê
+ * daqui.
+ *
+ * Ele começa com o mesmo prefixo da entrada, então a poda por quota
+ * (`pruneCaches`) e o `clearCatalogCache` levam os dois juntos.
+ */
+function keyAt(kind: CatalogKind): string {
+    return `${key(kind)}_at`;
+}
+
 /** Lê o catálogo guardado, ou null se não há ou já venceu. */
 export function readCatalog<T>(kind: CatalogKind): T[] | null {
     const entry = readJson<CacheEntry<T> | null>(key(kind), null);
     if (!entry || !Array.isArray(entry.items)) return null;
     if (Date.now() - entry.at > MAX_AGE_MS) {
-        removeKey(key(kind));
+        dropCatalog(kind);
         return null;
     }
     return entry.items;
@@ -66,24 +82,34 @@ export function writeCatalog<T, S>(kind: CatalogKind, items: T[], trim: (item: T
     // Só regrava se o que está guardado já envelheceu. A LiveTV remonta a cada
     // visita, e reserializar centenas de KB toda vez custa caro numa TV — e
     // pior: uma gravação sob quota derruba TODO o cache do TMDB pra caber.
-    const atual = readJson<CacheEntry<S> | null>(key(kind), null);
-    if (atual && Date.now() - atual.at < REWRITE_AFTER_MS) return true;
+    // Só o carimbo — sem isto, a guarda que existe pra não serializar 1,2 MB
+    // começava PARSEANDO 1,2 MB.
+    const gravadoEm = readJson<number>(keyAt(kind), 0);
+    if (gravadoEm > 0 && Date.now() - gravadoEm < REWRITE_AFTER_MS) return true;
 
+    const agora = Date.now();
     const slim = items.map(trim);
-    const json = JSON.stringify({ at: Date.now(), items: slim });
+    const json = JSON.stringify({ at: agora, items: slim } satisfies CacheEntry<S>);
     // INTEIRA ou nada: meia lista de canais é pior que lista nenhuma — o
     // usuário procura um canal que existe, não acha, e conclui que sumiu.
     if (json.length * 2 > MAX_BYTES) {
-        removeKey(key(kind));
+        dropCatalog(kind);
         return false;
     }
 
-    return writeJson(key(kind), { at: Date.now(), items: slim } satisfies CacheEntry<S>).ok;
+    // `writeRaw` com a string que já existe: `writeJson` serializaria a mesma
+    // lista uma segunda vez, e são centenas de KB.
+    const gravou = writeRaw(key(kind), json).ok;
+    if (gravou) writeRaw(keyAt(kind), String(agora));
+    return gravou;
 }
 
 /** Descarta uma entrada do catálogo guardado. */
 export function dropCatalog(kind: CatalogKind): void {
     removeKey(key(kind));
+    // O carimbo tem que ir junto: sozinho, ele faria a próxima gravação ser
+    // pulada por "ainda é recente" — e aí não haveria catálogo nenhum.
+    removeKey(keyAt(kind));
 }
 
 /** Apaga o catálogo guardado de todas as playlists (usado no reset). */
