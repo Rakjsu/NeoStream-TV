@@ -50,7 +50,7 @@
 }
 
 .home-date {
-    font-size: 13px;
+    font-size: 16px;
     color: rgba(156, 163, 175, 1);
     margin-bottom: 6px;
     text-transform: capitalize;
@@ -185,7 +185,7 @@
 }
 
 .stat-label {
-    font-size: 12px;
+    font-size: 18px;
     font-weight: 600;
 }
 
@@ -225,9 +225,10 @@
     overflow-x: auto;
     overflow-y: visible;
     /* Allow zoom to show above */
-    padding: 12px;
-    /* Padding for zoom overflow */
-    margin: -12px;
+    padding: 14px;
+    /* Padding for zoom overflow: o card de 200x317 cresce 12,7px pra cada
+       lado no scale(1.08) do foco — com 12px a borda de foco seria cortada */
+    margin: -14px;
     /* Compensate padding to keep alignment */
     margin-bottom: 8px;
     scrollbar-width: none;
@@ -246,7 +247,9 @@
     cursor: pointer;
     transition: all 0.3s ease;
     overflow: hidden;
-    width: 160px;
+    /* 200 e não 160: com o título a 18px (legível a três metros) o card de
+       160 mostrava ~13 letras por linha */
+    width: 200px;
 }
 
 .content-card:hover,
@@ -269,7 +272,8 @@
 }
 
 .card-image.card-image-poster {
-    height: 200px;
+    /* mesma proporção 4:5 do card de 160x200 */
+    height: 250px;
 }
 
 .card-image img {
@@ -280,12 +284,31 @@
 
 .card-title {
     padding: 10px;
-    font-size: 12px;
+    font-size: 18px;
     color: white;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     text-align: left;
+}
+
+/* Favorites.css também declara um `.card-title` GLOBAL (14px, uma linha só)
+   e entra DEPOIS desta folha no bundle: era ele, e não a regra acima, que
+   pintava o nome do filme embaixo do pôster da Home. Com o escopo a Home
+   manda no próprio título, seja qual for a ordem das folhas.
+   Duas linhas em altura fixa (10 + 2 x 22,5 + 10 = 65px): o nome aparece
+   inteiro na maioria dos casos e os cards da fileira continuam alinhados,
+   tenha o título uma linha ou duas. */
+.home-page .card-title {
+    font-size: 18px;
+    line-height: 1.25;
+    height: 65px;
+    margin: 0;
+    white-space: normal;
+    overflow-wrap: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 /* Quick Access */
@@ -297,7 +320,9 @@
     display: grid;
     grid-template-columns: repeat(6, 1fr);
     gap: 12px;
-    max-width: 720px;
+    /* 1080 e não 720: com o rótulo a 18px, "Configurações" não cabia na
+       célula de 110px (nem a 12px cabia inteiro) */
+    max-width: 1080px;
 }
 
 .quick-item {
@@ -328,7 +353,7 @@
 
 .quick-label {
     color: white;
-    font-size: 12px;
+    font-size: 18px;
     font-weight: 500;
 }
 
@@ -341,7 +366,7 @@
     justify-content: space-between;
     align-items: center;
     color: rgba(156, 163, 175, 0.5);
-    font-size: 11px;
+    font-size: 16px;
 }
 /* Continuar Assistindo */
 .continue-progress {
@@ -362,7 +387,9 @@
 
 .continue-episode {
     color: rgba(255, 255, 255, 0.6);
-    font-size: 0.85em;
+    /* px e não em: 0.85em do título dava 10–12px, conforme a folha que
+       ganhava o `.card-title` no bundle */
+    font-size: 16px;
 }
 
 /* Badge de novos episódios (fileira da Home) */
@@ -389,7 +416,12 @@
 .top10-rank {
     position: absolute;
     left: -6px;
-    bottom: 34px;
+    /* O número pousa logo acima da linha do título: a caixa do
+       `.home-page .card-title` tem 65px e o texto começa 10px abaixo do
+       topo dela (65 - 10 = 55). Os 34px de antes eram do título de uma
+       linha só: com a caixa nova o "1" e o "10" cobririam as primeiras
+       letras do nome do filme. */
+    bottom: 55px;
     font-size: 54px;
     font-weight: 900;
     color: rgba(255, 255, 255, 0.85);
