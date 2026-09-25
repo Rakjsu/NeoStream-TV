@@ -69,6 +69,15 @@
       boot.innerHTML = '<div><strong>Erro ao carregar NeoStream</strong><span>' + message + '</span></div>';
     };
 
+    // Chamado por quem SABE que renderizou (src/main.tsx, num efeito depois
+    // do primeiro commit do React) e tambem pelo laco de conferencia la
+    // embaixo. Idempotente de proposito: os dois podem chegar.
+    window.__NEOSTREAM_PRONTO__ = function () {
+      window.__NEOSTREAM_BOOTED__ = true;
+      var boot = document.getElementById('boot-status');
+      if (boot) boot.className = 'ready';
+    };
+
     window.onerror = function (message, source, line, column) {
       window.__NEOSTREAM_BOOT_ERROR__(String(message) + ' em ' + source + ':' + line + ':' + column);
     };
@@ -103,13 +112,26 @@
     var app = document.createElement('script');
     app.src = './assets/index.js?v=' + version;
     app.onload = function () {
-      setTimeout(function () {
-        var boot = document.getElementById('boot-status');
-        if (boot && document.getElementById('root').children.length > 0) {
-          boot.className = 'ready';
-          window.__NEOSTREAM_BOOTED__ = true;
+      // O primeiro commit do React nao tem hora pra acontecer: numa CPU de TV
+      // de 2015, com o heap sob pressao depois de 1 MB de bundle, 300 ms e
+      // chute. E era UMA tentativa: passado o prazo, o overlay ficava por cima
+      // do app pra sempre — ele nao tem zona de foco nem tratador de tecla,
+      // entao o D-pad nao faz nada e a unica saida e matar o app.
+      var tentativas = 0;
+      var conferir = setInterval(function () {
+        tentativas += 1;
+        var root = document.getElementById('root');
+        if (window.__NEOSTREAM_BOOTED__ || (root && root.children.length > 0)) {
+          clearInterval(conferir);
+          window.__NEOSTREAM_PRONTO__();
+        } else if (tentativas >= 300) {
+          // 30 s sem um unico no dentro do #root: melhor dizer o que houve do
+          // que deixar um retangulo preto mudo. Se o app subir depois disso, o
+          // __NEOSTREAM_PRONTO__ do main.tsx ainda tira a tela da frente.
+          clearInterval(conferir);
+          window.__NEOSTREAM_BOOT_ERROR__('O app nao terminou de abrir.');
         }
-      }, 300);
+      }, 100);
     };
     app.onerror = function () {
       window.__NEOSTREAM_BOOT_ERROR__('Nao foi possivel carregar assets/index.js.');
