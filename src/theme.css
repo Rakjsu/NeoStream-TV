@@ -125,13 +125,19 @@ html[data-textscale="130"] body {
 
 /* --- Reduzir animações (item 65) ---
    TVs antigas engasgam em transição de escala; e há quem simplesmente passe
-   mal com movimento. Zerar a duração mantém o estado final de cada regra. */
+   mal com movimento. Zerar a duração mantém o estado final de cada regra.
+   O ATRASO também zera: as entradas escalonadas usam fill `backwards`/`both`,
+   então sem isto o elemento passava a espera inteira em `opacity: 0` — o modo
+   de acessibilidade trocava "movimento" por "tela vazia". O `!important` da
+   folha vence o `animationDelay` inline dos cards. */
 html[data-motion="reduzido"] *,
 html[data-motion="reduzido"] *::before,
 html[data-motion="reduzido"] *::after {
     animation-duration: 0.001ms !important;
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    transition-delay: 0s !important;
     scroll-behavior: auto !important;
 }
 
