@@ -19,6 +19,7 @@ interface SondaProps {
     onEnter?: (fromInput?: boolean) => void;
     onBack?: () => void;
     onAction?: (a: string) => void;
+    onPage?: (d: 'up' | 'down') => void;
     enabled?: boolean;
     comInput?: boolean;
 }
@@ -296,5 +297,91 @@ describe('retorno de toque do OK', () => {
         campo.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
         expect(alvo.classList.contains('ns-pressed')).toBe(false);
         alvo.remove();
+    });
+});
+
+describe('CH+/CH− (onPage)', () => {
+    // O Tizen manda o CH± como 'ChannelUp'/'ChannelDown' (ou 'Unidentified')
+    // com keyCode 427/428; teclado de PC manda PageUp/PageDown (33/34). O
+    // player e a grade de filmes usam 'MediaChannelUp'/'MediaChannelDown'.
+    it.each([
+        ['ChannelUp', 'up'], ['MediaChannelUp', 'up'], ['PageUp', 'up'], [427, 'up'], [33, 'up'],
+        ['ChannelDown', 'down'], ['MediaChannelDown', 'down'], ['PageDown', 'down'], [428, 'down'], [34, 'down'],
+    ])('%s pagina para %s e é consumida', (valor, direcao) => {
+        const onPage = vi.fn();
+        render(<Sonda onPage={onPage} />);
+        const evento = tecla(valor);
+        expect(onPage).toHaveBeenCalledTimes(1);
+        expect(onPage).toHaveBeenCalledWith(direcao);
+        expect(evento.defaultPrevented).toBe(true);
+    });
+
+    it('key "Unidentified" com o keyCode do CH− (428)', () => {
+        const onPage = vi.fn();
+        render(<Sonda onPage={onPage} />);
+        window.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Unidentified', keyCode: 428, bubbles: true, cancelable: true,
+        }));
+        expect(onPage).toHaveBeenCalledWith('down');
+    });
+
+    // O player (troca de canal) e a grade de filmes escutam CH± por conta
+    // própria. Tela que não pediu paginação não pode engolir a tecla deles
+    // nem transformá-la em seta ou ação.
+    it.each(['ChannelUp', 427, 'PageDown', 34])('sem onPage, %s passa direto', (valor) => {
+        const onNavigate = vi.fn();
+        const onAction = vi.fn();
+        const onEnter = vi.fn();
+        const onBack = vi.fn();
+        render(<Sonda onNavigate={onNavigate} onAction={onAction} onEnter={onEnter} onBack={onBack} />);
+        expect(tecla(valor).defaultPrevented).toBe(false);
+        expect(onNavigate).not.toHaveBeenCalled();
+        expect(onAction).not.toHaveBeenCalled();
+        expect(onEnter).not.toHaveBeenCalled();
+        expect(onBack).not.toHaveBeenCalled();
+    });
+
+    it('com onPage, CH± não vira seta', () => {
+        const onNavigate = vi.fn();
+        render(<Sonda onNavigate={onNavigate} onPage={vi.fn()} />);
+        tecla(427);
+        tecla(428);
+        expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    it('desligado não pagina', () => {
+        const onPage = vi.fn();
+        render(<Sonda enabled={false} onPage={onPage} />);
+        expect(tecla(428).defaultPrevented).toBe(false);
+        expect(onPage).not.toHaveBeenCalled();
+    });
+
+    it('dentro de um campo de texto, PageDown fica com o campo', () => {
+        const onPage = vi.fn();
+        const { getByTestId } = render(<Sonda comInput onPage={onPage} />);
+        const campo = getByTestId('campo') as HTMLInputElement;
+        campo.focus();
+        expect(tecla('PageDown', campo).defaultPrevented).toBe(false);
+        expect(onPage).not.toHaveBeenCalled();
+    });
+
+    // A tela passa um onPage novo a cada render (fecha sobre a lista do
+    // momento); o hook tem que chamar o ATUAL, não o da montagem.
+    it('usa o onPage do render mais recente', () => {
+        const antigo = vi.fn();
+        const atual = vi.fn();
+        const { rerender } = render(<Sonda onPage={antigo} />);
+        rerender(<Sonda onPage={atual} />);
+        tecla(428);
+        expect(antigo).not.toHaveBeenCalled();
+        expect(atual).toHaveBeenCalledWith('down');
+    });
+
+    it('desmontar leva a escuta do CH± junto', () => {
+        const onPage = vi.fn();
+        const { unmount } = render(<Sonda onPage={onPage} />);
+        unmount();
+        expect(tecla(428).defaultPrevented).toBe(false);
+        expect(onPage).not.toHaveBeenCalled();
     });
 });

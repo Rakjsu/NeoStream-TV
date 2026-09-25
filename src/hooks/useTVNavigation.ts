@@ -24,6 +24,12 @@ const TV_KEYS = {
     GREEN: ['ColorF1Green', '404'],
     YELLOW: ['ColorF2Yellow', '405'],
     BLUE: ['ColorF3Blue', '406'],
+
+    // CH+/CH− (427/428 no Tizen, registradas em App.tsx como 'ChannelUp'/
+    // 'ChannelDown') e PageUp/PageDown do teclado: paginam listas longas.
+    // 'MediaChannelUp' fica pela convenção do player e da grade de filmes.
+    PAGE_UP: ['ChannelUp', 'MediaChannelUp', 'PageUp', '427', '33'],
+    PAGE_DOWN: ['ChannelDown', 'MediaChannelDown', 'PageDown', '428', '34'],
 };
 
 type Direction = 'up' | 'down' | 'left' | 'right';
@@ -40,6 +46,13 @@ interface UseTVNavigationOptions {
      * refocaria o input, deixando o IME do Tizen piscando num loop sem saída.
      */
     onEnter?: (fromInput?: boolean) => void;
+    /**
+     * CH+ ('up') / CH− ('down'): salto de uma página na lista da tela.
+     * Opcional e separado do onAction de propósito: só quem passa este
+     * callback consome a tecla (preventDefault) — o player e a grade de
+     * filmes têm listener próprio de CH± e continuam intocados.
+     */
+    onPage?: (direction: 'up' | 'down') => void;
     enabled?: boolean;
 }
 
@@ -87,7 +100,7 @@ function piscarFocado(): void {
 }
 
 export function useTVNavigation(options: UseTVNavigationOptions = {}) {
-    const { onNavigate, onAction, onBack, onEnter, enabled = true } = options;
+    const { onNavigate, onAction, onBack, onEnter, onPage, enabled = true } = options;
 
     const handleKeyDown = useCallback((event: KeyboardEvent) => {
         if (!enabled) return;
@@ -131,6 +144,12 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}) {
         } else if (matchKey(event, TV_KEYS.RIGHT)) {
             if (onNavigate) { event.preventDefault(); onNavigate('right'); }
         }
+        // Página (CH±)
+        else if (matchKey(event, TV_KEYS.PAGE_UP)) {
+            if (onPage) { event.preventDefault(); onPage('up'); }
+        } else if (matchKey(event, TV_KEYS.PAGE_DOWN)) {
+            if (onPage) { event.preventDefault(); onPage('down'); }
+        }
         // Actions
         else if (matchKey(event, TV_KEYS.ENTER)) {
             if (onEnter || onAction) {
@@ -164,7 +183,7 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}) {
         } else if (matchKey(event, TV_KEYS.BLUE)) {
             if (onAction) { event.preventDefault(); onAction('blue'); }
         }
-    }, [enabled, onNavigate, onAction, onBack, onEnter]);
+    }, [enabled, onNavigate, onAction, onBack, onEnter, onPage]);
 
     useEffect(() => {
         // Custom handler for Tizen hardware 'back' key when keyboard is open
