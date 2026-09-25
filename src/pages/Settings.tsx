@@ -3,6 +3,7 @@ import { storage } from '../services/storage';
 import { themeService, ACCENTS, ACCENT_IDS, BACKGROUNDS, BACKGROUND_IDS, type AccentId, type BackgroundId } from '../services/themeService';
 import { usageStats, type UsageSummary } from '../services/usageStats';
 import { playlistService, type PlaylistEntry } from '../services/playlistService';
+import { sectionVisibility, type SecoesVisiveis } from '../services/sectionVisibility';
 import { epgOffset } from '../services/epgService';
 import { bootLastChannel } from '../services/liveExtras';
 import { qualityCap, QUALITY_CAPS, type QualityCap } from '../services/playerPrefs';
@@ -23,6 +24,7 @@ import './Settings.css';
 
 type FocusZone =
     | 'bg' | 'accent' | 'lang' | 'playlists'
+    | 'showtv' | 'showvod'
     | 'epgoffset' | 'bootlast'
     | 'qualitycap' | 'autonext' | 'resume' | 'buffer'
     | 'contrast' | 'textscale' | 'motion' | 'burnin'
@@ -34,6 +36,7 @@ type FocusZone =
 // A ORDEM aqui é a navegação vertical da página inteira
 const ZONES: FocusZone[] = [
     'bg', 'accent', 'lang', 'playlists',
+    'showtv', 'showvod',
     'epgoffset', 'bootlast',
     'qualitycap', 'autonext', 'resume', 'buffer',
     'contrast', 'textscale', 'motion', 'burnin',
@@ -84,6 +87,8 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     // Playlists (multi-provedor)
     const [playlists, setPlaylists] = useState<PlaylistEntry[]>(() => playlistService.list());
     const [activePlaylistId, setActivePlaylistId] = useState<string | null>(() => playlistService.getActiveId());
+    // Seções do menu (TV ao vivo / Filmes e Séries): antes só o Login mexia
+    const [secoes, setSecoes] = useState<SecoesVisiveis>(() => sectionVisibility.get());
 
     // TV ao vivo: fuso do EPG (item 15) + boot no último canal (item 14)
     const [epgOffsetHours, setEpgOffsetHours] = useState(() => epgOffset.get());
@@ -190,6 +195,12 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
         setMessage('Idioma alterado. Telas traduzidas aplicam na hora.');
     };
 
+    // Mesmas chaves dos checkboxes do Login; o serviço espelha na playlist
+    // ativa e avisa a sidebar, que re-renderiza na hora.
+    const applySecoes = (parcial: Partial<SecoesVisiveis>) => {
+        setSecoes(sectionVisibility.set(parcial));
+    };
+
     // Trocar de playlist re-autentica do zero (reload é o caminho robusto na TV)
     const switchPlaylist = (entry: PlaylistEntry) => {
         if (entry.id === activePlaylistId) return;
@@ -236,6 +247,10 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 setLangIndex(prev => direction === 'left' ? Math.max(0, prev - 1) : Math.min(LANGUAGES.length - 1, prev + 1));
             } else if (focusZone === 'playlists') {
                 setPlaylistIndex(prev => direction === 'left' ? Math.max(0, prev - 1) : Math.min(playlistSlots - 1, prev + 1));
+            } else if (focusZone === 'showtv') {
+                applySecoes({ tv: direction === 'right' });
+            } else if (focusZone === 'showvod') {
+                applySecoes({ vod: direction === 'right' });
             } else if (focusZone === 'epgoffset') {
                 setEpgOffsetHours(prev => {
                     const next = Math.max(-12, Math.min(12, prev + (direction === 'left' ? -1 : 1)));
@@ -334,6 +349,8 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     if (entry) switchPlaylist(entry);
                 }
             }
+            else if (focusZone === 'showtv') applySecoes({ tv: !secoes.tv });
+            else if (focusZone === 'showvod') applySecoes({ vod: !secoes.vod });
             else if (focusZone === 'epgoffset') {
                 epgOffset.set(0);
                 setEpgOffsetHours(0);
@@ -479,6 +496,8 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             accent: 'sec-aparencia',
             lang: 'sec-idioma',
             playlists: 'sec-playlists',
+            showtv: 'sec-playlists',
+            showvod: 'sec-playlists',
             epgoffset: 'sec-tv',
             bootlast: 'sec-tv',
             qualitycap: 'sec-player',
@@ -695,6 +714,23 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                             ➕ Adicionar
                         </button>
                     </div>
+
+                    {/* Os checkboxes "Incluir" do Login, pra quem já entrou */}
+                    <div className="settings-row">
+                        <span className="settings-label">Mostrar TV ao vivo no menu</span>
+                        <span className={`settings-value ${focusZone === 'showtv' ? 'focused' : ''}`}>
+                            {secoes.tv ? 'Ligado' : 'Desligado'}
+                        </span>
+                    </div>
+                    <div className="settings-row">
+                        <span className="settings-label">Mostrar Filmes e Séries no menu</span>
+                        <span className={`settings-value ${focusZone === 'showvod' ? 'focused' : ''}`}>
+                            {secoes.vod ? 'Ligado' : 'Desligado'}
+                        </span>
+                    </div>
+                    <p className="settings-muted">
+                        Vale para a playlist ativa, como as opções "Incluir" do login.
+                    </p>
                 </section>
 
                 {/* TV ao Vivo */}

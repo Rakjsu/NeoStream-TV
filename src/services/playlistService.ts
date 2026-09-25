@@ -200,6 +200,20 @@ export const playlistService = {
         return true;
     },
 
+    /**
+     * Grava as flags de TV/VOD na playlist ATIVA. As Configurações mudam as
+     * seções do menu depois do login; sem espelhar aqui, o `setActive` acima
+     * reaplicava as flags antigas da entrada ao voltar de outro provedor.
+     */
+    setActiveSections(includeTV: boolean, includeVOD: boolean): void {
+        const data = read();
+        const entry = data.playlists.find(p => p.id === data.activeId);
+        if (!entry) return;
+        entry.includeTV = includeTV;
+        entry.includeVOD = includeVOD;
+        write(data);
+    },
+
     /** Remove uma playlist (a ativa não pode ser removida). */
     remove(id: string): boolean {
         const data = read();
