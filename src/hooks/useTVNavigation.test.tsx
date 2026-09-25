@@ -217,3 +217,84 @@ describe('tizenhwkey', () => {
         expect(document.activeElement).not.toBe(campo);
     });
 });
+
+describe('as duas fontes da tecla', () => {
+    /** A TV real manda os dois campos: `key` inútil e `keyCode` verdadeiro. */
+    function teclaTV(key: string, keyCode: number, alvo: EventTarget = window) {
+        alvo.dispatchEvent(new KeyboardEvent('keydown', {
+            key, keyCode, bubbles: true, cancelable: true,
+        }));
+    }
+
+    // Este é o caso que o `event.key || String(event.keyCode)` não pegava: com
+    // 'Unidentified' o `||` fica satisfeito e o keyCode nunca é consultado.
+    it('key "Unidentified" não impede o keyCode de identificar a seta', () => {
+        const onNavigate = vi.fn();
+        render(<Sonda onNavigate={onNavigate} />);
+        teclaTV('Unidentified', 40);
+        expect(onNavigate).toHaveBeenCalledWith('down');
+    });
+
+    it('key "Unidentified" com o OK do Samsung (29443)', () => {
+        const onEnter = vi.fn();
+        render(<Sonda onEnter={onEnter} />);
+        teclaTV('Unidentified', 29443);
+        expect(onEnter).toHaveBeenCalled();
+    });
+
+    // '8' é o keyCode do Backspace e está na lista do Voltar. Comparando as
+    // duas fontes contra os dois tipos de código, o dígito 8 do teclado
+    // numérico do controle deixa de fechar a tela.
+    it('o dígito 8 não é Voltar', () => {
+        const onBack = vi.fn();
+        render(<Sonda onBack={onBack} />);
+        teclaTV('8', 56);
+        expect(onBack).not.toHaveBeenCalled();
+    });
+
+    it('mas o Backspace continua sendo Voltar', () => {
+        const onBack = vi.fn();
+        render(<Sonda onBack={onBack} />);
+        teclaTV('Backspace', 8);
+        expect(onBack).toHaveBeenCalled();
+    });
+
+    it('keyCode 8 sozinho (sem key) continua sendo Voltar', () => {
+        const onBack = vi.fn();
+        render(<Sonda onBack={onBack} />);
+        teclaTV('', 8);
+        expect(onBack).toHaveBeenCalled();
+    });
+});
+
+describe('retorno de toque do OK', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('o elemento focado fica marcado por um instante', () => {
+        vi.useFakeTimers();
+        const alvo = document.createElement('div');
+        alvo.className = 'tv-focused';
+        document.body.appendChild(alvo);
+        render(<Sonda onEnter={vi.fn()} />);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+        expect(alvo.classList.contains('ns-pressed')).toBe(true);
+
+        vi.advanceTimersByTime(200);
+        expect(alvo.classList.contains('ns-pressed')).toBe(false);
+        alvo.remove();
+    });
+
+    it('OK dentro de um campo de texto não pisca nada', () => {
+        const alvo = document.createElement('div');
+        alvo.className = 'tv-focused';
+        document.body.appendChild(alvo);
+        const { getByTestId } = render(<Sonda comInput onEnter={vi.fn()} />);
+        const campo = getByTestId('campo') as HTMLInputElement;
+        campo.focus();
+
+        campo.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+        expect(alvo.classList.contains('ns-pressed')).toBe(false);
+        alvo.remove();
+    });
+});

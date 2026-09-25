@@ -119,6 +119,16 @@ body {
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
+/* Retorno de toque do OK (140 ms). O foco na TV é a única pista de onde o
+   usuário está; sem um "apertei" visível, ação que demora vira OK duplo.
+   `!important` pelo mesmo motivo do theme.css: regras de página como
+   `.mylist-page .card.tv-focused` têm especificidade maior que esta. */
+.ns-pressed {
+    transform: scale(0.94) !important;
+    filter: brightness(1.3);
+    transition: transform 60ms ease-out, filter 60ms ease-out;
+}
+
 .tv-focused {
   transform: scale(1.05);
   box-shadow: 0 0 0 4px var(--focus-ring), var(--shadow-md);
