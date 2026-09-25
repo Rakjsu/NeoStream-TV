@@ -532,6 +532,55 @@ export function VideoPlayer({
         }, delayMs);
     }, [reload, isLiveContent]);
 
+    // "Tentar de novo" da tela de erro. O watchdog desiste depois de
+    // MAX_RECONNECT_ATTEMPTS e marca streamFailedRef — a partir daí o
+    // scheduleReconnect retorna na primeira linha e NADA mais tenta sozinho.
+    // Sem zerar esses três, o reload() sairia mudo.
+    const tentarDeNovo = useCallback(() => {
+        streamFailedRef.current = false;
+        reconnectAttemptRef.current = 0;
+        setReconnectAttempt(0);
+        setError(null);
+
+        // Um reconnect pode estar agendado (o erro aparece ANTES da última
+        // tentativa vencer o timer). Sem cancelar, ele dispara um segundo
+        // reload() em cima deste — e como acabamos de zerar o contador, o
+        // overlay volta anunciando "Reconectando… 0/4".
+        if (reconnectTimerRef.current) {
+            clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
+        }
+        setReconnecting(false);
+
+        // A POSIÇÃO. O reload() recria o pipeline — o useHls faz
+        // `video.pause(); video.src=''; removeAttribute('src'); load()` — e
+        // isso zera o currentTime. Quem reposiciona depois é o
+        // handleLoadedMetadata, e só quando o reloadResumeRef está preenchido.
+        //
+        // Os outros dois chamadores de reload() já faziam isto (o
+        // scheduleReconnect e o handler de visibilitychange); este não fazia, e
+        // o resultado era o filme de 1h20 recomeçando do zero. Pior: trinta
+        // segundos depois o onTimeUpdate passa do piso de 30 s do
+        // progressService.saveMovie e GRAVA ~30 por cima da posição real do
+        // "Continuar assistindo" — o usuário perde onde estava mesmo que
+        // desista e saia.
+        //
+        // A prop `resumeTime` não cobre: o effect que a aplica está travado por
+        // `resumeAppliedRef`, que só solta quando o conteúdo muda.
+        const video = videoRef.current;
+        if (video) {
+            resumeAfterReloadRef.current = !video.paused;
+            if (video.currentTime > 5 && (!isLiveContent || pausedLiveSrcRef.current)) {
+                reloadResumeRef.current = video.currentTime;
+            }
+        }
+
+        // Loading, não "Reconectando": o contador de tentativas acabou de ser
+        // zerado e o overlay sairia com "tentativa 0/4".
+        setLoading(true);
+        reload();
+    }, [reload, isLiveContent]);
+
     // Voltou a tocar → zera o ciclo de reconexão
     useEffect(() => {
         const video = videoRef.current;
@@ -1321,6 +1370,11 @@ export function VideoPlayer({
     // TV Navigation handler
     const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
         if (stillWatching) return; // só OK (continuar) ou Voltar (sair)
+        // Só sequestra as setas quando NÃO há camada aberta. O menu ⚙ e a lista
+        // 📺 desenham ACIMA do erro (z-index 100 contra 50) e continuam
+        // visíveis e operáveis; com um `if (error) return` seco, ↑↓← morriam
+        // sob um menu que o usuário está enxergando.
+        if (error && playerFocus !== 'menu' && playerFocus !== 'zap-list') return;
         resetHideControlsTimer();
 
         if (playerFocus === 'zap-list') {
@@ -1387,11 +1441,19 @@ export function VideoPlayer({
         }
     }, [playerFocus, menu, menuEntries.length, channelList?.length, focusedControl, getControlButtons,
         resetHideControlsTimer, closeZapList, openMenu, closeMenu, nudgeSeek, commitSeek, isLiveContent,
-        duration, stillWatching]);
+        duration, stillWatching, error]);
 
     const handleEnter = useCallback(() => {
         if (stillWatching) {
             confirmStillWatching();
+            return;
+        }
+        // Com a tela de erro no ar, OK é "tentar de novo" — o único botão
+        // que existia ali era de mouse, e a TV não tem mouse. Mas se houver
+        // camada aberta por cima, o OK é dela: quem está olhando o menu espera
+        // que o OK escolha o item focado, não que recarregue o stream.
+        if (error && playerFocus !== 'menu' && playerFocus !== 'zap-list') {
+            tentarDeNovo();
             return;
         }
         // Com a barra escondida, o primeiro OK só TRAZ os controles de volta.
@@ -1420,10 +1482,18 @@ export function VideoPlayer({
         }
     }, [playerFocus, menuIndex, menuEntries, executeControlAction, resetHideControlsTimer,
         channelList, zapIndex, onSwitchChannel, closeZapList, commitSeek, togglePlay,
-        stillWatching, confirmStillWatching, showControls]);
+        stillWatching, confirmStillWatching, showControls, error, tentarDeNovo]);
 
     const handleBack = useCallback(() => {
         if (stillWatching) {
+            handleClose();
+            return;
+        }
+        // Idem para o Voltar: com o menu aberto ele FECHA O MENU (o degrau de
+        // sempre, tratado logo abaixo). Fechar o player inteiro aqui perdia o
+        // canal sem que o usuário tivesse pedido isso — ele só queria sair da
+        // camada que abriu.
+        if (error && onClose && playerFocus !== 'menu' && playerFocus !== 'zap-list') {
             handleClose();
             return;
         }
@@ -1444,7 +1514,7 @@ export function VideoPlayer({
             handleClose();
         }
     }, [playerFocus, closeZapList, closeMenu, openMenu, menu, commitSeek, handleClose, onClose,
-        stillWatching, resetHideControlsTimer]);
+        stillWatching, resetHideControlsTimer, error]);
 
     // TV Navigation hook
     useTVNavigation({
@@ -1638,7 +1708,7 @@ export function VideoPlayer({
             )}
 
             {/* Loading Spinner */}
-            {loading && (
+            {loading && !error && (
                 <div className="video-player-loading">
                     <div className="modern-spinner">
                         <div className="spinner-ring"></div>
@@ -1667,7 +1737,10 @@ export function VideoPlayer({
             {error && (
                 <div className="video-player-error">
                     <p>⚠️ {error}</p>
-                    {onClose && <button onClick={handleClose}>Fechar</button>}
+                    <div className="video-player-error-actions">
+                        <button className="tv-focused" onClick={tentarDeNovo}>Tentar de novo (OK)</button>
+                        {onClose && <button onClick={handleClose}>Fechar (Voltar)</button>}
+                    </div>
                 </div>
             )}
 

@@ -226,6 +226,17 @@
     color: white;
 }
 
+/* Dois botões lado a lado; sem `gap`, que o Chromium 69 do Tizen ignora
+   em flex — a margem entre eles vem do próprio botão. */
+.video-player-error-actions {
+    display: flex;
+    justify-content: center;
+}
+
+.video-player-error-actions button + button {
+    margin-left: 12px;
+}
+
 .video-player-error button {
     margin-top: 12px;
     padding: 8px 16px;
