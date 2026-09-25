@@ -431,6 +431,15 @@
     margin-left: 18px;
 }
 
+/* Dica do 🔴 na fileira "Continuar Assistindo" (T029) */
+.section-hint {
+    margin-left: 14px;
+    /* Texto de apoio lido a 3 metros: piso de 16px (ver tipografia10ft.test.ts). */
+    font-size: 16px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.55);
+}
+
 /* Falha ao carregar o catálogo (antes a Home só mostrava zeros) */
 .home-load-error {
     position: relative;
