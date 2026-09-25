@@ -1,7 +1,8 @@
 // Sidebar Navigation Component - Matching NeoStream Desktop Design
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useReducer } from 'react';
 import { useConfirmacaoDupla } from '../../hooks/useConfirmacaoDupla';
+import { SECOES_EVENT, sectionVisibility } from '../../services/sectionVisibility';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
 import { useFocusZone } from '../../contexts/FocusContext';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -42,9 +43,15 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
     const { setFocusZone } = useFocusZone();
     const { t } = useTranslation();
 
-    // Get include preferences from localStorage
-    const includeTV = localStorage.getItem('includeTV') !== 'false';
-    const includeVOD = localStorage.getItem('includeVOD') !== 'false';
+    // Seções visíveis (TV ao vivo / Filmes e Séries). Lidas no render, como
+    // sempre foram; as Configurações mudam as chaves com a sidebar montada e
+    // avisam pelo SECOES_EVENT — sem o aviso, nada re-renderizava o menu.
+    const [, redesenhar] = useReducer((n: number) => n + 1, 0);
+    useEffect(() => {
+        window.addEventListener(SECOES_EVENT, redesenhar);
+        return () => window.removeEventListener(SECOES_EVENT, redesenhar);
+    }, []);
+    const { tv: includeTV, vod: includeVOD } = sectionVisibility.get();
 
     // Filter menu items based on preferences
     const menuItems = useMemo(() => {
@@ -58,6 +65,23 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
     const [focusedIndex, setFocusedIndex] = useState(
         menuItems.findIndex(item => item.id === activeItem)
     );
+
+    // O foco é um ÍNDICE na lista filtrada: quando uma seção entra ou sai, o
+    // mesmo número passa a apontar pra outro item — ou pro botão de sair
+    // (Configurações é o 8º; tirar Filmes e Séries encolhe a lista em dois).
+    // Ajusta durante o render, pelo id do item que estava focado.
+    const [menuDoFoco, setMenuDoFoco] = useState(menuItems);
+    if (menuDoFoco !== menuItems) {
+        setMenuDoFoco(menuItems);
+        if (focusedIndex >= menuDoFoco.length) {
+            // Perfil e Sair ficam no mesmo lugar relativo ao fim da lista
+            setFocusedIndex(menuItems.length + (focusedIndex - menuDoFoco.length));
+        } else {
+            const id = menuDoFoco[focusedIndex]?.id;
+            const mesmo = menuItems.findIndex(item => item.id === id);
+            setFocusedIndex(mesmo >= 0 ? mesmo : Math.max(0, menuItems.findIndex(item => item.id === activeItem)));
+        }
+    }
     // O índice acima é só o valor INICIAL: a sidebar nunca desmonta, então
     // página trocada por fora do D-pad dela (card da Home, Voltar subindo pra
     // Home) deixava o anel no item antigo — e um OK confiando no anel levava
