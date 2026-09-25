@@ -61,8 +61,13 @@ export interface UsageSummary {
 }
 
 export const usageStats = {
-    record(kind: UsageKind, name: string, seconds: number): void {
-        if (seconds < MIN_SESSION_SECONDS) return;
+    /**
+     * @param continuacao trecho de uma sessão que JÁ entrou na conta. O piso de
+     * 15 s existe pra descartar blip de zapping, não pra comer o rabo de uma
+     * sessão longa: sem esta distinção, uma sessão de 74 s gravaria 60.
+     */
+    record(kind: UsageKind, name: string, seconds: number, continuacao = false): void {
+        if (seconds < (continuacao ? 1 : MIN_SESSION_SECONDS)) return;
         const data = read();
         const day = localDay(Date.now());
         const dayBucket = data.days[day] || (data.days[day] = {});
