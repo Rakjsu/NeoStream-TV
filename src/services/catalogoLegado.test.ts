@@ -315,6 +315,53 @@ describe('migração de dado legado', () => {
         expect(playlistService.list()).toEqual([]);
     });
 
+    // Uma entrada estragada em `neostream_playlists` — gravação interrompida
+    // (na TV o aparelho é desligado na tomada) ou migração antiga — fazia o
+    // `normalizarUrlDoServidor` lançar DENTRO do `.find` do
+    // `registerFromLogin`. O Login traduz `Invalid URL` para "URL do servidor
+    // inválida": a pessoa digitava tudo certo, a credencial já tinha sido
+    // salva, e a tela acusava a URL DELA. Só reabrindo o app é que entrava.
+    it('playlist quebrada em storage não derruba o login seguinte', () => {
+        localStorage.setItem('neostream_playlists', JSON.stringify({
+            playlists: [{ id: 'velha', url: '', username: 'joao', alias: 'p', addedAt: 1 }],
+            activeId: 'velha',
+        }));
+
+        expect(() => playlistService.registerFromLogin({
+            url: 'http://painel.com:8080', username: 'joao', password: 'x',
+        })).not.toThrow();
+
+        expect(playlistService.list().map(p => p.url)).toEqual(['http://painel.com:8080']);
+    });
+
+    it('entrada sem id ou sem url some da lista em vez de derrubar quem a percorre', () => {
+        localStorage.setItem('neostream_playlists', JSON.stringify({
+            playlists: [null, { url: 'http://sem-id' }, { id: 'sem-url' }, { id: 'ok', url: 'http://b', username: 'j' }],
+            activeId: 'ok',
+        }));
+        expect(playlistService.list().map(p => p.id)).toEqual(['ok']);
+    });
+
+    // Contraprova: sem ela, um "não casa com ninguém" faria o teste de cima
+    // passar e criaria uma playlist nova do MESMO provedor a cada login.
+    it('a entrada do mesmo provedor continua sendo reaproveitada e migrada', () => {
+        localStorage.setItem('neostream_playlists', JSON.stringify({
+            playlists: [{
+                id: 'a', alias: 'p', addedAt: 1, username: 'joao', password: 'velha',
+                url: 'http://painel.com:8080/get.php?username=joao&password=1234',
+            }],
+            activeId: 'a',
+        }));
+
+        playlistService.registerFromLogin({ url: 'http://painel.com:8080', username: 'joao', password: 'nova' });
+
+        const lista = playlistService.list();
+        expect(lista).toHaveLength(1);
+        expect(lista[0].id).toBe('a');
+        expect(lista[0].url).toBe('http://painel.com:8080'); // migrou pra URL limpa
+        expect(lista[0].password).toBe('nova');
+    });
+
     // O escopo por perfil chegou depois: as listas são de QUEM assiste.
     it('as listas legadas ficam no perfil que as tinha', () => {
         localStorage.setItem('neostream_favorites', JSON.stringify([{ id: '1', type: 'movie' }]));
