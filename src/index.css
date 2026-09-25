@@ -342,6 +342,14 @@ body {
     text-overflow: ellipsis;
 }
 
+/* Dica de tecla da tela de crash: quem chegou aqui precisa LER isso do sofá,
+   então vai no tamanho de texto normal, não no da mensagem técnica acima. */
+.app-crash-hint {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: var(--font-size-sm);
+    margin-top: 18px;
+}
+
 .app-offline-actions {
     display: flex;
     margin-top: 24px;
