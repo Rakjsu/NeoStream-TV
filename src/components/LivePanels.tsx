@@ -12,6 +12,8 @@ import './LivePanels.css';
 
 const MAX_FAVORITES = 20; // teto de requisições numa TV fraca
 const MAX_SPORTS_CHANNELS = 25;
+/** Linhas puladas por CH+/CH− (o painel mostra ~14 por vez). */
+const PAGINA = 10;
 
 function formatClock(ms: number): string {
     const d = new Date(ms);
@@ -66,6 +68,11 @@ export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: Favorit
                 onMove(channel, direction === 'left' ? -1 : 1);
                 setFocusedIndex(prev => Math.max(0, Math.min(visible.length - 1, prev + (direction === 'left' ? -1 : 1))));
             }
+        },
+        onPage: (direction) => {
+            if (visible.length === 0) return;
+            const passo = direction === 'up' ? -PAGINA : PAGINA;
+            setFocusedIndex(prev => Math.max(0, Math.min(visible.length - 1, prev + passo)));
         },
         onEnter: () => {
             const channel = visible[safeIndex];
@@ -123,6 +130,7 @@ export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: Favorit
 
                 <div className="live-panel-hints">
                     <span>↑↓ Navegar</span>
+                    <span>CH± Página</span>
                     <span>OK Assistir</span>
                     {onMove && <span>{reordering ? '🟡 Sair de reordenar · ←→ Mover' : '🟡 Reordenar'}</span>}
                     <span>← Fechar</span>
@@ -175,6 +183,11 @@ export function SportsPanel({ channels, onClose, onPlay, onRemind, isReminded }:
             if (list.length === 0) return;
             if (direction === 'up') setFocusedIndex(prev => Math.max(0, prev - 1));
             else if (direction === 'down') setFocusedIndex(prev => Math.min(list.length - 1, prev + 1));
+        },
+        onPage: (direction) => {
+            if (list.length === 0) return;
+            const passo = direction === 'up' ? -PAGINA : PAGINA;
+            setFocusedIndex(prev => Math.max(0, Math.min(list.length - 1, prev + passo)));
         },
         onEnter: () => {
             const event = list[safeIndex];
@@ -230,6 +243,7 @@ export function SportsPanel({ channels, onClose, onPlay, onRemind, isReminded }:
 
                 <div className="live-panel-hints">
                     <span>↑↓ Navegar</span>
+                    <span>CH± Página</span>
                     <span>OK Assistir / Lembrar</span>
                     <span>← Fechar</span>
                 </div>

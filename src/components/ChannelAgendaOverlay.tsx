@@ -18,6 +18,9 @@ interface ChannelAgendaOverlayProps {
     isReminded?: (program: EpgProgram) => boolean;
 }
 
+/** Programas pulados por CH+/CH− (a lista mostra ~14 por vez). */
+const PAGINA = 10;
+
 function formatClock(ms: number): string {
     const d = new Date(ms);
     return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
@@ -69,6 +72,11 @@ export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive, onToggle
             if (!programs || programs.length === 0) return;
             if (direction === 'up') setFocusedIndex(prev => Math.max(0, prev - 1));
             else if (direction === 'down') setFocusedIndex(prev => Math.min(programs.length - 1, prev + 1));
+        },
+        onPage: (direction) => {
+            if (!programs || programs.length === 0) return;
+            const passo = direction === 'up' ? -PAGINA : PAGINA;
+            setFocusedIndex(prev => Math.max(0, Math.min(programs.length - 1, prev + passo)));
         },
         onEnter: () => {
             if (!programs) return;
@@ -130,6 +138,7 @@ export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive, onToggle
 
                 <div className="agenda-hints">
                     <span>↑↓ Navegar</span>
+                    <span>CH± Página</span>
                     <span>OK Replay / 🔔 Lembrete</span>
                     <span>← Fechar</span>
                 </div>

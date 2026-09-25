@@ -206,6 +206,14 @@ export function EpgGrid({
         else moverJanela(-1);
     };
 
+    // CH+/CH−: uma tela inteira de canais por toque (com ↑↓ eram 180 toques
+    // até o canal 180). Mantém o horário focado, como o ↑↓.
+    const paginar = (direcao: 'up' | 'down') => {
+        setAviso('');
+        const passo = direcao === 'up' ? -LINHAS_VISIVEIS : LINHAS_VISIVEIS;
+        setLinha(prev => Math.max(0, Math.min(channels.length - 1, prev + passo)));
+    };
+
     const confirmar = () => {
         if (!canalAtual) return;
         if (!focado) {
@@ -237,6 +245,7 @@ export function EpgGrid({
 
     useTVNavigation({
         onNavigate: navegar,
+        onPage: paginar,
         onEnter: confirmar,
         onBack: onClose,
         onAction: (acao) => {
@@ -373,6 +382,7 @@ export function EpgGrid({
 
                 <div className="epgrid-hints">
                     <span>OK: no ar assiste · passado abre o arquivo · futuro cria lembrete</span>
+                    <span>CH± Página</span>
                     <span className="hint-red">🔴 −1h</span>
                     <span className="hint-green">🟢 +1h</span>
                     <span className="hint-yellow">🟡 Agora</span>
