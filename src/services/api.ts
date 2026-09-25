@@ -127,10 +127,24 @@ const catalogoMemoria = new Map<string, { at: number; data: unknown }>();
 /** Requisições em voo: dois pedidos iguais ao mesmo tempo viram um só. */
 const emVoo = new Map<string, Promise<unknown>>();
 
+/**
+ * Outros caches que guardam AS MESMAS listas e precisam cair junto.
+ *
+ * Registro em vez de import direto porque a dependencia so existe no sentido
+ * contrario (searchCatalog importa api); importar de volta faria ciclo.
+ */
+const aoLimpar = new Set<() => void>();
+
+/** Registra um cache que segue o ciclo de vida do catalogo. */
+export function aoLimparCacheDeCatalogo(limpar: () => void): void {
+    aoLimpar.add(limpar);
+}
+
 /** Descarta tudo (troca de provedor, logout). */
 export function limparCacheDeCatalogo(): void {
     catalogoMemoria.clear();
     emVoo.clear();
+    aoLimpar.forEach(limpar => limpar());
 }
 
 class XtreamAPI {
@@ -148,8 +162,12 @@ class XtreamAPI {
     private async listagem<T>(action: string, timeoutMs = 30000): Promise<T> {
         const chave = `${this.baseUrl}|${this.username}|${action}`;
         const guardado = catalogoMemoria.get(chave);
-        if (guardado && Date.now() - guardado.at < CATALOG_TTL_MS) {
-            return guardado.data as T;
+        if (guardado) {
+            if (Date.now() - guardado.at < CATALOG_TTL_MS) return guardado.data as T;
+            // Vencida: DESCARTAR, não só ignorar. Ignorar deixava o catálogo
+            // antigo inteiro na memória — numa TV de 1 GB, uma lista de filmes
+            // que ninguém vai mais ler.
+            catalogoMemoria.delete(chave);
         }
         const jaPedido = emVoo.get(chave);
         if (jaPedido) return jaPedido as Promise<T>;
@@ -434,7 +452,10 @@ class XtreamAPI {
         this.username = '';
         this.password = '';
         this.providerOffsetMs = 0;
-        // O catálogo em memória é da conta que acabou de sair
+        // O catálogo em memória é da conta que acabou de sair — e junto vão os
+        // caches registrados, como o da busca global, que guarda AS MESMAS
+        // listas (o kidsFilter devolve o array original com o modo infantil
+        // desligado) e cujo clear não era chamado em lugar nenhum do app.
         limparCacheDeCatalogo();
     }
 }
