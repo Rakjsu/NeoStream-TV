@@ -58,6 +58,21 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
     const [focusedIndex, setFocusedIndex] = useState(
         menuItems.findIndex(item => item.id === activeItem)
     );
+    // O índice acima é só o valor INICIAL: a sidebar nunca desmonta, então
+    // página trocada por fora do D-pad dela (card da Home, Voltar subindo pra
+    // Home) deixava o anel no item antigo — e um OK confiando no anel levava
+    // de volta pra página errada. Ressincroniza quando a página MUDA, não
+    // quando a sidebar ganha foco: a volta do gerenciador de perfis devolve o
+    // foco sem trocar de página, e o anel tem que continuar no botão de perfil.
+    // Página fora do menu (-1) mantém o anel onde está. Ajuste durante o
+    // render (mesmo padrão do Movies/player): effect com setState é proibido
+    // pela regra react-hooks/set-state-in-effect.
+    const [paginaDoAnel, setPaginaDoAnel] = useState(activeItem);
+    if (paginaDoAnel !== activeItem) {
+        setPaginaDoAnel(activeItem);
+        const alvo = menuItems.findIndex(item => item.id === activeItem);
+        if (alvo >= 0) setFocusedIndex(alvo);
+    }
     const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
     // Sair da conta apaga credenciais e TODAS as playlists salvas, e era um

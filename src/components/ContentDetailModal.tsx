@@ -9,6 +9,7 @@ import { fetchColecao } from '../services/tmdb';
 import { indexarCatalogo, cruzarComCatalogo } from '../services/tmdbMatch';
 import { abrirExterno, podeAbrirExterno } from '../services/tizenApp';
 import { TrailerOverlay } from './TrailerOverlay';
+import { ImagemPreguicosa } from './ImagemPreguicosa';
 import { extrairChaveYoutube } from '../services/trailer';
 import { progressService } from '../services/progressService';
 import type { Episode, SeriesInfo } from '../types';
@@ -718,18 +719,14 @@ export function ContentDetailModal({
                                         onClick={() => onOpenRelated?.(String(filme.stream_id))}
                                         title={filme.name}
                                     >
-                                        <span className="saga-poster">
-                                            {filme.stream_icon && (
-                                                <img
-                                                    src={filme.stream_icon}
-                                                    alt=""
-                                                    loading="lazy"
-                                                    onError={(e) => {
-                                                        (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                                    }}
-                                                />
-                                            )}
-                                        </span>
+                                        {/* Pôster só quando entra na janela da fileira (T031):
+                                            `loading="lazy"` não existe no Chromium 69 */}
+                                        <ImagemPreguicosa
+                                            className="saga-poster"
+                                            src={filme.stream_icon}
+                                            raiz={collectionRowRef}
+                                            margem="0px 240px"
+                                        />
                                         <span className="saga-name">{filme.name}</span>
                                     </button>
                                 ))}
@@ -773,21 +770,15 @@ export function ContentDetailModal({
                                         >
                                             <span className="episode-number default">{epNum}</span>
                                             {episodiosComDetalhe.temImagem && (
-                                                <span className="episode-thumb">
-                                                    {ep.info?.movie_image && (
-                                                        <img
-                                                            src={ep.info.movie_image}
-                                                            alt=""
-                                                            loading="lazy"
-                                                            // Miniatura quebrada é comum: o provedor
-                                                            // aponta pra um host que já saiu do ar.
-                                                            // Some sem deixar o ícone de imagem quebrada.
-                                                            onError={(e) => {
-                                                                (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                                            }}
-                                                        />
-                                                    )}
-                                                </span>
+                                                // Só a miniatura que entra na janela da lista é
+                                                // pedida (T031). `loading="lazy"` é ignorado no
+                                                // Chromium 69: eram 24 downloads com ~4 na tela.
+                                                <ImagemPreguicosa
+                                                    className="episode-thumb"
+                                                    src={ep.info?.movie_image}
+                                                    raiz={episodeListRef}
+                                                    margem="120px 0px"
+                                                />
                                             )}
                                             <span className="episode-text">
                                                 <span className="episode-title">{getEpisodeTitle(ep)}</span>

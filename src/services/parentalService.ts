@@ -6,6 +6,8 @@
 // decorativo: bastava abrir o gerenciador e clicar no perfil Principal, que
 // nasce sem PIN nenhum.
 
+import { writeRaw, removeKey } from './safeStorage';
+
 const PIN_KEY = 'neostream_parental_pin';
 const GATES_KEY = 'neostream_parental_gates';
 const LOCK_KEY = 'neostream_parental_lock';
@@ -69,10 +71,12 @@ function lerTrava(): EstadoTrava {
 
 function gravarTrava(estado: EstadoTrava): void {
     if (estado.erros === 0 && estado.travadoAte === 0 && estado.rodadas === 0) {
-        safeWrite(LOCK_KEY, null);
+        removeKey(LOCK_KEY);
         return;
     }
-    safeWrite(LOCK_KEY, JSON.stringify(estado));
+    // Pelo safeStorage: com a quota cheia a gravação crua falhava muda, o
+    // contador nunca persistia e o limite de 5 erros deixava de existir.
+    writeRaw(LOCK_KEY, JSON.stringify(estado));
 }
 
 async function hash(pin: string): Promise<string> {
@@ -83,31 +87,27 @@ async function hash(pin: string): Promise<string> {
         .join('');
 }
 
-function safeWrite(key: string, value: string | null): void {
-    try {
-        if (value === null) localStorage.removeItem(key);
-        else localStorage.setItem(key, value);
-    } catch {
-        // quota — a preferência se perde, o app não cai
-    }
-}
-
 export const parentalService = {
     /** Há PIN parental configurado neste aparelho? */
     isSet(): boolean {
         return !!localStorage.getItem(PIN_KEY);
     },
 
+    /**
+     * Grava o PIN. FALSE também quando não coube (quota cheia mesmo depois de
+     * podar os caches): a tela não pode anunciar "PIN criado" para um PIN que
+     * some no próximo boot — o controle parental ficaria desligado sem aviso.
+     */
     async set(pin: string): Promise<boolean> {
         if (!/^\d{4}$/.test(pin)) return false;
-        safeWrite(PIN_KEY, await hash(pin));
+        if (!writeRaw(PIN_KEY, await hash(pin)).ok) return false;
         // Quem consegue DEFINIR o PIN já provou que é o dono do aparelho
         gravarTrava(SEM_TRAVA);
         return true;
     },
 
     clear(): void {
-        safeWrite(PIN_KEY, null);
+        removeKey(PIN_KEY);
         gravarTrava(SEM_TRAVA);
     },
 
@@ -172,8 +172,9 @@ export const parentalService = {
         }
     },
 
-    setGates(gates: Partial<ParentalGates>): void {
-        safeWrite(GATES_KEY, JSON.stringify({ ...this.getGates(), ...gates }));
+    /** FALSE quando a trava não coube: a tela mantém o estado anterior. */
+    setGates(gates: Partial<ParentalGates>): boolean {
+        return writeRaw(GATES_KEY, JSON.stringify({ ...this.getGates(), ...gates })).ok;
     },
 
     /** O PIN é exigido pra esta porta agora? */

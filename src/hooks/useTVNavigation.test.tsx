@@ -385,3 +385,115 @@ describe('CH+/CH− (onPage)', () => {
         expect(onPage).not.toHaveBeenCalled();
     });
 });
+
+describe('Backspace dentro do campo apaga — só sai quando o campo já está vazio', () => {
+    // BUG REAL (T039): o BACK do hook inclui 'Backspace'/8 e o ramo do campo
+    // usava a lista inteira. Corrigir uma letra da URL, da senha ou da busca
+    // fechava o teclado, cancelava o apagar e disparava o onBack da tela.
+    function campoCom(valor: string, opcoes: SondaProps = {}) {
+        const { getByTestId } = render(<Sonda comInput {...opcoes} />);
+        const campo = getByTestId('campo') as HTMLInputElement;
+        campo.value = valor;
+        campo.focus();
+        return campo;
+    }
+
+    function apertar(alvo: EventTarget, init: KeyboardEventInit): KeyboardEvent {
+        const evento = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+        alvo.dispatchEvent(evento);
+        return evento;
+    }
+
+    // As três formas como o Backspace chega: teclado de PC (key + keyCode),
+    // IME que só manda o nome, controle/IME que só manda o keyCode.
+    const FORMAS_DO_BACKSPACE: [string, KeyboardEventInit][] = [
+        ['key + keyCode', { key: 'Backspace', keyCode: 8 }],
+        ['só key', { key: 'Backspace' }],
+        ['só keyCode', { key: 'Unidentified', keyCode: 8 }],
+    ];
+
+    it.each(FORMAS_DO_BACKSPACE)('com texto, Backspace (%s) fica com o campo', (_forma, init) => {
+        const onBack = vi.fn();
+        const onAction = vi.fn();
+        const campo = campoCom('ESPN', { onBack, onAction });
+
+        const evento = apertar(campo, init);
+
+        expect(evento.defaultPrevented).toBe(false);
+        expect(onBack).not.toHaveBeenCalled();
+        expect(onAction).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(campo);
+    });
+
+    it.each(FORMAS_DO_BACKSPACE)('com o campo vazio, Backspace (%s) sai do campo como o Voltar', (_forma, init) => {
+        const onBack = vi.fn();
+        const onAction = vi.fn();
+        const campo = campoCom('', { onBack, onAction });
+
+        const evento = apertar(campo, init);
+
+        expect(evento.defaultPrevented).toBe(true);
+        expect(onBack).toHaveBeenCalledTimes(1);
+        expect(onAction).toHaveBeenCalledWith('back');
+        expect(document.activeElement).not.toBe(campo);
+    });
+
+    // "Vazio" é vazio MESMO: a última letra e um espaço sozinho ainda são
+    // texto pra apagar — sair aí engoliria o apagar da letra final.
+    it.each([
+        ['a última letra', 'E'],
+        ['só um espaço', ' '],
+    ])('com %s no campo, Backspace ainda apaga e fica com o campo', (_caso, valor) => {
+        const onBack = vi.fn();
+        const campo = campoCom(valor, { onBack });
+
+        const evento = apertar(campo, { key: 'Backspace', keyCode: 8 });
+
+        expect(evento.defaultPrevented).toBe(false);
+        expect(onBack).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(campo);
+    });
+
+    // Quem SEGURA o Backspace pra limpar a URL inteira: o auto-repeat que
+    // chega depois do campo esvaziar não pode arrastar a tela junto.
+    it('Backspace segurado (auto-repeat) no campo vazio não sai', () => {
+        const onBack = vi.fn();
+        const campo = campoCom('', { onBack });
+
+        const evento = apertar(campo, { key: 'Backspace', keyCode: 8, repeat: true });
+
+        expect(evento.defaultPrevented).toBe(false);
+        expect(onBack).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(campo);
+    });
+
+    // O dígito 8 é TEXTO: nem com o campo vazio ele pode ser confundido com o
+    // keyCode 8 do Backspace e tirar o usuário do campo.
+    it('o dígito 8 no campo vazio é texto, não sai', () => {
+        const onBack = vi.fn();
+        const campo = campoCom('', { onBack });
+
+        const evento = apertar(campo, { key: '8', keyCode: 56 });
+
+        expect(evento.defaultPrevented).toBe(false);
+        expect(onBack).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(campo);
+    });
+
+    // A tecla VOLTAR de verdade não olha o conteúdo: sempre sai.
+    it.each([
+        ['10009 (Tizen)', { key: 'Unidentified', keyCode: 10009 }],
+        ['461 (webOS)', { keyCode: 461 }],
+        ['XF86Back', { key: 'XF86Back' }],
+        ['Escape', { key: 'Escape', keyCode: 27 }],
+    ])('com texto, %s sai do campo', (_tecla, init) => {
+        const onBack = vi.fn();
+        const campo = campoCom('ESPN', { onBack });
+
+        const evento = apertar(campo, init);
+
+        expect(evento.defaultPrevented).toBe(true);
+        expect(onBack).toHaveBeenCalledTimes(1);
+        expect(document.activeElement).not.toBe(campo);
+    });
+});

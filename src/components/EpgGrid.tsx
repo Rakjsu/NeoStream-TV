@@ -109,7 +109,6 @@ export function EpgGrid({
         if (pendentes.length === 0) return;
 
         let cancelado = false;
-        pendentes.forEach(canal => buscadosRef.current.add(canal.stream_id));
         setCarregando(prev => {
             const proximo = new Set(prev);
             pendentes.forEach(canal => proximo.add(canal.stream_id));
@@ -125,6 +124,12 @@ export function EpgGrid({
                 if (!canal) return;
                 const programas = await epgService.getDayEpg(canal.stream_id);
                 if (cancelado) return;
+                // "Buscado" = ENTREGUE. Marcar no pedido deixava a fila
+                // cancelada (a faixa andou, o StrictMode remontou) marcada
+                // como buscada sem nunca ter chegado: a linha ficava em
+                // "Carregando…" pra sempre. Junto do setEpgPorCanal, todo
+                // canal no mapa está aqui — e o podarPorAlcance tira dos dois.
+                buscadosRef.current.add(canal.stream_id);
                 setEpgPorCanal(prev => podarPorAlcance(
                     new Map(prev).set(canal.stream_id, programas),
                     channels, inicio, fim, buscadosRef.current
@@ -138,7 +143,16 @@ export function EpgGrid({
         };
         void Promise.all(Array.from({ length: PARALELAS }, trabalhador));
 
-        return () => { cancelado = true; };
+        return () => {
+            cancelado = true;
+            // O que não chegou sai do `carregando`: a próxima rodada pede de
+            // novo o que continuar na faixa (o getDayEpg tem cache de 10 min)
+            setCarregando(prev => {
+                const proximo = new Set(prev);
+                pendentes.forEach(canal => proximo.delete(canal.stream_id));
+                return proximo;
+            });
+        };
     }, [primeiraLinha, channels]);
 
     const canalAtual = channels[linha];

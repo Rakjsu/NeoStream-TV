@@ -348,7 +348,7 @@
 .meta-badge {
     padding: 8px 14px;
     border-radius: 24px;
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 600;
     display: flex;
     align-items: center;
@@ -360,6 +360,13 @@
     border: 1px solid rgba(255, 255, 255, 0.18);
     color: #fff;
     backdrop-filter: blur(10px);
+}
+
+/* Movies.css e Series.css também têm um `.meta-badge` GLOBAL, de 13px, e
+   entram DEPOIS desta folha no bundle: sem o escopo o selo da ficha saía
+   com o tamanho deles, qualquer que fosse o valor da regra acima. */
+.modal-meta .meta-badge {
+    font-size: 16px;
 }
 
 .rating-badge {
@@ -405,7 +412,7 @@
     border-radius: 14px;
     background: rgba(255, 255, 255, 0.08);
     color: rgba(255, 255, 255, 0.75);
-    font-size: 12px;
+    font-size: 16px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     transition: all 0.2s ease;
 }
@@ -445,7 +452,7 @@
     border: 2px solid rgba(255, 255, 255, 0.1);
     background: rgba(255, 255, 255, 0.05);
     color: white;
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -577,7 +584,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 700;
     color: white;
 }
@@ -591,7 +598,7 @@
 }
 
 .episode-title {
-    font-size: 13px;
+    font-size: 18px;
     color: white;
     flex: 1;
     overflow: hidden;
@@ -909,11 +916,14 @@
 .saga-name {
     display: block;
     margin-top: 6px;
-    font-size: 13px;
+    font-size: 18px;
     line-height: 1.25;
     color: rgba(255, 255, 255, 0.85);
-    max-height: 32px;
+    /* duas linhas: 2 x 18 x 1.25 */
+    max-height: 45px;
     overflow: hidden;
+    /* palavra mais larga que o card quebra em vez de sumir no corte */
+    overflow-wrap: break-word;
 }
 
 .saga-card.focused {
@@ -971,18 +981,23 @@
 .cast-name {
     display: block;
     margin-top: 6px;
-    font-size: 13px;
+    font-size: 18px;
     line-height: 1.2;
     color: rgba(255, 255, 255, 0.88);
-    max-height: 31px;
+    /* duas linhas: 2 x 18 x 1.2 */
+    max-height: 44px;
     overflow: hidden;
+    /* sobrenome mais largo que os 92px do card quebra em vez de sumir */
+    overflow-wrap: break-word;
 }
 
 .cast-character {
     display: block;
-    font-size: 12px;
+    font-size: 16px;
     line-height: 1.2;
     color: rgba(255, 255, 255, 0.5);
-    max-height: 29px;
+    /* duas linhas: 2 x 16 x 1.2 */
+    max-height: 39px;
     overflow: hidden;
+    overflow-wrap: break-word;
 }
