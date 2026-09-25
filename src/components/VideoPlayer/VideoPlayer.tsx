@@ -813,10 +813,19 @@ export function VideoPlayer({
         const interval = setInterval(() => {
             const remaining = sleepUntil - Date.now();
             if (remaining <= 0) {
+                // Quem liga o timer vai dormir: só pausar deixava a TV a noite
+                // inteira num quadro congelado, com o screensaver do sistema
+                // segurado pelo app e o anti burn-in (theme.css) barrado pelo
+                // data-playing. Solta o hold já (não depende do pai desmontar)
+                // e fecha como o botão Fechar — que também salva o progresso.
+                // O tique é desarmado pelo cleanup (sleepUntil vira null ou o
+                // player desmonta).
                 videoRef.current?.pause();
+                holdSystemScreenSaver(false);
                 setSleepUntil(null);
                 setSleepChoiceIndex(0);
                 setSleepRemainingMin(null);
+                handleCloseRef.current?.();
             } else {
                 setSleepRemainingMin(Math.ceil(remaining / 60000));
             }
