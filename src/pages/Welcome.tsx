@@ -7,9 +7,13 @@ import './Welcome.css';
 
 interface WelcomeProps {
     onGoToLogin: () => void;
+    /** Mexeu no controle = não estava tentando sair. Mesmo contrato da Home. */
+    onCancelExit?: () => void;
+    /** Voltar aqui pede saída do app (dois toques), como a Samsung exige. */
+    onRequestExit?: () => void;
 }
 
-export function Welcome({ onGoToLogin }: WelcomeProps) {
+export function Welcome({ onGoToLogin, onRequestExit, onCancelExit }: WelcomeProps) {
     const { t } = useTranslation();
     const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -23,9 +27,13 @@ export function Welcome({ onGoToLogin }: WelcomeProps) {
     }, []);
 
     useTVNavigation({
+        onNavigate: () => onCancelExit?.(),
         onEnter: () => {
             onGoToLogin();
         },
+        // Sem isto, Voltar não fazia nada aqui — e a certificação Samsung
+        // espera que Voltar nas telas de entrada feche o app.
+        onBack: onRequestExit,
     });
 
     const handleClick = () => {
