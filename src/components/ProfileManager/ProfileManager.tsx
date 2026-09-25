@@ -287,7 +287,10 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         setMode('delete-confirm');
     }, [activeProfile]);
 
-    const handleEnter = useCallback(() => {
+    const handleEnter = useCallback((fromInput?: boolean) => {
+        // OK vindo de dentro do campo Nome/PIN já fechou o teclado; seguir
+        // adiante refocaria o mesmo campo e o IME do Tizen subiria em laço
+        if (fromInput) return;
         if (mode === 'delete-confirm') {
             if (deleteFocusIndex === 1) handleDeleteProfile();
             else { setMode('list'); setDeleteTarget(null); }
