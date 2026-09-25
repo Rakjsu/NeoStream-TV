@@ -353,6 +353,12 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    /* Fundo próprio, não só o desfoque: a etiqueta de duração entra SEM
+       variante (ContentDetailModal.tsx:647) e ficava sem fundo nenhum — na TV
+       nem o backdrop-filter existe. As variantes coloridas sobrescrevem. */
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
     backdrop-filter: blur(10px);
 }
 
