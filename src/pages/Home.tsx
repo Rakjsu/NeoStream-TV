@@ -295,6 +295,31 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     const sectionIndex = (id: string) => sections.findIndex(s => s.id === id);
     const focusedSection = Math.max(0, sectionIndex(focusedSectionId));
 
+    // 🔴 na fileira "Continuar Assistindo" tira o card focado (T029). Antes
+    // não havia tecla nenhuma pra isso: o filme largado aos 4 minutos ficava
+    // na primeira fileira da primeira tela até o LRU de 50 expulsá-lo. Um
+    // toque, como o 🔴 de Favoritos e Minha Lista — e aqui nem é remoção:
+    // só ESCONDE (ver progressService.hideFromContinueWatching), o ponto de
+    // retomada fica, e assistir de novo traz o card de volta.
+    const tirarDaFileira = () => {
+        const item = continueItems[focusedItem];
+        if (!item) return;
+        progressService.hideFromContinueWatching(
+            item.kind,
+            item.kind === 'movie' ? item.progress.id : item.progress.seriesId
+        );
+        const restantes = progressService.getContinueWatching();
+        setContinueItems(restantes);
+        if (restantes.length === 0) {
+            // A fileira some: o foco vai pra seção seguinte, em vez de ficar
+            // preso num id que saiu da lista e cair nos contadores
+            setFocusedSectionId(sections[focusedSection + 1]?.id ?? 'stats');
+            setFocusedItem(0);
+        } else {
+            setFocusedItem(Math.min(focusedItem, restantes.length - 1));
+        }
+    };
+
     // Roleta 🎲: filme não visto, ponderado pelas categorias que o usuário curte
     const surpriseMe = () => {
         const data = rouletteRef.current;
@@ -437,7 +462,13 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 setExpiryWarning(null);
                 return;
             }
-            if (loadError) window.location.reload();
+            if (loadError) {
+                window.location.reload();
+                return;
+            }
+            // Só quando nenhum aviso reclama o 🔴 — a dica na tela é sempre
+            // a de quem vai atender a tecla
+            if (sections[focusedSection]?.id === 'continue') tirarDaFileira();
         },
         onBack: onRequestExit,
         enabled: focusZone === 'content' && !detailItem && !playingMovie && !seriesQueue,
@@ -555,7 +586,12 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Continue Watching */}
                 {continueItems.length > 0 && (
                     <div id="home-continue" className="content-section">
-                        <h2 className="section-title">▶ Continuar Assistindo</h2>
+                        <h2 className="section-title">
+                            ▶ Continuar Assistindo
+                            {focusedSection === sectionIndex('continue') && expiryWarning === null && !loadError && (
+                                <span className="section-hint">🔴 tirar da fileira</span>
+                            )}
+                        </h2>
                         <div className="content-row">
                             {continueItems.map((item, index) => {
                                 const isMovie = item.kind === 'movie';

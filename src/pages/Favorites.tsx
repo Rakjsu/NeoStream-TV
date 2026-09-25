@@ -305,7 +305,7 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                     <div
                         key={`${item.type}-${item.id}`}
                         className={`card ${removingId === item.id ? 'removing' : ''} ${focusArea === 'items' && safeItemIndex === index ? 'tv-focused' : ''}`}
-                        style={{ animationDelay: `${index * 0.05}s` }}
+                        style={{ animationDelay: `${Math.min(index * 0.03, 0.5)}s` }}
                         onClick={() => openItem(item)}
                     >
                         <div className="card-poster">

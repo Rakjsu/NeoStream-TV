@@ -256,14 +256,31 @@ export function normalizeSearch(value: string): string {
         .trim();
 }
 
+// Nome de busca por OBJETO do catálogo. O nome de um item não muda entre
+// teclas: normalizar (NFD + regex de acento) os milhares de títulos a cada
+// letra digitada era o custo dominante da busca na TV. WeakMap: preenchido sob
+// demanda (quem nunca busca não paga nada na carga) e liberado junto com o
+// catálogo antigo quando a lista é recarregada.
+const searchNames = new WeakMap<object, string>();
+
+/** `normalizeSearch(item.name)`, calculado uma vez por item. */
+export function searchNameOf(item: { name?: string }): string {
+    let normalized = searchNames.get(item);
+    if (normalized === undefined) {
+        normalized = normalizeSearch(item.name || '');
+        searchNames.set(item, normalized);
+    }
+    return normalized;
+}
+
 /**
  * Casamento tolerante (item 26): substring direta OU todos os tokens da
  * query presentes OU distância de edição 1 numa palavra (typo simples).
- * Barato de propósito — roda sobre milhares de itens numa TV.
+ * Barato de propósito — roda sobre milhares de itens numa TV: por isso o NOME
+ * já chega normalizado (`searchNameOf(item)`) e cada tecla só paga a comparação.
  */
-export function fuzzyMatches(name: string, normalizedQuery: string): boolean {
+export function fuzzyMatches(normalizedName: string, normalizedQuery: string): boolean {
     if (!normalizedQuery) return true;
-    const normalizedName = normalizeSearch(name);
     if (normalizedName.includes(normalizedQuery)) return true;
 
     const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean);

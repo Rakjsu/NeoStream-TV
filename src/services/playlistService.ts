@@ -5,7 +5,7 @@
 import { storage } from './storage';
 import { normalizarUrlDoServidor } from './api';
 import { scopedKey } from './profileScope';
-import { removeKey } from './safeStorage';
+import { removeKey, writeJson } from './safeStorage';
 import type { Credentials } from '../types';
 
 const KEY = 'neostream_playlists';
@@ -61,12 +61,12 @@ function urlComparavel(url: string): string | null {
     }
 }
 
-function write(data: PlaylistsData): void {
-    try {
-        localStorage.setItem(KEY, JSON.stringify(data));
-    } catch {
-        // Quota cheia — melhor manter só o espelho em storage.credentials
-    }
+/**
+ * Grava pelo safeStorage (poda os caches se a quota estourar) e diz se coube.
+ * Antes o catch era mudo: a playlist "trocava" ou "saía da lista" só na tela.
+ */
+function write(data: PlaylistsData): boolean {
+    return writeJson(KEY, data).ok;
 }
 
 function aliasFromUrl(url: string): string {
@@ -173,6 +173,9 @@ export const playlistService = {
             data.playlists.push(entry);
             data.activeId = entry.id;
         }
+        // Sem espaço nem depois da poda, a credencial ativa segue no espelho
+        // do storage.credentials (gravado antes pelo Login): o app funciona,
+        // só a lista de playlists fica sem a entrada
         write(data);
     },
 
@@ -182,7 +185,9 @@ export const playlistService = {
         const entry = data.playlists.find(p => p.id === id);
         if (!entry) return false;
         data.activeId = id;
-        write(data);
+        // Sem gravar a lista, NÃO troca a credencial: a lista e o espelho
+        // apontariam para provedores diferentes depois do reload
+        if (!write(data)) return false;
         storage.saveCredentials({ url: entry.url, username: entry.username, password: entry.password });
         // Flags de TV/VOD acompanham a playlist
         try {
@@ -221,7 +226,8 @@ export const playlistService = {
         const index = data.playlists.findIndex(p => p.id === id);
         if (index === -1) return false;
         data.playlists.splice(index, 1);
-        write(data);
+        // A playlist continua na lista gravada: o catálogo dela fica também
+        if (!write(data)) return false;
         limparOrfaos(id);
         return true;
     },

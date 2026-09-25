@@ -110,8 +110,16 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}) {
             // If the user presses the 'Return' / 'Back' button on the TV remote while editing, 
             // we should blur the input to hide the virtual keyboard and restore TV navigation.
             // 10009 (Tizen Back), 461 (WebOS Back), XF86Back (Generic), Escape
-            // Also handle keyCode 8 (Backspace) ONLY when input value is empty (to exit editing)
-            if (matchKey(event, TV_KEYS.BACK) || event.key === 'Escape') {
+            // sao a tecla VOLTAR de verdade: sempre saem do campo.
+            // Backspace (key 'Backspace' / keyCode 8) e a tecla de APAGAR: so sai
+            // com o campo ja vazio — com texto, o evento passa batido e o campo
+            // apaga a letra. O auto-repeat (quem segura a tecla pra limpar tudo)
+            // tambem nao sai: senao o repeat seguinte ao esvaziar levaria a tela.
+            const ehApagar = matchKey(event, ['Backspace', '8']);
+            const sai = ehApagar
+                ? !event.repeat && (target as HTMLInputElement).value === ''
+                : matchKey(event, TV_KEYS.BACK) || event.key === 'Escape';
+            if (sai) {
                 event.preventDefault();
                 event.stopPropagation();
                 target.blur();

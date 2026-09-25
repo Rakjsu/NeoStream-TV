@@ -10,6 +10,10 @@ import { writeJson, pruneToNewest } from './safeStorage';
 const MOVIE_KEY = () => scopedKey('neostream_movie_progress');
 const SERIES_KEY = () => scopedKey('neostream_series_progress');
 const MAX_ENTRIES = 50;
+// Teto da fileira "Continuar Assistindo" (T029). Era a única fileira da Home
+// sem corte: até 50 filmes + 50 séries = 100 cards para atravessar no D-pad.
+// O que fica de fora continua guardado e volta quando alguém sai da frente.
+const CONTINUE_ROW_MAX = 15;
 const COMPLETED_RATIO = 0.95;
 const MIN_SECONDS = 30; // abaixo disso não vale salvar
 // "Chegou aos créditos" conta como assistido (item 50). Exigir 95% cravado
@@ -37,6 +41,8 @@ export interface MovieProgress {
     time: number;
     duration: number;
     completed: boolean;
+    /** Tirado da fileira "Continuar Assistindo" pelo 🔴 (T029). */
+    hiddenFromRow?: boolean;
     updatedAt: number;
 }
 
@@ -53,6 +59,8 @@ export interface SeriesProgress {
     completed: boolean;
     /** true quando concluiu o ÚLTIMO episódio da fila (série terminada) */
     seriesCompleted?: boolean;
+    /** Tirada da fileira "Continuar Assistindo" pelo 🔴 (T029). */
+    hiddenFromRow?: boolean;
     updatedAt: number;
 }
 
@@ -186,13 +194,33 @@ export const progressService = {
         | { kind: 'series'; progress: SeriesProgress }
     > {
         const movies = Object.values(readMap<MovieProgress>(MOVIE_KEY()))
-            .filter(p => !p.completed && p.time >= MIN_SECONDS)
+            .filter(p => !p.completed && !p.hiddenFromRow && p.time >= MIN_SECONDS)
             .map(progress => ({ kind: 'movie' as const, progress }));
         // Série concluída no meio da temporada ainda é "continuável" (próximo ep),
         // mas sem saber o total de episódios aqui, só mostramos as não-concluídas.
         const series = Object.values(readMap<SeriesProgress>(SERIES_KEY()))
-            .filter(p => !p.completed && p.time >= MIN_SECONDS)
+            .filter(p => !p.completed && !p.hiddenFromRow && p.time >= MIN_SECONDS)
             .map(progress => ({ kind: 'series' as const, progress }));
-        return [...movies, ...series].sort((a, b) => b.progress.updatedAt - a.progress.updatedAt);
+        return [...movies, ...series]
+            .sort((a, b) => b.progress.updatedAt - a.progress.updatedAt)
+            .slice(0, CONTINUE_ROW_MAX);
+    },
+
+    /**
+     * Tira o título da fileira "Continuar Assistindo" (🔴 na Home, T029) SEM
+     * apagar o progresso. removeMovie/removeSeries levariam junto o ponto de
+     * retomada, a semente de "Porque você assistiu", a afinidade das
+     * recomendações e — na série — o acompanhamento de novos episódios.
+     * O updatedAt fica como está (a ordem das sementes e a poda LRU não
+     * mudam), e o próximo save do player grava a entrada inteira de novo, sem
+     * a marca: assistir outra vez traz o card de volta.
+     */
+    hideFromContinueWatching(kind: 'movie' | 'series', id: string): void {
+        const key = kind === 'movie' ? MOVIE_KEY() : SERIES_KEY();
+        const map = readMap<MovieProgress | SeriesProgress>(key);
+        const entry = map[id];
+        if (!entry) return;
+        map[id] = { ...entry, hiddenFromRow: true };
+        writeMap(key, map);
     },
 };

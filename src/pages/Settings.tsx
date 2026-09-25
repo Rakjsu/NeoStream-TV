@@ -58,6 +58,12 @@ const LANGUAGES: Array<{ id: LanguageId; label: string }> = [
     { id: 'es', label: 'Español' },
 ];
 
+/**
+ * Gravação de conta que não coube nem depois de podar os caches (T107). Dizer
+ * "salvo" aqui era mentira: o PIN ou a playlist sumiam no boot seguinte.
+ */
+const SEM_ESPACO = 'Não foi possível salvar: a memória da TV está cheia. Libere espaço em Sistema → Apagar dados e tente de novo.';
+
 interface SettingsProps {
     onAddPlaylist?: () => void;
 }
@@ -206,6 +212,8 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
         if (entry.id === activePlaylistId) return;
         if (playlistService.setActive(entry.id)) {
             window.location.reload();
+        } else {
+            setMessage(SEM_ESPACO);
         }
     };
 
@@ -218,6 +226,8 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             setPlaylists(playlistService.list());
             setActivePlaylistId(playlistService.getActiveId());
             setMessage(`Playlist "${entry.alias}" removida.`);
+        } else {
+            setMessage(SEM_ESPACO);
         }
     };
 
@@ -311,8 +321,8 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     setPinMode('unlock');
                     return;
                 }
-                parentalService.setGates({ [gate]: value });
-                setGates(prev => ({ ...prev, [gate]: value }));
+                if (parentalService.setGates({ [gate]: value })) setGates(prev => ({ ...prev, [gate]: value }));
+                else setMessage(SEM_ESPACO);
             } else if (focusZone === 'snapshot') {
                 setSnapshotIndex(prev => direction === 'left'
                     ? Math.max(0, prev - 1)
@@ -406,8 +416,8 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     setPinMode('unlock');
                     return;
                 }
-                parentalService.setGates({ [gate]: value });
-                setGates(prev => ({ ...prev, [gate]: value }));
+                if (parentalService.setGates({ [gate]: value })) setGates(prev => ({ ...prev, [gate]: value }));
+                else setMessage(SEM_ESPACO);
             }
             else if (focusZone === 'qualitycap') {
                 qualityCap.set(0);
@@ -584,8 +594,11 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                         setResetArmed(true);
                         setMessage('OK de novo apaga: Conta e perfis.');
                     } else if (action?.kind === 'gate') {
-                        parentalService.setGates({ [action.gate]: action.value });
-                        setGates(prev => ({ ...prev, [action.gate]: action.value }));
+                        if (parentalService.setGates({ [action.gate]: action.value })) {
+                            setGates(prev => ({ ...prev, [action.gate]: action.value }));
+                        } else {
+                            setMessage(SEM_ESPACO);
+                        }
                     }
                     return true;
                 }}
@@ -606,7 +619,14 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 hint="4 dígitos. Vale pra abrir as Configurações e pra sair do modo Kids."
                 onSubmit={async (pin) => {
                     const ok = await parentalService.set(pin);
-                    if (!ok) return false;
+                    if (!ok) {
+                        // O PinPrompt só entrega 4 dígitos: false aqui é o PIN
+                        // que não coube. Devolver false mostraria "PIN
+                        // incorreto" — fecha e diz o que houve de verdade.
+                        setPinMode('none');
+                        setMessage(SEM_ESPACO);
+                        return true;
+                    }
                     setPinSet(true);
                     // Quem acabou de criar o PIN já o provou
                     setParentalUnlocked(true);

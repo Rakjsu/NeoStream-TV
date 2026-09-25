@@ -143,11 +143,14 @@
     box-shadow: 0 0 30px rgba(20, 184, 166, 0.3);
 }
 
-.tab-count {
+/* Favorites.css tem um `.tab-count` GLOBAL de 12px: o segundo seletor dá à
+   Minha Lista especificidade pra não depender da ordem das folhas no bundle */
+.tab-count,
+.mylist-page .tab-count {
     padding: 4px 10px;
     background: rgba(255, 255, 255, 0.1);
     border-radius: 20px;
-    font-size: 12px;
+    font-size: 16px;
 }
 
 .tab.active .tab-count {
@@ -312,7 +315,7 @@
 }
 
 .mylist-page .card-title {
-    font-size: 14px;
+    font-size: 18px;
     font-weight: 600;
     color: white;
     margin: 0 0 6px;
@@ -324,7 +327,7 @@
 .mylist-page .card-meta {
     display: flex;
     gap: 12px;
-    font-size: 12px;
+    font-size: 16px;
     color: rgba(255, 255, 255, 0.5);
 }
 
@@ -434,6 +437,12 @@
     bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
+    /* Com `left: 50%` a largura disponível é só a metade direita da tela
+       (960px): a 18px as seis legendas passam disso e quebrariam em duas
+       linhas. `max-content` dá à barra a largura do conteúdo, e o
+       translateX continua centralizando. */
+    width: max-content;
+    max-width: calc(100 * var(--ns-vw) - 64px);
     display: flex;
     gap: 24px;
     padding: 12px 24px;
@@ -444,7 +453,7 @@
 }
 
 .mylist-hints span {
-    font-size: 12px;
+    font-size: 18px;
     color: rgba(255, 255, 255, 0.6);
     font-weight: 500;
 }
