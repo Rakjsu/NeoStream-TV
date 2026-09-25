@@ -12,7 +12,7 @@ import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import {
     catalogSort, sortCatalog, hideWatched, isRecentlyAdded, SORT_LABELS, type CatalogSort,
-    catalogFilters, matchesFilters, normalizeSearch, fuzzyMatches,
+    catalogFilters, matchesFilters, normalizeSearch, fuzzyMatches, searchNameOf,
     DECADES, MIN_RATINGS, type CatalogFilters,
 } from '../services/catalogExtras';
 import { groupVodVersions, tagsOf, hasTag, versionLabel, ALL_VOD_TAGS, type VodTag } from '../services/vodVariants';
@@ -158,7 +158,7 @@ export function Movies() {
         const query = normalizeSearch(searchQuery);
         const hasFilters = filters.decade > 0 || filters.minRating > 0;
         let list = streams.filter((stream) => {
-            const matchesSearch = !query || fuzzyMatches(stream.name || '', query);
+            const matchesSearch = !query || fuzzyMatches(searchNameOf(stream), query);
             const matchesCategory = selectedCategory === 'all' || stream.category_id === selectedCategory;
             if (!matchesSearch || !matchesCategory) return false;
             // Chips de tag: item precisa ter TODAS as tags marcadas
@@ -202,15 +202,19 @@ export function Movies() {
         if (letterFilter !== null) setLetterFilter(null);
     }
 
+    // Ordenada UMA vez: a grade e a barra A-Z leem a mesma lista. Antes cada
+    // uma chamava sortCatalog por conta própria e, na ordenação "Nome", cada
+    // tecla da busca pagava duas ordenações completas com o Intl.Collator.
+    const ordenado = useMemo(() => sortCatalog(groupedStreams, sortMode), [groupedStreams, sortMode]);
+
     const filteredStreams = useMemo(() => {
-        const ordenado = sortCatalog(groupedStreams, sortMode);
         if (!letterFilter) return ordenado;
         return ordenado.filter(stream => {
-            const first = normalizeSearch(stream.name || '').charAt(0).toUpperCase();
+            const first = searchNameOf(stream).charAt(0).toUpperCase();
             const letra = /[A-Z]/.test(first) ? first : '#';
             return letra === letterFilter;
         });
-    }, [groupedStreams, sortMode, letterFilter]);
+    }, [ordenado, letterFilter]);
 
     // Grade vazia numa TV e indistinguivel de defeito. Dizer QUAIS filtros
     // estao ligados e o que fecha a duvida — o caso classico e genero e
@@ -232,13 +236,13 @@ export function Movies() {
         const map = new Map<string, number>();
         // Sobre a lista SEM o filtro de letra: senão, ao escolher "S" a barra
         // passaria a mostrar só o "S" e não haveria como voltar às outras
-        sortCatalog(groupedStreams, sortMode).forEach((stream, index) => {
-            const first = normalizeSearch(stream.name || '').charAt(0).toUpperCase();
+        ordenado.forEach((stream, index) => {
+            const first = searchNameOf(stream).charAt(0).toUpperCase();
             const letter = /[A-Z]/.test(first) ? first : '#';
             if (!map.has(letter)) map.set(letter, index);
         });
         return map;
-    }, [sortMode, groupedStreams]);
+    }, [sortMode, ordenado]);
 
     // Índice focado sempre no range (lista encolhe ao esconder assistidos)
     const safeMovieIndex = Math.min(focusedMovieIndex, Math.max(0, filteredStreams.length - 1));
