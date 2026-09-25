@@ -15,7 +15,7 @@
 // (localStorage do jsdom), e dispara as teclas como a TV dispara.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { render, cleanup, fireEvent, screen, waitFor, act } from '@testing-library/react';
 import { ProfileManager } from './ProfileManager';
 import { profileService } from '../../services/profileService';
 
@@ -49,6 +49,12 @@ function campoPin(): HTMLInputElement {
 async function montar(): Promise<void> {
     render(<ProfileManager onClose={() => { /* não interessa aqui */ }} />);
     await screen.findByText('Principal');
+    // A lista chega num microtask FORA do act: o DOM já mostra "Principal",
+    // mas o efeito que re-registra o ouvinte de teclas com o estado novo
+    // (perfil ativo) pode ainda não ter rodado — e a 1ª seta usaria o ouvinte
+    // velho, sem perfil ativo (o card ganha um sub-foco "Excluir" a mais e o
+    // OK cai no Kids). Esvazia os efeitos pendentes antes de apertar.
+    await act(async () => { await Promise.resolve(); });
 }
 
 /** Abre "Novo Perfil" SÓ com o controle — o campo Nome nasce focado (autoFocus). */
