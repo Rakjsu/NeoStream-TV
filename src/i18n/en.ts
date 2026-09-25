@@ -46,4 +46,5 @@ export const en = {
     sidebar_settings: "Settings",
     sidebar_profile: "Profile",
     sidebar_logout: "Logout",
+    sidebar_logout_confirm: "Press again to log out",
 };

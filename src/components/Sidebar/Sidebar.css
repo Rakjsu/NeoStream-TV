@@ -430,3 +430,31 @@
 .logout-btn.tv-focused .logout-icon {
     stroke: #f87171;
 }
+/* Sair da conta armado (1º toque): o botão avisa que o próximo OK executa.
+   Sem cor nova — reusa o vermelho de perigo que o tooltip já usa.
+
+   Duas armadilhas que a primeira versão desta regra caiu nas duas:
+
+   1. `border-color` aqui não desenha NADA. O `.logout-btn` declara
+      `border: none`, o que zera o `border-style` — e sem estilo a largura
+      computada é 0, em qualquer engine. A "borda vermelha de perigo" nunca
+      existiu na tela.
+
+   2. Esta regra tem a MESMA especificidade de `.logout-btn.tv-focused` e vem
+      depois, então ela SUBSTITUI o anel de foco em vez de somar. E no caminho
+      do D-pad o botão está sempre focado quando arma (o `handleEnter` só chama
+      `pedirSair()` no índice que aplica `tv-focused`). Com `rgba(...,0.35)`
+      contra os `rgba(...,0.5)` do foco, o estado PERIGOSO ficava ~30% mais
+      apagado que o estado ocioso — o único sinal real de armamento acabava
+      sendo o texto do tooltip.
+
+   Agora o armado é inequivocamente mais forte que o foco: anel mais grosso e
+   quase opaco, fundo mais carregado e o ícone clareado. */
+.logout-btn.armado {
+    background: rgba(226, 72, 63, 0.28);
+    box-shadow: 0 0 0 3px rgba(226, 72, 63, 0.95);
+}
+
+.logout-btn.armado .logout-icon {
+    stroke: #ffb4ae;
+}

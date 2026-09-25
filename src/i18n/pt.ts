@@ -46,4 +46,5 @@ export const pt = {
     sidebar_settings: "Configurações",
     sidebar_profile: "Perfil",
     sidebar_logout: "Sair",
+    sidebar_logout_confirm: "Apertar de novo para sair",
 };
