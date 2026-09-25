@@ -77,3 +77,39 @@ export function groupChannelVariants<T extends VariantChannel>(channels: T[]): {
     }
     return { groups, variantsOf };
 }
+
+/**
+ * Índice do FAILOVER: stream_id de QUALQUER variante → o grupo inteiro
+ * (melhor qualidade primeiro). O `variantsOf` da grade só existe com o 🧬
+ * ligado e só enxerga o que passou pelos filtros da tela; o failover parte
+ * do canal que está tocando, venha ele de onde vier.
+ */
+export function variantFailoverIndex<T extends VariantChannel>(channels: T[]): Map<string, T[]> {
+    const index = new Map<string, T[]>();
+    for (const variants of groupChannelVariants(channels).variantsOf.values()) {
+        for (const variant of variants) index.set(String(variant.stream_id), variants);
+    }
+    return index;
+}
+
+/**
+ * Próxima variante a tentar quando `currentId` caiu: segue a ordem do grupo a
+ * partir dele (desce a qualidade, como sempre foi) e depois dá a volta pelas
+ * melhores — quem começou na HD também chega à FHD. Pula o que está em `tried`
+ * (que já traz o próprio `currentId`) e o que `skip` recusar. null = não
+ * sobrou nenhuma.
+ */
+export function nextFailoverVariant<T extends VariantChannel>(
+    variants: readonly T[],
+    currentId: T['stream_id'],
+    tried: ReadonlySet<string>,
+    skip: (channel: T) => boolean,
+): T | null {
+    const start = variants.findIndex(v => String(v.stream_id) === String(currentId));
+    for (let step = 1; step <= variants.length; step++) {
+        const candidate = variants[(start + step) % variants.length];
+        if (tried.has(String(candidate.stream_id)) || skip(candidate)) continue;
+        return candidate;
+    }
+    return null;
+}

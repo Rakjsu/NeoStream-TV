@@ -11,7 +11,7 @@ import { epgService, epgOffset, type ChannelEpg, type EpgProgram } from '../serv
 import { zapHistory, hiddenChannels, hiddenCategories, liveToggles } from '../services/liveExtras';
 import { kidsFilter } from '../services/kidsFilter';
 import { useWatchSession } from '../hooks/useWatchSession';
-import { groupChannelVariants, qualityLabel } from '../services/channelVariants';
+import { groupChannelVariants, qualityLabel, variantFailoverIndex, nextFailoverVariant } from '../services/channelVariants';
 import type { LiveStream, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
@@ -293,6 +293,11 @@ export function LiveTV() {
         return groupChannelVariants(processedStreams);
     }, [processedStreams, groupVariantsOn]);
 
+    // Variantes pro FAILOVER: sobre o catálogo inteiro, independente do 🧬 e
+    // dos filtros da grade (o agrupamento acima é só apresentação). Só
+    // recalcula quando o catálogo muda, não a cada tecla da busca.
+    const failoverVariantsOf = useMemo(() => variantFailoverIndex(streams), [streams]);
+
     // Canais favoritos na ORDEM MANUAL do usuário (item 17)
     const favoriteChannels = useMemo(() => {
         const list = streams.filter(s => favoriteChannelIds.has(s.stream_id));
@@ -455,30 +460,47 @@ export function LiveTV() {
         };
     }, [playingChannel]);
 
-    // Reproduzir canal (registra último canal + histórico de zapping)
-    const playChannel = useCallback((stream: LiveStream) => {
+    // Variantes que JÁ caíram na queda em curso. Só o failover acumula; toda
+    // escolha do usuário (playChannel) zera — senão a FHD que caiu ontem
+    // faria o failover de hoje desistir de cara.
+    const failoverTriedRef = useRef<Set<string>>(new Set());
+
+    // Troca o canal tocando (registra último canal + histórico de zapping)
+    const startChannel = useCallback((stream: LiveStream) => {
         setSelectedChannel(stream);
         setPlayingChannel(stream);
         storage.setLastChannel(stream.stream_id);
         zapHistory.push(stream.stream_id);
     }, []);
 
-    // Failover: stream morreu de vez → tenta a próxima variante do grupo
+    // Reproduzir canal por escolha do usuário
+    const playChannel = useCallback((stream: LiveStream) => {
+        failoverTriedRef.current = new Set();
+        startChannel(stream);
+    }, [startChannel]);
+
+    // Failover: stream morreu de vez → tenta outra variante do grupo, até
+    // esgotar todas (não só a de índice seguinte)
     const handleStreamFailed = useCallback(() => {
         if (!playingChannel) return;
-        const repId = representativeOf.get(playingChannel.stream_id) ?? playingChannel.stream_id;
-        const variants = variantsOf.get(String(repId));
-        if (!variants || variants.length < 2) return;
-        const index = variants.findIndex(v => v.stream_id === playingChannel.stream_id);
-        const next = variants[index + 1];
+        const variants = failoverVariantsOf.get(String(playingChannel.stream_id));
+        if (!variants) return;
+        failoverTriedRef.current.add(String(playingChannel.stream_id));
+        // Canal ou categoria oculta não volta pela porta dos fundos — a menos
+        // que o próprio canal tocando seja oculto (o usuário foi rever o que
+        // escondeu, e a grade dali também mostra os ocultos)
+        const oculto = (channel: LiveStream) =>
+            hiddenIds.has(channel.stream_id) || hiddenCatIds.has(channel.category_id);
+        const tocandoOculto = oculto(playingChannel);
+        const next = nextFailoverVariant(variants, playingChannel.stream_id, failoverTriedRef.current,
+            v => !tocandoOculto && oculto(v));
         if (next) {
             setToast(`⚠ Falha no stream — trocando para ${qualityLabel(next.name)}`);
-            playChannel(next);
+            startChannel(next);
         } else {
             setToast('⚠ Todas as variantes deste canal falharam');
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [playingChannel, representativeOf, variantsOf]);
+    }, [playingChannel, failoverVariantsOf, hiddenIds, hiddenCatIds, startChannel]);
 
     // Zapping vindo do player (CH±, dígitos, overlay)
     const handleSwitchChannel = useCallback((streamId: number) => {
