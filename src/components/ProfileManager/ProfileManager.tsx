@@ -14,6 +14,9 @@ interface ProfileManagerProps {
 }
 
 const DEFAULT_AVATAR = 'P';
+// Gravação que não coube nem depois de podar os caches (T107): sem isto a
+// tela voltava pra lista como se o perfil existisse, e ele sumia no boot.
+const SEM_ESPACO = 'Não foi possível salvar: a memória da TV está cheia. Libere espaço em Configurações → Sistema → Apagar dados e tente de novo.';
 const avatarOptions = [DEFAULT_AVATAR, 'A', 'B', 'C', 'D', 'E', 'F', 'G'];
 
 type ModalMode = 'list' | 'create' | 'edit' | 'pin-verify' | 'delete-confirm';
@@ -30,6 +33,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
     const [formAvatar, setFormAvatar] = useState(DEFAULT_AVATAR);
     const [formPin, setFormPin] = useState(''); // vazio = manter/sem PIN
     const [removePin, setRemovePin] = useState(false);
+    const [saveError, setSaveError] = useState('');
     const [avatarFocusIndex, setAvatarFocusIndex] = useState(0);
     // Zonas do formulário: nome → PIN → avatares → botões (tudo por D-pad)
     const [editFocusZone, setEditFocusZone] = useState<'name' | 'pin' | 'avatars' | 'buttons'>('name');
@@ -105,6 +109,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         setAvatarFocusIndex(Math.max(0, avatarOptions.indexOf(profile.avatar)));
         setEditFocusZone('name');
         setButtonFocusIndex(0);
+        setSaveError('');
         setMode('edit');
     }, []);
 
@@ -113,11 +118,15 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         if (!formName.trim()) return;
         if (formPin && formPin.length !== 4) return;
 
-        await profileService.createProfile({
+        const criado = await profileService.createProfile({
             name: formName.trim(),
             avatar: formAvatar,
             pin: formPin || undefined
         });
+        if (!criado) {
+            setSaveError(SEM_ESPACO);
+            return;
+        }
         refreshProfiles();
         setMode('list');
     }, [formAvatar, formName, formPin, refreshProfiles]);
@@ -128,11 +137,15 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         if (formPin && formPin.length !== 4) return;
 
         // PIN: vazio = mantém o atual; 4 dígitos = troca; removePin = tira
-        await profileService.updateProfile(editingProfile.id, {
+        const salvo = await profileService.updateProfile(editingProfile.id, {
             name: formName.trim(),
             avatar: formAvatar,
             ...(removePin ? { pin: null } : formPin ? { pin: formPin } : {})
         });
+        if (!salvo) {
+            setSaveError(SEM_ESPACO);
+            return;
+        }
         refreshProfiles();
         setEditingProfile(null);
         setMode('list');
@@ -251,7 +264,11 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         // Sem zerar o sub-foco, o "Excluir" fica destacado no card que herdou
         // a posição do perfil recém-apagado — pronto pra apagar o próximo
         setCardZone('card');
-        profileService.deleteProfile(deleteTarget.id);
+        if (!profileService.deleteProfile(deleteTarget.id)) {
+            // Fica no diálogo: o perfil continua existindo
+            setSaveError(SEM_ESPACO);
+            return;
+        }
         refreshProfiles();
         setDeleteTarget(null);
         setMode('list');
@@ -266,6 +283,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         setDeleteTarget(profile);
         // Nasce em "Cancelar": exclusão nunca é o padrão
         setDeleteFocusIndex(0);
+        setSaveError('');
         setMode('delete-confirm');
     }, [activeProfile]);
 
@@ -312,6 +330,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                 setAvatarFocusIndex(0);
                 setEditFocusZone('name');
                 setButtonFocusIndex(0);
+                setSaveError('');
                 setMode('create');
             }
         } else if (mode === 'create' || mode === 'edit') {
@@ -481,6 +500,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                                 setRemovePin(false);
                                 setEditFocusZone('name');
                                 setButtonFocusIndex(0);
+                                setSaveError('');
                                 setMode('create');
                             }}
                         >
@@ -531,6 +551,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                         {removePin && (
                             <p className="pm-pin-remove-note">O PIN será removido ao salvar.</p>
                         )}
+                        {saveError && <p className="pm-pin-remove-note" role="alert">{saveError}</p>}
 
                         <label className="pm-label">Avatar</label>
                         <div className="pm-avatar-grid">
@@ -606,6 +627,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                         <br />
                         <span className="pm-delete-warning">Esta ação não pode ser desfeita.</span>
                     </p>
+                    {saveError && <p className="pm-pin-remove-note" role="alert">{saveError}</p>}
                     <p className="pm-hint">◀ ▶ escolhe · OK confirma · Voltar cancela</p>
 
                     <div className="pm-modal-buttons">

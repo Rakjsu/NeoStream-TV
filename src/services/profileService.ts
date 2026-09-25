@@ -1,6 +1,7 @@
 // Profile Service for NeoStream TV
 import type { Profile, ProfilesData, CreateProfileData, UpdateProfileData } from '../types/profile';
 import { purgeProfileData } from './profileScope';
+import { writeJson } from './safeStorage';
 
 const STORAGE_KEY = 'neostream_tv_profiles';
 const MAX_PROFILES = 5;
@@ -28,13 +29,13 @@ function getStorageData(): ProfilesData {
     }
 }
 
-// Save data to storage
-function saveStorageData(data: ProfilesData): void {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (error) {
-        console.error('Error saving profiles to storage:', error);
-    }
+// Grava pelo safeStorage (poda os caches se a quota estourar) e CONTA se
+// coube. Com a quota cheia o setItem cru falhava num console.error que
+// ninguém lê na TV, e a tela seguia como se o perfil existisse.
+function saveStorageData(data: ProfilesData): boolean {
+    const saved = writeJson(STORAGE_KEY, data).ok;
+    if (!saved) console.error('Error saving profiles to storage: quota');
+    return saved;
 }
 
 // Generate unique ID
@@ -64,8 +65,7 @@ export const profileService = {
 
         data.activeProfileId = profileId;
         profile.lastUsed = new Date().toISOString();
-        saveStorageData(data);
-        return true;
+        return saveStorageData(data);
     },
 
     // Clear active profile
@@ -112,7 +112,8 @@ export const profileService = {
             data.activeProfileId = newProfile.id;
         }
 
-        saveStorageData(data);
+        // null quando não coube: o perfil sumiria no próximo boot
+        if (!saveStorageData(data)) return null;
         return newProfile;
     },
 
@@ -142,8 +143,7 @@ export const profileService = {
             }
         }
 
-        saveStorageData(data);
-        return true;
+        return saveStorageData(data);
     },
 
     // Delete profile
@@ -166,7 +166,9 @@ export const profileService = {
 
         const removedId = data.profiles[index].id;
         data.profiles.splice(index, 1);
-        saveStorageData(data);
+        // Se a lista sem o perfil não foi gravada, ele continua existindo —
+        // apagar o dado dele agora o faria voltar vazio no próximo boot
+        if (!saveStorageData(data)) return false;
         // Sem isto, favoritos/progresso do perfil excluido ficariam orfaos no
         // localStorage e voltariam se alguem recriasse um perfil com o mesmo id
         purgeProfileData(removedId);
