@@ -26,9 +26,38 @@ interface PlaylistsData {
 function read(): PlaylistsData {
     try {
         const parsed = JSON.parse(localStorage.getItem(KEY) || '{}');
-        return { playlists: parsed.playlists || [], activeId: parsed.activeId || null };
+        // Entrada sem id ou sem url não dá pra ativar, remover nem comparar —
+        // só sobra pra derrubar quem percorre a lista. Numa TV a gravação
+        // interrompida é rotina (o aparelho é desligado na tomada), e a
+        // migração da credencial única também já passou por aqui. Mesmo
+        // cuidado defensivo do reminderService.
+        const lista: unknown = parsed.playlists;
+        const playlists = Array.isArray(lista)
+            ? (lista as PlaylistEntry[]).filter(p => !!p && !!p.id && !!p.url)
+            : [];
+        return { playlists, activeId: parsed.activeId || null };
     } catch {
         return { playlists: [], activeId: null };
+    }
+}
+
+/**
+ * URL de comparação do lado GUARDADO — devolve null em vez de lançar.
+ *
+ * `normalizarUrlDoServidor` lança `Invalid URL` em string vazia ou truncada, e
+ * ela era chamada para CADA entrada guardada dentro do predicado de um
+ * `.find`. Uma única entrada estragada fazia o `registerFromLogin` inteiro
+ * estourar: o Login mapeia `Invalid URL` para "URL do servidor inválida", ou
+ * seja, a pessoa digitava tudo certo, a credencial JÁ tinha sido salva, e a
+ * tela acusava a URL dela. No D-pad isso é digitar de novo, letra por letra,
+ * sem chance de acertar. Entrada que não normaliza simplesmente não casa: o
+ * login segue e cria a entrada nova.
+ */
+function urlComparavel(url: string): string | null {
+    try {
+        return normalizarUrlDoServidor(url);
+    } catch {
+        return null;
     }
 }
 
@@ -121,7 +150,7 @@ export const playlistService = {
         // segunda entrada do mesmo provedor a cada login.
         const alvo = normalizarUrlDoServidor(credentials.url);
         const existing = data.playlists.find(
-            p => normalizarUrlDoServidor(p.url) === alvo && p.username === credentials.username
+            p => urlComparavel(p.url) === alvo && p.username === credentials.username
         );
         // Flags do Login (o app esconde TV/VOD por playlist)
         const includeTV = localStorage.getItem('includeTV') !== 'false';
