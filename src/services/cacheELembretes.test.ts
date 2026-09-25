@@ -283,3 +283,66 @@ describe('backupService', () => {
         expect(localStorage.getItem('neostream_theme_accent')).toBeNull();
     });
 });
+
+describe('catalogCache — a idade custa o preço de uma data', () => {
+    // A guarda de regravação existe porque reserializar ~1,2 MB numa TV custa
+    // caro. Só que, pra decidir, ela PARSEAVA os mesmos ~1,2 MB — em toda
+    // visita à TV ao vivo. O carimbo agora mora numa chave própria.
+    const eDoCatalogo = (chave: string) => chave.startsWith('neostream_catalog_cache');
+
+    it('a guarda de idade não toca no catálogo guardado', () => {
+        writeCatalog('live', [canal(1)], trimLive);
+
+        const lidas: string[] = [];
+        const original = localStorage.getItem.bind(localStorage);
+        vi.spyOn(localStorage, 'getItem').mockImplementation((chave: string) => {
+            lidas.push(chave);
+            return original(chave);
+        });
+
+        expect(writeCatalog('live', [canal(1), canal(2)], trimLive)).toBe(true);
+
+        expect(lidas.filter(c => eDoCatalogo(c) && c.endsWith('_at'))).not.toHaveLength(0);
+        expect(lidas.filter(c => eDoCatalogo(c) && !c.endsWith('_at'))).toEqual([]);
+    });
+
+    it('passada a janela, regrava de verdade', () => {
+        writeCatalog('live', [canal(1)], trimLive);
+        vi.advanceTimersByTime(61 * 60 * 1000);
+
+        expect(writeCatalog('live', [canal(1), canal(2)], trimLive)).toBe(true);
+        expect(readCatalog('live')).toHaveLength(2);
+    });
+
+    it('apagar a entrada apaga o carimbo junto', () => {
+        // Um carimbo órfão faria a gravação seguinte ser pulada por "ainda é
+        // recente" — e aí não haveria catálogo nenhum pra ler.
+        writeCatalog('live', [canal(1)], trimLive);
+        dropCatalog('live');
+
+        expect(writeCatalog('live', [canal(2)], trimLive)).toBe(true);
+        expect(readCatalog('live')).toHaveLength(1);
+    });
+
+    it('catálogo grande demais não deixa carimbo pra trás', () => {
+        const enorme = Array.from({ length: 40_000 }, (_, i) => canal(i));
+        expect(writeCatalog('live', enorme, trimLive)).toBe(false);
+
+        // Sem a limpeza do carimbo, esta gravação seria pulada e a TV ao vivo
+        // ficaria sem cache até a próxima hora.
+        expect(writeCatalog('live', [canal(1)], trimLive)).toBe(true);
+        expect(readCatalog('live')).toHaveLength(1);
+    });
+
+    it('entrada antiga sem carimbo é regravada uma vez (quem atualiza o app)', () => {
+        writeCatalog('live', [canal(1)], trimLive);
+        // Simula o que já está no aparelho de quem atualiza: blob sem carimbo.
+        for (let i = 0; i < localStorage.length; i++) {
+            const chave = localStorage.key(i);
+            if (chave && chave.endsWith('_at')) { localStorage.removeItem(chave); break; }
+        }
+
+        expect(writeCatalog('live', [canal(1), canal(2)], trimLive)).toBe(true);
+        expect(readCatalog('live')).toHaveLength(2);
+    });
+});
