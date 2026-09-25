@@ -241,7 +241,8 @@ named lists, and the "because you watched" row).
 
 Next up:
 
-- Pairing with the NeoStream desktop app over the LAN (six-digit code), which is the prerequisite for
+- Pairing with the NeoStream desktop app over the LAN (four-digit code, matching the desktop and the
+  phone app), which is the prerequisite for
   QR pairing from a phone: sending credentials to the TV needs a receiver, and a Tizen web app cannot
   listen on a socket.
 - Backup and restore through the paired desktop, and favorites/progress sync.
