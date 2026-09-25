@@ -142,6 +142,23 @@ function ReminderToast({ reminder, onWatch, onDismiss }: {
   );
 }
 
+/**
+ * Aviso de "aperte Voltar de novo pra sair".
+ *
+ * Era JSX solto dentro do return do app principal — que as telas de idioma,
+ * boas-vindas e login nunca alcançam, porque elas saem por `return` antes.
+ * Resultado: nessas telas a saída podia ser armada sem nenhum aviso na tela.
+ * Como componente, o mesmo aviso serve os dois caminhos.
+ */
+function ExitToast({ visivel }: { visivel: boolean }) {
+  if (!visivel) return null;
+  return (
+    <div className="app-exit-toast" role="status">
+      Pressione Voltar de novo para sair do NeoStream
+    </div>
+  );
+}
+
 function App() {
   const [authState, setAuthState] = useState<AuthState>('loading');
   const [currentPage, setCurrentPage] = useState<Page>('home');
@@ -165,6 +182,19 @@ function App() {
   // aviso de saída → sair. A ponta dessa cadeia mora aqui porque o aviso
   // aparece em cima de qualquer página.
   const { armado: exitArmado, pedirSaida, desarmar: desarmarSaida } = useExitPrompt();
+
+  // O armamento vive no App e sobrevive à troca de tela — trocar de
+  // `authState` não desmonta nada, só troca o ramo do render. Sem desarmar
+  // aqui, um Voltar apertado por engano na tela de idioma continuava valendo
+  // do outro lado: o usuário escolhia o idioma, caía na Welcome e o PRIMEIRO
+  // Voltar dela fechava o app, porque o hook via o timer ainda pendente.
+  //
+  // `desarmarSaida` é `useCallback` com deps vazias, então este efeito só roda
+  // quando `authState` muda de verdade — não a cada render, o que desarmaria
+  // no mesmo instante em que armou.
+  useEffect(() => {
+    desarmarSaida();
+  }, [authState, desarmarSaida]);
 
 
   // Enquanto o aviso está na tela ele é o dono das teclas. A zona muda JUNTO
@@ -369,12 +399,22 @@ function App() {
 
   // Language selection screen (first time user)
   if (authState === 'languageSelection') {
-    return <LanguageSelection onComplete={checkAuth} />;
+    return (
+      <>
+        <LanguageSelection onComplete={checkAuth} onRequestExit={pedirSaida} onCancelExit={desarmarSaida} />
+        <ExitToast visivel={exitArmado} />
+      </>
+    );
   }
 
   // Welcome screen (no playlist configured)
   if (authState === 'welcome') {
-    return <Welcome onGoToLogin={handleGoToLogin} />;
+    return (
+      <>
+        <Welcome onGoToLogin={handleGoToLogin} onRequestExit={pedirSaida} onCancelExit={desarmarSaida} />
+        <ExitToast visivel={exitArmado} />
+      </>
+    );
   }
 
   // Login screen
@@ -411,11 +451,7 @@ function App() {
 
         {/* Aviso de saída: a Home era a dona dele, mas a cadeia de Voltar
             termina aqui e o aviso precisa aparecer com a sidebar focada. */}
-        {exitArmado && (
-          <div className="app-exit-toast" role="status">
-            Pressione Voltar de novo para sair do NeoStream
-          </div>
-        )}
+        <ExitToast visivel={exitArmado} />
 
         {/* Profile Manager Modal */}
         {/* Aviso de lembrete — acima de tudo, com D-pad próprio */}
