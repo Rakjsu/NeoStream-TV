@@ -13,7 +13,7 @@ import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
 import {
     catalogSort, sortCatalog, hideWatched, isRecentlyAdded, newEpisodes, SORT_LABELS, type CatalogSort,
-    catalogFilters, matchesFilters, normalizeSearch, fuzzyMatches, DECADES, MIN_RATINGS,
+    catalogFilters, matchesFilters, normalizeSearch, fuzzyMatches, searchNameOf, DECADES, MIN_RATINGS,
     type CatalogFilters,
 } from '../services/catalogExtras';
 import { kidsFilter } from '../services/kidsFilter';
@@ -167,7 +167,7 @@ export function Series() {
         const query = normalizeSearch(searchQuery);
         const hasFilters = filters.decade > 0 || filters.minRating > 0;
         let list = sortedSeries.filter((s) => {
-            const matchesSearch = !query || fuzzyMatches(s.name || '', query);
+            const matchesSearch = !query || fuzzyMatches(searchNameOf(s), query);
             const matchesCategory = selectedCategory === 'all' || s.category_id === selectedCategory;
             if (!matchesSearch || !matchesCategory) return false;
             if (hasFilters && !matchesFilters(s, filters)) return false;
