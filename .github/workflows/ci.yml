@@ -21,7 +21,7 @@ jobs:
     name: Tipos, lint e testes
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -60,7 +60,7 @@ jobs:
     name: Compatibilidade Tizen e orçamento
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
