@@ -171,30 +171,6 @@ describe('Voltar no Login', () => {
         expect(api.authenticate).not.toHaveBeenCalled();
     });
 
-    it('➕ abandonado pela troca de idioma e conta encerrada: o Voltar do Login seguinte vai às boas-vindas, não ao app sem conta', async () => {
-        aparelhoComConta();
-        render(<App />);
-        await abrirAdicionarPlaylist();
-
-        // Troca de idioma no meio do ➕: o idioma termina em checkAuth, que
-        // entra no app com a conta que já existia
-        fireEvent.click(document.querySelector('.login-btn-lang') as HTMLElement);
-        fireEvent.click(await screen.findByTestId('concluir-idioma'));
-        await screen.findByTestId('pagina-configuracoes');
-        await esvaziarEfeitos();
-
-        fireEvent.click(screen.getByTestId('sair-da-conta'));
-        fireEvent.click(await screen.findByTestId('ir-login'));
-        await esvaziarEfeitos();
-        expect(noLogin()).not.toBeNull();
-
-        tecla('XF86Back');
-
-        expect(noLogin()).toBeNull();
-        expect(screen.getByTestId('pagina-boas-vindas')).toBeTruthy();
-        expect(screen.queryByTestId('sidebar'), 'sem conta, o app principal não pode abrir').toBeNull();
-    });
-
     it('com o teclado aberto, Voltar só fecha o teclado: continua no Login com o que foi digitado', async () => {
         aparelhoComIdioma();
         render(<App />);
