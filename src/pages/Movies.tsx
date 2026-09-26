@@ -22,6 +22,7 @@ import { kidsFilter } from '../services/kidsFilter';
 import { progressService } from '../services/progressService';
 import './Movies.css';
 import { ErrorScreen } from '../components/ErrorScreen';
+import { PosterPreguicoso } from '../components/PosterPreguicoso';
 
 export function Movies() {
     const { focusZone, setFocusZone } = useFocusZone();
@@ -821,16 +822,17 @@ export function Movies() {
                                 }}
                                 style={{ animationDelay: `${Math.min(index * 0.03, 0.5)}s` }}
                             >
-                                <div className="movie-poster">
-                                    {brokenImages.has(movie.stream_id) ? (
+                                {/* A capa só existe com o card perto da tela: `loading="lazy"`
+                                    não existe no Chromium 69 e a grade só cresce (T088). */}
+                                <PosterPreguicoso
+                                    className="movie-poster"
+                                    src={brokenImages.has(movie.stream_id) ? null : (movie.stream_icon || movie.cover)}
+                                    alt={movie.name}
+                                    raiz={scrollContainerRef}
+                                    onError={() => handleImageError(movie.stream_id)}
+                                >
+                                    {brokenImages.has(movie.stream_id) && (
                                         <div className="poster-placeholder">🎬</div>
-                                    ) : (
-                                        <img decoding="async"
-                                            src={movie.stream_icon || movie.cover}
-                                            alt={movie.name}
-                                            loading="lazy"
-                                            onError={() => handleImageError(movie.stream_id)}
-                                        />
                                     )}
                                     {isRecentlyAdded(movie, nowMs) && (
                                         <div className="new-badge">NOVO</div>
@@ -848,7 +850,7 @@ export function Movies() {
                                     {movie.rating && parseFloat(movie.rating) > 0 && (
                                         <div className="movie-rating">⭐ {movie.rating}</div>
                                     )}
-                                </div>
+                                </PosterPreguicoso>
                                 <div className="movie-title">{movie?.name || 'Filme Sem Nome'}</div>
                             </div>
                         ))}

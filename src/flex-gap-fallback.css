@@ -71,12 +71,6 @@ html.no-flex-gap .action-btn > * + * {
     margin-left: 10px;
 }
 
-/* ---- components/ContentRow/ContentRow.css ---- */
-
-html.no-flex-gap .content-row-items > * + * {
-    margin-left: var(--spacing-md);
-}
-
 /* ---- components/ProfileManager/ProfileManager.css ---- */
 
 html.no-flex-gap .pm-title > * + * {

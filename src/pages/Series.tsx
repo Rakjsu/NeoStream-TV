@@ -21,6 +21,7 @@ import { progressService } from '../services/progressService';
 import { storage } from '../services/storage';
 import './Series.css';
 import { ErrorScreen } from '../components/ErrorScreen';
+import { PosterPreguicoso } from '../components/PosterPreguicoso';
 
 export function Series() {
     const { focusZone, setFocusZone } = useFocusZone();
@@ -651,16 +652,17 @@ export function Series() {
                                 onClick={() => openSeriesModal(item)}
                                 style={{ animationDelay: `${Math.min(index * 0.03, 0.5)}s` }}
                             >
-                                <div className="series-poster">
-                                    {brokenImages.has(item.series_id) ? (
+                                {/* A capa só existe com o card perto da tela: `loading="lazy"`
+                                    não existe no Chromium 69 e a grade só cresce (T088). */}
+                                <PosterPreguicoso
+                                    className="series-poster"
+                                    src={brokenImages.has(item.series_id) ? null : item.cover}
+                                    alt={item.name}
+                                    raiz={scrollContainerRef}
+                                    onError={() => handleImageError(item.series_id)}
+                                >
+                                    {brokenImages.has(item.series_id) && (
                                         <div className="poster-placeholder">📺</div>
-                                    ) : (
-                                        <img decoding="async"
-                                            src={item.cover}
-                                            alt={item.name}
-                                            loading="lazy"
-                                            onError={() => handleImageError(item.series_id)}
-                                        />
                                     )}
                                     {followedSeriesIds.has(String(item.series_id)) &&
                                         newEpisodes.has(String(item.series_id), item.last_modified || '0') ? (
@@ -671,7 +673,7 @@ export function Series() {
                                     {item.rating && parseFloat(item.rating) > 0 && (
                                         <div className="series-rating">⭐ {item.rating}</div>
                                     )}
-                                </div>
+                                </PosterPreguicoso>
                                 <div className="series-title">{item?.name || 'Série Sem Nome'}</div>
                             </div>
                         ))}
