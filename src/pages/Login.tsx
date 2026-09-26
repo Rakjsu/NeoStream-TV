@@ -8,6 +8,7 @@ import { storage } from '../services/storage';
 import { playlistService } from '../services/playlistService';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useTranslation } from '../hooks/useTranslation';
+import { LanguageSelection } from './LanguageSelection';
 import './Login.css';
 import { accountService } from '../services/accountService';
 import { foiRebaixadoParaHttp, normalizarUrlDoServidor } from '../services/api';
@@ -16,7 +17,6 @@ interface LoginProps {
     onLoginSuccess: () => void;
     /** Fluxo ➕ Adicionar playlist: não pré-preencher com a credencial ativa */
     startBlank?: boolean;
-    onLanguageSelect?: () => void;
     /**
      * Voltar (botão, OK no foco 6 e tecla Voltar do controle). Quem abriu o
      * Login decide pra onde ele volta: Configurações no ➕ Adicionar playlist,
@@ -29,7 +29,7 @@ interface LoginProps {
 // Navigation order: 0=url, 1=username, 2=password, 3=includeTV, 4=includeVOD, 5=lang, 6=back, 7=submit
 const MAX_FOCUS = 7;
 
-export function Login({ onLoginSuccess, onLanguageSelect, onBack, startBlank = false }: LoginProps) {
+export function Login({ onLoginSuccess, onBack, startBlank = false }: LoginProps) {
     const { t } = useTranslation();
     const [url, setUrl] = useState('');
     const [username, setUsername] = useState('');
@@ -40,6 +40,17 @@ export function Login({ onLoginSuccess, onLanguageSelect, onBack, startBlank = f
     const [loading, setLoading] = useState(false);
     const [focusedField, setFocusedField] = useState(0);
     const [editingField, setEditingField] = useState<number | null>(null);
+    // 🌐 abre a escolha de idioma POR CIMA do formulário, sem sair do Login.
+    // Antes o botão levava o App para a tela de idioma do primeiro uso, que
+    // conclui no checkAuth do boot: o Login desmontava, o que foi digitado no
+    // D-pad sumia e a pessoa caía na Welcome (ou, no ➕ Adicionar playlist, de
+    // volta à playlist antiga). O Voltar de lá ainda era o pedido de SAÍDA do
+    // app. Aqui o formulário continua montado (só escondido), e o evento
+    // `neostream-lang-change` que a LanguageSelection dispara re-renderiza tudo
+    // já traduzido.
+    const [escolhendoIdioma, setEscolhendoIdioma] = useState(false);
+    const abrirIdioma = useCallback(() => setEscolhendoIdioma(true), []);
+    const fecharIdioma = useCallback(() => setEscolhendoIdioma(false), []);
 
     const urlRef = useRef<HTMLInputElement>(null);
     const usernameRef = useRef<HTMLInputElement>(null);
@@ -195,7 +206,7 @@ export function Login({ onLoginSuccess, onLanguageSelect, onBack, startBlank = f
                 setIncludeVOD(v => !v);
                 break;
             case 5: // Language button
-                if (onLanguageSelect) onLanguageSelect();
+                abrirIdioma();
                 break;
             case 6: // Back button
                 onBack();
@@ -204,7 +215,7 @@ export function Login({ onLoginSuccess, onLanguageSelect, onBack, startBlank = f
                 handleLogin();
                 break;
         }
-    }, [editingField, focusedField, stopEditingInput, onLanguageSelect, handleLogin, onBack]);
+    }, [editingField, focusedField, stopEditingInput, abrirIdioma, handleLogin, onBack]);
 
     const handleBackAction = useCallback(() => {
         // If editing, just blur (close keyboard)
@@ -235,6 +246,9 @@ export function Login({ onLoginSuccess, onLanguageSelect, onBack, startBlank = f
         },
         onEnter: handleEnter,
         onBack: handleBackAction,
+        // A tela de idioma tem D-pad próprio: sem isto o mesmo ↓ andava nos
+        // dois e o Voltar dela também recarregava a página por baixo
+        enabled: !escolhendoIdioma,
     });
 
     useEffect(() => {
@@ -249,7 +263,11 @@ export function Login({ onLoginSuccess, onLanguageSelect, onBack, startBlank = f
     const currentLang = LANG_LABELS[storage.getSettings().language] || 'PT-BR';
 
     return (
-        <div className="login-container">
+        <>
+        {/* Escondido (não desmontado) enquanto escolhe o idioma: os campos e
+            os ouvintes de focus/blur dos inputs seguem vivos. `hidden` não
+            serve — o display:flex da classe venceria o do navegador. */}
+        <div className="login-container" style={escolhendoIdioma ? { display: 'none' } : undefined}>
             {/* Animated Background */}
             <div className="login-bg">
                 <div className="login-orb login-orb-1" />
@@ -391,7 +409,7 @@ export function Login({ onLoginSuccess, onLanguageSelect, onBack, startBlank = f
                         {/* Language Button */}
                         <button
                             type="button"
-                            onClick={() => onLanguageSelect?.()}
+                            onClick={abrirIdioma}
                             className={`login-btn login-btn-lang ${focusedField === 5 ? 'focused' : ''}`}
                             disabled={loading}
                             tabIndex={-1}
@@ -443,5 +461,11 @@ export function Login({ onLoginSuccess, onLanguageSelect, onBack, startBlank = f
                 </div>
             </div>
         </div>
+        {/* Escolher conclui e Voltar desiste: os dois devolvem ao formulário.
+            Aqui o Voltar NÃO é o pedido de saída do app, como no primeiro uso. */}
+        {escolhendoIdioma && (
+            <LanguageSelection onComplete={fecharIdioma} onRequestExit={fecharIdioma} />
+        )}
+        </>
     );
 }

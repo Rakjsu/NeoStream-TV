@@ -445,7 +445,9 @@ function App() {
 
   // Login screen
   if (authState === 'login') {
-    return <Login onLoginSuccess={handleLoginSuccess} startBlank={addingPlaylist} onLanguageSelect={() => setAuthState('languageSelection')} onBack={handleLoginBack} />;
+    // O 🌐 do Login troca o idioma ali mesmo: sair para 'languageSelection'
+    // concluía no checkAuth do boot e jogava fora o formulário (e o ➕)
+    return <Login onLoginSuccess={handleLoginSuccess} startBlank={addingPlaylist} onBack={handleLoginBack} />;
   }
 
   // Main app with sidebar
