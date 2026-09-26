@@ -111,9 +111,15 @@ export function MyList({ onNavigate }: MyListProps) {
         ...listas.map(lista => `list:${lista.id}`),
         ...(listas.length < MAX_LISTAS ? ['new'] : []),
     ];
+    // "Limpar Tudo" apaga a lista PADRÃO (storage.clearWatchLater); as listas
+    // nomeadas vivem em outra chave. Com uma lista nomeada aberta o botão
+    // apagava a lista que não estava na tela — e, pra quem lia "limpa esta
+    // lista", apagava em silêncio a errada. Ali ele não existe: a lista nomeada
+    // já tem 🔴 (tira o item) e 🔵 (apaga a lista), como o removerDaVista.
+    const temLimparTudo = items.length > 0 && !listaAtiva;
     // Slots da faixa do cabeçalho: as abas + "Limpar Tudo" (que só existe
     // quando há algo pra limpar — slot invisível vira parada morta do D-pad)
-    const headerSlots = tabs.length + (items.length > 0 ? 1 : 0);
+    const headerSlots = tabs.length + (temLimparTudo ? 1 : 0);
 
     const recarregarListas = () => setListas(listsService.list());
 
@@ -412,7 +418,7 @@ export function MyList({ onNavigate }: MyListProps) {
                         </p>
                     </div>
                 </div>
-                {items.length > 0 && (
+                {temLimparTudo && (
                     <button
                         className={`clear-btn ${focusArea === 'tabs' && focusedTabIndex >= tabs.length ? 'tv-focused' : ''} ${clearArmed ? 'armed' : ''}`}
                         onClick={clearAll}
