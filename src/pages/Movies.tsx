@@ -20,6 +20,7 @@ import { groupVodVersions, tagsOf, hasTag, versionLabel, ALL_VOD_TAGS, type VodT
 import { storage } from '../services/storage';
 import { kidsFilter } from '../services/kidsFilter';
 import { progressService } from '../services/progressService';
+import { readCatalog, writeCatalog, dropCatalog, trimVod, trimCategory, type CachedVodStream } from '../services/catalogCache';
 import './Movies.css';
 import { ErrorScreen } from '../components/ErrorScreen';
 import { PosterPreguicoso } from '../components/PosterPreguicoso';
@@ -99,18 +100,65 @@ export function Movies() {
     // Fetch data
     useEffect(() => {
         async function fetchData() {
+            // Stale-while-revalidate (T118), o mesmo da TV ao vivo: o catálogo
+            // de filmes costuma ser o MAIOR dos três, e sem isto cada visita
+            // pagava o download inteiro com a tela em "carregando".
+            const cachedStreams = readCatalog<CachedVodStream>('vod');
+            const cachedCategories = readCatalog<Category>('vod-cats');
+            let servedFromCache = false;
+            if (cachedStreams && cachedCategories) {
+                // Podado: completa o que o tipo exige e a grade não usa. Sinopse,
+                // elenco etc. chegam com o fetch logo atrás.
+                const restored = cachedStreams.map(item => ({
+                    ...item,
+                    stream_type: 'movie',
+                    custom_sid: '',
+                    direct_source: '',
+                    backdrop_path: [],
+                    youtube_trailer: '',
+                    episode_run_time: '',
+                    cover: '',
+                    plot: '',
+                    cast: '',
+                    director: '',
+                    genre: '',
+                } satisfies VODStream));
+                const gatedCache = kidsFilter.apply(restored, cachedCategories);
+                setStreams(gatedCache.items);
+                setCategories(gatedCache.categories);
+                setLoading(false);
+                servedFromCache = true;
+            }
+
             try {
-                setLoading(true);
+                if (!servedFromCache) setLoading(true);
                 const [streamsData, categoriesData] = await Promise.all([
                     api.getVODStreams(),
                     api.getVodCategories()
                 ]);
+                // Os dois andam juntos: sem as categorias o cache nunca é
+                // servido, e a lista sozinha só ocuparia a quota
+                if (writeCatalog('vod', streamsData, trimVod)) {
+                    if (!writeCatalog('vod-cats', categoriesData, trimCategory)) dropCatalog('vod');
+                } else {
+                    dropCatalog('vod-cats');
+                }
                 // Gate do perfil Kids (remove categorias adultas e seus filmes)
                 const gated = kidsFilter.apply(streamsData, categoriesData);
                 setStreams(gated.items);
                 setCategories(gated.categories);
+                // Ficha aberta sobre um item do cache: troca pelo completo, senão
+                // ela ficaria sem sinopse, elenco e trailer
+                if (servedFromCache) {
+                    const porId = new Map(gated.items.map(item => [item.stream_id, item]));
+                    setSelectedMovie(atual => (atual && porId.get(atual.stream_id)) || atual);
+                }
             } catch (err: unknown) {
-                setError(err instanceof Error ? err.message : 'Erro ao carregar filmes');
+                // Com o cache na tela, cair a rede não apaga o que o usuário já
+                // está navegando
+                if (!servedFromCache) {
+                    setError(err instanceof Error ? err.message : 'Erro ao carregar filmes');
+                }
             } finally {
                 setLoading(false);
             }
