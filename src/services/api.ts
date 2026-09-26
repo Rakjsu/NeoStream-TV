@@ -147,6 +147,9 @@ export function limparCacheDeCatalogo(): void {
     aoLimpar.forEach(limpar => limpar());
 }
 
+/** Mensagem do erro de `authenticate` cancelado por quem chamou. */
+export const AUTENTICACAO_CANCELADA = 'Conexão cancelada.';
+
 class XtreamAPI {
     private baseUrl: string = '';
     private username: string = '';
@@ -284,7 +287,13 @@ class XtreamAPI {
         };
     }
 
-    async authenticate(url: string, username: string, password: string): Promise<AuthResponse> {
+    /**
+     * @param cancelar sinal de quem chamou (o boot, quando o usuário aperta
+     * Voltar no spinner ou uma conferência mais nova toma o lugar): aborta a
+     * tentativa em voo, NÃO passa pro outro protocolo — cancelar é desistir,
+     * não "tentar a próxima" — e rejeita mesmo que a resposta chegue depois.
+     */
+    async authenticate(url: string, username: string, password: string, cancelar?: AbortSignal): Promise<AuthResponse> {
         const baseUrl = normalizeServerUrl(url);
         const alternateBaseUrl = getAlternateProtocolUrl(baseUrl);
         const candidateUrls = alternateBaseUrl ? [baseUrl, alternateBaseUrl] : [baseUrl];
@@ -293,14 +302,20 @@ class XtreamAPI {
             let lastError: unknown;
 
             for (const candidateUrl of candidateUrls) {
+                if (cancelar?.aborted) break;
                 // Um deadline POR tentativa: com um único cronômetro de 15s
                 // para as duas, a primeira consumia tudo e a segunda nascia
                 // abortada — o fallback nunca chegava a acontecer
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 15000);
+                // O ouvinte vive o tempo DESTA tentativa: sai no finally
+                const repassarCancelamento = () => controller.abort();
+                cancelar?.addEventListener('abort', repassarCancelamento);
                 try {
                     const data = await this.fetchAuth(candidateUrl, username, password, controller.signal);
                     clearTimeout(timeoutId);
+                    // Resposta que chegou depois do cancelamento não loga ninguém
+                    if (cancelar?.aborted) break;
 
                     this.baseUrl = candidateUrl;
                     this.username = username;
@@ -316,6 +331,7 @@ class XtreamAPI {
                 } catch (error: unknown) {
                     clearTimeout(timeoutId);
                     lastError = error;
+                    if (cancelar?.aborted) break;
                     const message = error instanceof Error ? error.message : '';
                     const name = error instanceof Error ? error.name : '';
                     const shouldTryNext =
@@ -329,9 +345,12 @@ class XtreamAPI {
                     if (!shouldTryNext) {
                         throw error;
                     }
+                } finally {
+                    cancelar?.removeEventListener('abort', repassarCancelamento);
                 }
             }
 
+            if (cancelar?.aborted) throw new Error(AUTENTICACAO_CANCELADA);
             throw lastError;
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : '';
