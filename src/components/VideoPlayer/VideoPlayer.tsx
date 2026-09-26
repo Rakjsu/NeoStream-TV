@@ -108,6 +108,8 @@ const RESUME_REWIND_SECONDS = 5;
 const AUTO_EPISODE_LIMIT = 3;
 const STILL_WATCHING_TIMEOUT_MS = 90000;
 const DIGIT_TIMEOUT_MS = 1400;
+// CH+/CH− acumulam; a troca sai uma vez, quando a tecla assenta (T002)
+const ZAP_COMMIT_MS = 600;
 const ZAP_WINDOW = 9; // linhas visíveis no overlay de zapping
 
 const STALL_LIMIT_MS = 12000; // watchdog: tempo parado antes de reconectar
@@ -717,12 +719,53 @@ export function VideoPlayer({
         return channelList.findIndex(c => c.stream_id === currentChannelId);
     }, [channelList, currentChannelId]);
 
-    const switchRelative = useCallback((delta: number) => {
+    // CH+/CH− com acumulador (T002). Segurar a tecla gera keydown de
+    // auto-repeat (~15-20/s na TV) e cada um era uma troca COMPLETA: pipeline
+    // MSE destruído e recriado, conexão nova no provedor e duas escritas no
+    // localStorage. Agora a tecla só anda um alvo (mostrado na hora no
+    // zap-banner) e a troca sai UMA vez, quando o dedo assenta — o mesmo
+    // padrão do nudgeSeek/commitSeek. O alvo é guardado pelo stream_id, não
+    // pelo índice: se a lista mudar no meio da espera, o CH± seguinte não
+    // parte de um índice velho (cairia no vizinho).
+    const zapTargetRef = useRef<number | null>(null);
+    const zapCommitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [zapPreview, setZapPreview] = useState<{ num?: number; name: string } | null>(null);
+
+    const cancelZap = useCallback(() => {
+        zapTargetRef.current = null;
+        if (zapCommitRef.current) {
+            clearTimeout(zapCommitRef.current);
+            zapCommitRef.current = null;
+        }
+        setZapPreview(null);
+    }, []);
+
+    const commitZap = useCallback(() => {
+        const target = zapTargetRef.current;
+        cancelZap();
+        // Deu a volta e parou no mesmo canal: não há o que trocar
+        if (target != null && target !== currentChannelId) onSwitchChannel?.(target);
+    }, [cancelZap, currentChannelId, onSwitchChannel]);
+
+    const nudgeZap = useCallback((delta: number) => {
         if (!canZap || !channelList || channelList.length === 0) return;
-        const base = currentChannelIndex >= 0 ? currentChannelIndex : 0;
-        const next = (base + delta + channelList.length) % channelList.length;
-        onSwitchChannel?.(channelList[next].stream_id);
-    }, [canZap, channelList, currentChannelIndex, onSwitchChannel]);
+        const pending = zapTargetRef.current == null
+            ? -1
+            : channelList.findIndex(c => c.stream_id === zapTargetRef.current);
+        const base = pending >= 0 ? pending : (currentChannelIndex >= 0 ? currentChannelIndex : 0);
+        const next = channelList[(base + delta + channelList.length) % channelList.length];
+        zapTargetRef.current = next.stream_id;
+        setZapPreview({ num: next.num, name: next.name });
+        if (zapCommitRef.current) clearTimeout(zapCommitRef.current);
+        zapCommitRef.current = setTimeout(commitZap, ZAP_COMMIT_MS);
+    }, [canZap, channelList, currentChannelIndex, commitZap]);
+
+    // Sair do player com a troca pendente deixaria o timeout vivo
+    useEffect(() => {
+        return () => {
+            if (zapCommitRef.current) clearTimeout(zapCommitRef.current);
+        };
+    }, []);
 
     // Digit-jump: número digitado vira canal após pequena pausa
     useEffect(() => {
@@ -790,20 +833,22 @@ export function VideoPlayer({
                 // Trocar de canal reexibe a barra: sem isso o usuário zapeava
                 // sem nenhuma pista de onde tinha caído
                 resetHideControlsTimer();
-                switchRelative(-1);
+                nudgeZap(-1);
             } else if (key === 'MediaChannelDown' || code === 428 || key === 'PageDown' || code === 34) {
                 event.preventDefault();
                 resetHideControlsTimer();
-                switchRelative(1);
+                nudgeZap(1);
             } else if (/^[0-9]$/.test(key) || (code >= 48 && code <= 57) || (code >= 96 && code <= 105)) {
                 event.preventDefault();
+                // Digitar um número muda de ideia: o CH± pendente não sai
+                cancelZap();
                 const digit = /^[0-9]$/.test(key) ? key : String(code >= 96 ? code - 96 : code - 48);
                 setDigitBuffer(prev => (prev + digit).slice(0, 4));
             }
         };
         window.addEventListener('keydown', handleExtraKeys);
         return () => window.removeEventListener('keydown', handleExtraKeys);
-    }, [canZap, switchRelative, resetHideControlsTimer]);
+    }, [canZap, nudgeZap, cancelZap, resetHideControlsTimer]);
 
     // ----- Sleep timer -----
     // O estado "remaining" é setado no handler (cycleSleep) e no callback do
@@ -1179,6 +1224,15 @@ export function VideoPlayer({
                 if (!canZap) return;
                 if (playerFocusRef.current !== 'controls') return;
                 if (appFocusZone === 'overlay' && !isOverlayOwner) return;
+                // CH± ainda pendente (T002): o 🔴 desfaz o zapping e fica no
+                // canal que está tocando — o mesmo fim de quando cada CH± já
+                // trocava na hora. Sem isto saíam DUAS trocas e ganhava o CH±.
+                if (zapTargetRef.current != null) {
+                    event.preventDefault();
+                    resetHideControlsTimer();
+                    cancelZap();
+                    return;
+                }
                 const anterior = zapHistory.previous();
                 if (anterior != null && anterior !== currentChannelId) {
                     event.preventDefault();
@@ -1191,7 +1245,7 @@ export function VideoPlayer({
         return () => window.removeEventListener('keydown', handleMediaKeys);
     }, [togglePlay, handleClose, nudgeSeek, isLiveContent, canGoNext, canGoPrevious,
         onNextEpisode, onPreviousEpisode, canZap, currentChannelId, onSwitchChannel,
-        resetHideControlsTimer, appFocusZone, isOverlayOwner]);
+        resetHideControlsTimer, appFocusZone, isOverlayOwner, cancelZap]);
 
     // ----- Menu de opções (qualidade / áudio / legenda / stats) -----
     const openMenu = useCallback((id: MenuId) => {
@@ -1630,6 +1684,14 @@ export function VideoPlayer({
                 <div className="zap-banner">
                     {zapBanner.num != null && <span className="zap-banner-num">{zapBanner.num}</span>}
                     <span className="zap-banner-name">{zapBanner.name}</span>
+                </div>
+            )}
+
+            {/* Canal-alvo do CH+/CH− enquanto a tecla não assenta (T002) */}
+            {canZap && zapPreview && (
+                <div className="zap-banner zap-banner-alvo">
+                    {zapPreview.num != null && <span className="zap-banner-num">{zapPreview.num}</span>}
+                    <span className="zap-banner-name">{zapPreview.name}</span>
                 </div>
             )}
 
