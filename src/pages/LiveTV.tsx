@@ -865,7 +865,7 @@ export function LiveTV() {
 
                 <div className="loading-skeleton-grid">
                     {[1, 2, 3, 4, 5, 6].map(i => (
-                        <div key={i} className="skeleton-card">
+                        <div key={i} className="livetv-skeleton-card">
                             <div className="skeleton-icon" />
                             <div className="skeleton-text">
                                 <div className="skeleton-line skeleton-line-long" />
