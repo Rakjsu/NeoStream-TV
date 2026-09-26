@@ -267,7 +267,7 @@ html.no-flex-gap .loading-dots > * + * {
     margin-left: 4px;
 }
 
-html.no-flex-gap .skeleton-card > * + * {
+html.no-flex-gap .livetv-skeleton-card > * + * {
     margin-left: 12px;
 }
 

@@ -524,7 +524,10 @@
     opacity: 0.5;
 }
 
-.skeleton-card {
+/* Nome próprio: o CSS vai para a TV num arquivo só, e Filmes/Séries têm um
+   .skeleton-card deles (célula de pôster). Com o mesmo nome as regras se
+   somavam e o esqueleto das grades virava esta pílula flex (T129). */
+.livetv-skeleton-card {
     display: flex;
     align-items: center;
     gap: 12px;
