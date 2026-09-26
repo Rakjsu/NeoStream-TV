@@ -17,6 +17,7 @@ import { Sidebar } from './components/Sidebar';
 import { ProfileManager } from './components/ProfileManager';
 import { GlobalSearch } from './components/GlobalSearch';
 import { SetupWizard } from './components/SetupWizard';
+import { BootLoading } from './components/BootLoading';
 import { setupWizard } from './services/wizardState';
 import { playlistService } from './services/playlistService';
 import { profileService } from './services/profileService';
@@ -291,18 +292,31 @@ function App() {
     setFocusZone('sidebar');
   }, []);
 
+  // Conferência da credencial em voo: o Voltar no spinner aborta por aqui
+  const bootAbortRef = useRef<AbortController | null>(null);
+
   const checkAuth = useCallback(async () => {
     if (!storage.hasSettings()) {
       setAuthState('languageSelection');
       return;
     }
 
+    // Uma conferência por vez: a nova derruba a anterior. Com duas em voo
+    // (o StrictMode do main.tsx roda este efeito duas vezes no dev; um retry
+    // pode chegar com outra ainda pendente) o Voltar só alcançava a última,
+    // e a outra, respondendo depois, levava o usuário pra dentro do app por
+    // cima da tela que ele escolheu.
+    bootAbortRef.current?.abort();
+    const tentativa = new AbortController();
+    bootAbortRef.current = tentativa;
     try {
       const credentials = storage.getCredentials();
       if (credentials) {
         // Try to authenticate with saved credentials
         // O payload traz validade, conexões e status da conta — era descartado
-        const auth = await api.authenticate(credentials.url, credentials.username, credentials.password);
+        // Com o sinal abortado o authenticate REJEITA, mesmo que a resposta
+        // chegue depois: daqui pra baixo a tentativa ainda vale
+        const auth = await api.authenticate(credentials.url, credentials.username, credentials.password, tentativa.signal);
         accountService.save(auth, foiRebaixadoParaHttp(credentials.url, api.getBaseUrl()));
         // "Ligar e assistir": abre direto na TV ao vivo tocando o último canal
         if (bootLastChannel.get() && storage.getLastChannel()) {
@@ -316,6 +330,10 @@ function App() {
         setAuthState('welcome');
       }
     } catch (err) {
+      // Abortada (Voltar ou tentativa mais nova): quem abortou já decidiu a
+      // tela, e isto não é falha de login — nada de "sem conexão" por cima
+      // do spinner da tentativa nova
+      if (tentativa.signal.aborted) return;
       console.error('Auto-login failed:', err);
       // Credencial INVÁLIDA → limpa e volta ao Welcome. Falha de REDE (Wi-Fi
       // da TV ainda subindo no boot é comum) → mantém a credencial e oferece
@@ -329,6 +347,13 @@ function App() {
       }
     }
   }, [openWizard]);
+
+  // Voltar no spinner do boot: desiste da tentativa e mostra a tela de sem
+  // conexão, que tem "tentar de novo" e "usar outro login"
+  const cancelarBoot = useCallback(() => {
+    bootAbortRef.current?.abort();
+    setAuthState('offline');
+  }, []);
 
   useEffect(() => {
     void Promise.resolve().then(checkAuth);
@@ -369,19 +394,7 @@ function App() {
 
   // Loading screen
   if (authState === 'loading') {
-    return (
-      <div className="app-loading">
-        <div className="app-loading-logo">
-          <svg viewBox="0 0 24 24" fill="none" width="64" height="64">
-            <path d="M4 5C4 4.44772 4.44772 4 5 4H19C19.5523 4 20 4.44772 20 5V15C20 15.5523 19.5523 16 19 16H5C4.44772 16 4 15.5523 4 15V5Z" stroke="currentColor" strokeWidth="2" />
-            <path d="M8 20H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M12 16V20" stroke="currentColor" strokeWidth="2" />
-          </svg>
-        </div>
-        <div className="app-loading-spinner" />
-        <p className="app-loading-text">NeoStream</p>
-      </div>
-    );
+    return <BootLoading onCancel={cancelarBoot} />;
   }
 
   // Sem rede no boot: credencial preservada, retry por OK
