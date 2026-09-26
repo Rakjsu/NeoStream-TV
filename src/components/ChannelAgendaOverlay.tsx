@@ -69,6 +69,8 @@ export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive, onToggle
 
     useTVNavigation({
         onNavigate: (direction) => {
+            // A dica diz "← Fechar": fecha até com a agenda carregando ou vazia
+            if (direction === 'left') { onClose(); return; }
             if (!programs || programs.length === 0) return;
             if (direction === 'up') setFocusedIndex(prev => Math.max(0, prev - 1));
             else if (direction === 'down') setFocusedIndex(prev => Math.min(programs.length - 1, prev + 1));

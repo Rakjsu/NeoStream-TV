@@ -120,6 +120,10 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
                     }
                     return next;
                 });
+            } else if (direction === 'left') {
+                // A dica diz "← Fechar". Dentro do campo o ← nem chega aqui:
+                // o useTVNavigation deixa a tecla pro cursor do teclado nativo
+                onClose();
             }
         },
         onEnter: () => {
