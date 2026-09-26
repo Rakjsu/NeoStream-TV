@@ -4,6 +4,7 @@
 
 import { api, aoLimparCacheDeCatalogo } from './api';
 import { kidsFilter } from './kidsFilter';
+import { searchNameOf } from './catalogExtras';
 import type { LiveStream, VODStream, Series } from '../types';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -73,7 +74,10 @@ export function searchIn<T extends { name: string }>(items: T[], query: string, 
     if (normalizedQuery.length < 2) return [];
     const scored: Array<{ item: T; score: number }> = [];
     for (const item of items) {
-        const score = scoreName(normalizeText(item.name || ''), normalizedQuery);
+        // Nome normalizado UMA vez por item (T042), no MESMO cache por objeto
+        // da busca de Filmes/Séries (T019): antes cada letra renormalizava as
+        // três listas inteiras, e só a consulta muda entre uma tecla e outra.
+        const score = scoreName(searchNameOf(item), normalizedQuery);
         if (score > 0) scored.push({ item, score });
     }
     scored.sort((a, b) => b.score - a.score);
