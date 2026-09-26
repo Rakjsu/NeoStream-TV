@@ -18,7 +18,6 @@
        filhos BLOCO que ocupam a largura do card: a porcentagem do padding
        resolve contra a largura do bloco que os contém, que aqui é a largura
        deles mesmos. (Ver a nota do .preview-video abaixo, onde isso NÃO vale.) */
-    .content-card-image-wrap,
     .card-poster,
     .mylist-page .card-poster,
     .movie-poster,
@@ -31,8 +30,6 @@
     /* O filho de mídia sai do fluxo e preenche o container. A lista precisa
        cobrir TODOS os filhos que carregam conteúdo visível — um que fique de
        fora herda a altura 0 do pai e some da tela. */
-    .content-card-image-wrap > img,
-    .content-card-image-wrap > .content-card-placeholder,
     .card-poster > img,
     .card-poster > .poster-placeholder,
     .movie-poster > img,

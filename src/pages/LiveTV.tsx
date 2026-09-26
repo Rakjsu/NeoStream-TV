@@ -26,6 +26,7 @@ import { VideoPlayer, type PlayerChannel } from '../components/VideoPlayer';
 import './LiveTV.css';
 import { readCatalog, writeCatalog, dropCatalog, trimLive, trimCategory, type CachedLiveStream } from '../services/catalogCache';
 import { ErrorScreen } from '../components/ErrorScreen';
+import { PosterPreguicoso } from '../components/PosterPreguicoso';
 
 function formatClock(ms: number): string {
     const d = new Date(ms);
@@ -1086,17 +1087,19 @@ export function LiveTV() {
                                 onClick={() => setSelectedChannel(stream)}
                                 style={{ animationDelay: `${Math.min(index * 0.03, 0.5)}s` }}
                             >
-                                <div className="channel-logo">
-                                    {brokenImages.has(stream.stream_id) ? (
+                                {/* O logo só existe com o card perto da tela: a grade só
+                                    cresce e o bitmap tem o tamanho do arquivo, não dos 48px (T088). */}
+                                <PosterPreguicoso
+                                    className="channel-logo"
+                                    src={brokenImages.has(stream.stream_id) ? null : stream?.stream_icon}
+                                    alt={stream?.name || 'Canal'}
+                                    raiz={scrollContainerRef}
+                                    onError={() => handleImageError(stream.stream_id)}
+                                >
+                                    {brokenImages.has(stream.stream_id) && (
                                         <span className="channel-placeholder">📺</span>
-                                    ) : (
-                                        <img decoding="async"
-                                            src={stream?.stream_icon || ''}
-                                            alt={stream?.name || 'Canal'}
-                                            onError={() => handleImageError(stream.stream_id)}
-                                        />
                                     )}
-                                </div>
+                                </PosterPreguicoso>
                                 <div className="channel-info">
                                     <div className="channel-name">
                                         {favoriteChannelIds.has(stream.stream_id) && <span className="channel-fav">⭐ </span>}
