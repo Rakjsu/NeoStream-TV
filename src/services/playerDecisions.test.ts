@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     classifyStreamError, isTerminalCause, reconnectDelayMs, chooseCappedLevel,
-    MAX_RECONNECT_ATTEMPTS,
+    MAX_RECONNECT_ATTEMPTS, classifyMediaElementError,
 } from './playerDecisions';
 
 describe('classifyStreamError', () => {
@@ -28,6 +28,33 @@ describe('classifyStreamError', () => {
     it('o status só decide em erro de rede', () => {
         expect(classifyStreamError('media', 404)).toBe('media');
         expect(classifyStreamError('other', 404)).toBe('fatal');
+    });
+});
+
+// Fonte direta (filme/episódio .mp4/.mkv) não passa pelo hls.js: o erro vem
+// do próprio <video>, como MediaError.code (T121)
+describe('classifyMediaElementError', () => {
+    const erro = (code: number) => ({ code });
+
+    it('rede (2) e decodificação (3) valem nova tentativa', () => {
+        expect(classifyMediaElementError(erro(2), false)).toBe('network');
+        expect(classifyMediaElementError(erro(2), true)).toBe('network');
+        expect(classifyMediaElementError(erro(3), true)).toBe('media');
+        expect(isTerminalCause('media')).toBe(false);
+    });
+
+    // O Chromium dá 4 tanto pra arquivo inexistente / formato que a TV não
+    // toca quanto pra rede fora NA ABERTURA. Quem decide é se o src já abriu.
+    it('4 antes de abrir é terminal; 4 numa reabertura do que já tocou é rede', () => {
+        expect(classifyMediaElementError(erro(4), false)).toBe('notfound');
+        expect(isTerminalCause(classifyMediaElementError(erro(4), false)!)).toBe(true);
+        expect(classifyMediaElementError(erro(4), true)).toBe('network');
+    });
+
+    it('abortar (1) ou sem erro não é falha', () => {
+        expect(classifyMediaElementError(erro(1), true)).toBeNull();
+        expect(classifyMediaElementError(erro(1), false)).toBeNull();
+        expect(classifyMediaElementError(null, true)).toBeNull();
     });
 });
 

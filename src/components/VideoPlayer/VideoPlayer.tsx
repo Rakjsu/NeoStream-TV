@@ -121,6 +121,9 @@ const STALL_LIMIT_MS = 12000; // watchdog: tempo parado antes de reconectar
 // Mensagem acionável por causa (R1 item 45)
 const CAUSE_MESSAGES: Record<string, string> = {
     notfound: 'Canal indisponível no provedor (404). Tente outra variante ou canal.',
+    // Filme/episódio: o <video> não diz o status HTTP — o mesmo código vale
+    // pra arquivo inexistente e pra formato que a TV não toca (T121)
+    notfoundVod: 'Conteúdo indisponível ou formato não suportado.',
     network: 'Falha de rede. Verifique a conexão da TV.',
     media: 'Falha ao decodificar o vídeo (codec não suportado?).',
     stall: 'O stream congelou.',
@@ -527,7 +530,7 @@ export function VideoPlayer({
             streamFailedRef.current = true;
             videoRef.current?.pause();
             setReconnecting(false);
-            setError(CAUSE_MESSAGES.notfound);
+            setError(CAUSE_MESSAGES[isLiveContent ? 'notfound' : 'notfoundVod']);
             onStreamFailedRef.current?.();
             return;
         }
@@ -1080,7 +1083,12 @@ export function VideoPlayer({
         const handleWaiting = () => setLoading(true);
         const handlePlaying = () => setLoading(false);
         const handleCanPlay = () => setLoading(false);
-        const handleError = () => setError('Erro ao reproduzir vídeo');
+        // Reconexão agendada ou desistência já decidida: quem fala é ela. Sem
+        // isto, a queda de um filme (URL direta, onde o useHls ouve o MESMO
+        // evento) cobria o "Reconectando…" com a tela de erro (T121).
+        const handleError = () => {
+            if (!reconnectTimerRef.current && !streamFailedRef.current) setError('Erro ao reproduzir vídeo');
+        };
 
         video.addEventListener('play', handlePlay);
         video.addEventListener('pause', handlePause);
