@@ -484,9 +484,9 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
 
     // Handle delete profile
     return (
-        <div className="pm-overlay">
+        <div className="pm-overlay ns-surface">
             {/* Animated Background */}
-            <div className="pm-backdrop">
+            <div className="pm-backdrop ns-surface-decor">
                 <div className="pm-orb pm-orb-1" />
                 <div className="pm-orb pm-orb-2" />
                 <div className="pm-orb pm-orb-3" />

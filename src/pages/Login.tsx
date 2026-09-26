@@ -267,9 +267,9 @@ export function Login({ onLoginSuccess, onBack, startBlank = false }: LoginProps
         {/* Escondido (não desmontado) enquanto escolhe o idioma: os campos e
             os ouvintes de focus/blur dos inputs seguem vivos. `hidden` não
             serve — o display:flex da classe venceria o do navegador. */}
-        <div className="login-container" style={escolhendoIdioma ? { display: 'none' } : undefined}>
+        <div className="login-container ns-surface" style={escolhendoIdioma ? { display: 'none' } : undefined}>
             {/* Animated Background */}
-            <div className="login-bg">
+            <div className="login-bg ns-surface-decor">
                 <div className="login-orb login-orb-1" />
                 <div className="login-orb login-orb-2" />
                 <div className="login-orb login-orb-3" />

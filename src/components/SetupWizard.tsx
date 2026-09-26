@@ -114,7 +114,7 @@ export function SetupWizard({ onFinish }: SetupWizardProps) {
     });
 
     return (
-        <div className="wizard-overlay">
+        <div className="wizard-overlay ns-surface">
             <div className="wizard-panel">
                 <div className="wizard-steps">
                     <span className="wizard-done">✓ Idioma</span>
