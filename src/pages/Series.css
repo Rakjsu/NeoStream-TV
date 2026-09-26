@@ -638,6 +638,13 @@
     border-radius: 6px;
 }
 
+/* Letra ativa na barra A-Z (ela FILTRA a grade) */
+.alphabet-letter.active {
+    background: var(--ns-accent);
+    color: #fff;
+    font-weight: 800;
+}
+
 .version-badge {
     position: absolute;
     /* A nota (⭐) fica no topo-direita — empilhar abaixo evita a colisão */

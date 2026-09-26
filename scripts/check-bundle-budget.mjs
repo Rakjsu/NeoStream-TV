@@ -29,7 +29,7 @@ const alvo = join(root, process.argv[2] || join('dist-tizen', 'assets'));
 // Os tetos são esses valores com ~5% de folga — apertado de propósito.
 const ORCAMENTO = {
     /** Soma de todo JS. */
-    jsTotal: 1155,
+    jsTotal: 1157,
     /**
      * O maior arquivo isolado — é ele que trava a thread principal no parse.
      *
@@ -40,8 +40,13 @@ const ORCAMENTO = {
      * aviso de série sem episódio (T135, ~0,7 KB). Medido com os quatro juntos:
      * index.js 1060047 bytes (1035,2 KB), JS total 1153,7 KB. Os quatro PRs
      * levam ESTE MESMO trecho, pra entrarem em qualquer ordem sem conflito.
+     *
+     * 1036 → 1038 (e jsTotal 1155 → 1157) no mesmo dia, pro par que ficou do
+     * re-run da leva: barra A-Z e CH± em Séries (T023, ~1,3 KB) e a sinopse
+     * inteira da ficha (T115, ~0,9 KB). Medido com os dois juntos: index.js
+     * 1062195 bytes (1037,3 KB). Os dois PRs levam este mesmo trecho.
      */
-    maiorJs: 1036,
+    maiorJs: 1038,
     /** Todo o CSS. */
     cssTotal: 160,
 };

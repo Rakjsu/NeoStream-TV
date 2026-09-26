@@ -24,6 +24,12 @@ import './Series.css';
 import { ErrorScreen } from '../components/ErrorScreen';
 import { PosterPreguicoso } from '../components/PosterPreguicoso';
 
+/** Letra da barra A-Z: a inicial do nome sem acento, ou '#' (dígito, símbolo). */
+function letraDe(item: SeriesType): string {
+    const first = searchNameOf(item).charAt(0).toUpperCase();
+    return /[A-Z]/.test(first) ? first : '#';
+}
+
 export function Series() {
     const { focusZone, setFocusZone } = useFocusZone();
     const [loading, setLoading] = useState(true);
@@ -57,7 +63,10 @@ export function Series() {
 
     // Focus states for TV navigation
     // 'categories' = zona do header: índice 0 é a busca, 1 é o menu de categorias
-    const [focusArea, setFocusArea] = useState<'categories' | 'series'>('series');
+    const [focusArea, setFocusArea] = useState<'categories' | 'series' | 'alphabet'>('series');
+    const [alphabetIndexFocus, setAlphabetIndexFocus] = useState(0);
+    // Letra escolhida na barra A-Z (null = todas) — mesma ferramenta de Filmes
+    const [letterFilter, setLetterFilter] = useState<string | null>(null);
     const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
     const [focusedSeriesIndex, setFocusedSeriesIndex] = useState(0);
     const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
@@ -213,7 +222,8 @@ export function Series() {
     const maxHeaderIndex = HEADER_BASE + toolbarItems.length - 1;
 
     // Filter series (memoizado — recalcular a cada tecla do D-pad trava TVs antigas)
-    const filteredSeries = useMemo(() => {
+    // Lista SEM o filtro de letra: é dela que a barra A-Z tira as letras
+    const seriesSemLetra = useMemo(() => {
         const query = normalizeSearch(searchQuery);
         const hasFilters = filters.decade > 0 || filters.minRating > 0;
         let list = sortedSeries.filter((s) => {
@@ -235,12 +245,46 @@ export function Series() {
         return list;
     }, [sortedSeries, searchQuery, selectedCategory, finishedSeriesIds, filters, genero, generoPorCategoria]);
 
+    // O filtro de letra é uma lente sobre a lista ATUAL: qualquer filtro que
+    // muda a lista debaixo dele solta a letra — senão a grade ficava vazia com
+    // a letra presa e nada na tela explicando por quê (lição de Filmes).
+    // A chave cita TODOS os filtros; ajuste durante o render, porque effect
+    // com setState é proibido pela regra react-hooks/set-state-in-effect.
+    // O 🙈 entra pelo tamanho das terminadas: a lista só existe com ele ligado
+    // (-1 = desligado) e o tamanho muda quando uma série termina no player.
+    const chaveDosFiltros = [
+        searchQuery, selectedCategory, sortMode,
+        filters.decade, filters.minRating, genero,
+        finishedSeriesIds?.size ?? -1,
+    ].join('|');
+    const [lastFilterKey, setLastFilterKey] = useState(chaveDosFiltros);
+    if (chaveDosFiltros !== lastFilterKey) {
+        setLastFilterKey(chaveDosFiltros);
+        if (letterFilter !== null) setLetterFilter(null);
+    }
+
+    const filteredSeries = useMemo(() => {
+        if (!letterFilter) return seriesSemLetra;
+        return seriesSemLetra.filter(item => letraDe(item) === letterFilter);
+    }, [seriesSemLetra, letterFilter]);
+
+    // Barra A-Z: só com ordenação por nome (em outra ordem a letra não leva a
+    // lugar nenhum) e sobre a lista SEM a letra — ao escolher "S" a barra
+    // continua com todas, senão não haveria como voltar às outras
+    const letrasDaBarra = useMemo(() => {
+        if (sortMode !== 'name') return null;
+        const letras = Array.from(new Set(seriesSemLetra.map(letraDe)));
+        // Com uma letra só a barra não ajuda em nada: nem aparece nem recebe foco
+        return letras.length > 1 ? letras : null;
+    }, [sortMode, seriesSemLetra]);
+
     // Grade vazia numa TV e indistinguivel de defeito: dizer QUAIS filtros
     // estao ligados e o que fecha a duvida
     const filtrosLigados = [
         searchQuery ? `busca "${searchQuery}"` : '',
         selectedCategory !== 'all' ? 'categoria' : '',
         genero ? `genero ${rotuloDoGenero(genero)}` : '',
+        letterFilter ? `letra ${letterFilter}` : '',
         filters.decade > 0 ? `${filters.decade}s` : '',
         filters.minRating > 0 ? `nota ${filters.minRating}+` : '',
         hideWatchedOn ? 'esconder assistidos' : '',
@@ -327,6 +371,12 @@ export function Series() {
                     setFocusedSeriesIndex(prev => Math.max(0, prev - 1));
                 }
             } else if (direction === 'right') {
+                // Última coluna + barra A-Z visível → entra na barra
+                if (currentCol === cols - 1 && letrasDaBarra) {
+                    setFocusArea('alphabet');
+                    setAlphabetIndexFocus(0);
+                    return;
+                }
                 setFocusedSeriesIndex(prev => {
                     const next = Math.min(totalSeries - 1, prev + 1);
                     if (next >= visibleCount - 5) {
@@ -335,6 +385,30 @@ export function Series() {
                     return next;
                 });
             }
+        } else if (focusArea === 'alphabet') {
+            const ultima = (letrasDaBarra?.length ?? 1) - 1;
+            if (direction === 'up') setAlphabetIndexFocus(prev => Math.max(0, prev - 1));
+            else if (direction === 'down') setAlphabetIndexFocus(prev => Math.min(ultima, prev + 1));
+            else if (direction === 'left') setFocusArea('series');
+        }
+    };
+
+    // CH+/CH− pulam uma página inteira da grade (3 fileiras). Vai pelo onPage
+    // do useTVNavigation: o ouvinte é o do hook (some junto com ele) e a tecla
+    // é reconhecida pelo keyCode quando a TV manda `key` 'Unidentified'.
+    const paginar = (direction: 'up' | 'down') => {
+        if (focusArea !== 'series') return;
+        const cols = 6;
+        const pageSize = cols * 3;
+        const total = filteredSeries.length;
+        if (total === 0) return;
+        const next = direction === 'up'
+            ? Math.max(0, safeSeriesIndex - pageSize)
+            : Math.min(total - 1, safeSeriesIndex + pageSize);
+        setFocusedSeriesIndex(next);
+        // O card de destino tem de estar MONTADO, senão o foco some da tela
+        if (next >= visibleCount - cols) {
+            setVisibleCount(Math.min(next + 1 + pageSize, total));
         }
     };
 
@@ -403,6 +477,17 @@ export function Series() {
         });
     };
 
+    /**
+     * Pular pra uma letra FILTRA a grade em vez de rolar até ela: rolar
+     * montaria milhares de cards no mesmo frame num catálogo grande (o que
+     * já derrubou a TV em Filmes). OK na letra ativa desliga o filtro.
+     */
+    const jumpToLetter = (letter: string) => {
+        setLetterFilter(prev => (prev === letter ? null : letter));
+        setFocusArea('series');
+        setFocusedSeriesIndex(0);
+    };
+
     // Menu de contexto no card (item 24)
     const openContextMenu = () => {
         const item = filteredSeries[safeSeriesIndex];
@@ -466,6 +551,9 @@ export function Series() {
                 else if (item === 'genero') cycleGenero();
                 else if (item === 'nota') cycleNota();
             }
+        } else if (focusArea === 'alphabet') {
+            const letter = letrasDaBarra?.[alphabetIndexFocus];
+            if (letter) jumpToLetter(letter);
         } else if (focusArea === 'series') {
             const item = filteredSeries[safeSeriesIndex];
             if (item) openSeriesModal(item);
@@ -483,8 +571,9 @@ export function Series() {
         }
         // Decada/nota minima ficam: sao preferencia gravada, nao filtro do
         // momento.
-        if (searchQuery || genero || selectedCategory !== 'all') {
+        if (searchQuery || letterFilter || genero || selectedCategory !== 'all') {
             setSearchQuery('');
+            setLetterFilter(null);
             setGenero(null);
             setSelectedCategory('all');
             setFocusedSeriesIndex(0);
@@ -497,6 +586,7 @@ export function Series() {
         onNavigate: handleNavigate,
         onEnter: handleEnter,
         onBack: handleBack,
+        onPage: paginar,
         onAction: (action) => {
             if (action === 'yellow' && focusArea === 'series') openContextMenu();
         },
@@ -732,6 +822,21 @@ export function Series() {
                 )}
             </div>
 
+            {/* Barra A-Z (só com ordenação por nome) */}
+            {letrasDaBarra && (
+                <div className="alphabet-bar">
+                    {letrasDaBarra.map((letter, position) => (
+                        <button
+                            key={letter}
+                            className={`alphabet-letter ${letterFilter === letter ? 'active' : ''} ${focusArea === 'alphabet' && alphabetIndexFocus === position ? 'tv-focused' : ''}`}
+                            onClick={() => jumpToLetter(letter)}
+                        >
+                            {letter}
+                        </button>
+                    ))}
+                </div>
+            )}
+
             {toast && <div className="catalog-toast">{toast}</div>}
 
             {contextItem && (
@@ -761,6 +866,7 @@ export function Series() {
                 <span>OK Selecionar</span>
                 <span>← Voltar</span>
                 <span>🟡 Ações</span>
+                <span>CH± Página</span>
             </div>
         </div>
     );
