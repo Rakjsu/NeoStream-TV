@@ -1199,6 +1199,12 @@ export function LiveTV() {
                         title={`⏮ ${program.title} — ${archivePlayback.channel.name}`}
                         poster={archivePlayback.channel.stream_icon || undefined}
                         autoPlay
+                        // Mesma chave do ao vivo (T005): o arquivo é o sinal do
+                        // MESMO canal — o pause-live já toca o timeshift com ela,
+                        // e a fila devolve o usuário ao ao vivo. Com chave própria
+                        // a proporção voltava ao original ao entrar no arquivo e
+                        // de novo ao sair; sem chave, a cada programa da fila
+                        contentKey={`live-${archivePlayback.channel.stream_id}`}
                         // A fila do arquivo sempre emenda: é ela que devolve o
                         // usuário ao AO VIVO quando alcança o programa no ar.
                         // Isso não pode depender da opção "emendar episódio".

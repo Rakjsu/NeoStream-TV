@@ -394,6 +394,10 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                     isLive
                     autoPlay
                     contentType="live"
+                    // Mesma chave da TV ao vivo: proporção e qualidade do canal
+                    // valem também aqui (T005). O id do favorito de canal é o
+                    // stream_id em texto (toggleFavorite da LiveTV)
+                    contentKey={`live-${playingChannel.id}`}
                     onClose={() => setPlayingChannel(null)}
                 />
             )}
