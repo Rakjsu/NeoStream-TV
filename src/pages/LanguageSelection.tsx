@@ -53,11 +53,11 @@ export function LanguageSelection({ onComplete, onRequestExit, onCancelExit }: L
     });
 
     return (
-        <div className="language-selection-container">
+        <div className="language-selection-container ns-surface">
             <div className="language-selection-glass">
                 {/* Animated Background Elements */}
-                <div className="language-orb orb-1"></div>
-                <div className="language-orb orb-2"></div>
+                <div className="language-orb orb-1 ns-surface-decor"></div>
+                <div className="language-orb orb-2 ns-surface-decor"></div>
 
                 <div className="language-selection-content">
                     <div className="language-selection-header">

@@ -41,6 +41,9 @@ export function SeriesQueuePlayer({ queue: initialQueue, onClose, isOverlayOwner
             poster={queue.poster}
             autoPlay
             contentType="series"
+            // Chave da SÉRIE, não do episódio: é o que faz a proporção e a
+            // qualidade escolhidas atravessarem o remount de cada episódio (T005)
+            contentKey={`series-${queue.seriesId}`}
             resumeTime={resumeTime}
             onTimeUpdate={(time, duration) => {
                 progressService.saveSeries({

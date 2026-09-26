@@ -31,6 +31,10 @@ export function MoviePlayer({ movieId, title, poster, container, streamId, onClo
             poster={poster}
             autoPlay
             contentType="movie"
+            // Proporção e qualidade manual lembradas por FILME (grupo de
+            // versões), não pela versão tocada: trocar dublado↔legendado
+            // mantém a escolha (T005)
+            contentKey={`movie-${movieId}`}
             resumeTime={resumeTime}
             onTimeUpdate={(time, duration) => {
                 progressService.saveMovie({ id: movieId, name: title, poster, container, time, duration });

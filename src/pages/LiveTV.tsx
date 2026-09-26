@@ -677,13 +677,18 @@ export function LiveTV() {
         } else if (focusArea === 'channels') {
             const cols = 6;
             const totalChannels = filteredStreams.length;
-            const currentCol = focusedChannelIndex % cols;
+            // ← e ↑ partem do MESMO número que o anel mostra: 🔵/🟡 tiram o
+            // card focado da lista sem passar pelo reset, e o índice cru fica
+            // além do fim — ← dava toques mortos ou fugia pra sidebar com o
+            // anel no meio da linha, e ↑ subia pra outra coluna (T126).
+            // ↓ e → já clampam em totalChannels - 1.
+            const currentCol = safeChannelIndex % cols;
 
             if (direction === 'up') {
-                if (focusedChannelIndex < cols) {
+                if (safeChannelIndex < cols) {
                     setFocusArea('categories');
                 } else {
-                    setFocusedChannelIndex(prev => Math.max(0, prev - cols));
+                    setFocusedChannelIndex(safeChannelIndex - cols);
                 }
             } else if (direction === 'down') {
                 setFocusedChannelIndex(prev => {
@@ -697,7 +702,7 @@ export function LiveTV() {
                 if (currentCol === 0) {
                     setFocusZone('sidebar');
                 } else {
-                    setFocusedChannelIndex(prev => Math.max(0, prev - 1));
+                    setFocusedChannelIndex(safeChannelIndex - 1);
                 }
             } else if (direction === 'right') {
                 setFocusedChannelIndex(prev => {
@@ -1199,6 +1204,12 @@ export function LiveTV() {
                         title={`⏮ ${program.title} — ${archivePlayback.channel.name}`}
                         poster={archivePlayback.channel.stream_icon || undefined}
                         autoPlay
+                        // Mesma chave do ao vivo (T005): o arquivo é o sinal do
+                        // MESMO canal — o pause-live já toca o timeshift com ela,
+                        // e a fila devolve o usuário ao ao vivo. Com chave própria
+                        // a proporção voltava ao original ao entrar no arquivo e
+                        // de novo ao sair; sem chave, a cada programa da fila
+                        contentKey={`live-${archivePlayback.channel.stream_id}`}
                         // A fila do arquivo sempre emenda: é ela que devolve o
                         // usuário ao AO VIVO quando alcança o programa no ar.
                         // Isso não pode depender da opção "emendar episódio".

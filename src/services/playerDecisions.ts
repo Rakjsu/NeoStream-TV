@@ -32,6 +32,28 @@ export function isTerminalCause(cause: StreamErrorCause | 'stall'): boolean {
 }
 
 /**
+ * Erro do próprio <video> — fonte direta (filme/episódio .mp4/.mkv), que não
+ * passa pelo hls.js e portanto nunca chega ao `hls.on(ERROR)` (T121).
+ *
+ * Códigos do MediaError: 1 ABORTED, 2 NETWORK, 3 DECODE, 4 SRC_NOT_SUPPORTED.
+ * O 4 é ambíguo no Chromium: é o que ele dá tanto pra arquivo inexistente /
+ * formato que a TV não toca quanto pra falha de rede AO ABRIR. Se o mesmo src
+ * já chegou a carregar (`jaCarregou`), o arquivo existe e o formato serve —
+ * o 4 numa reabertura é rede fora, e vale tentar de novo.
+ *
+ * `null` = não é falha (1: troca de src ou fechar abortou o download).
+ */
+export function classifyMediaElementError(
+    error: { code: number } | null,
+    jaCarregou: boolean
+): StreamErrorCause | null {
+    const code = error ? error.code : 0;
+    if (code === 3) return 'media';
+    if (code !== 2 && code !== 4) return null;
+    return code === 2 || jaCarregou ? 'network' : 'notfound';
+}
+
+/**
  * Espera antes da próxima tentativa: 2s, 4s, 8s, 16s (e trava em 16s).
  * O teto importa — sem ele a quinta tentativa esperaria 32s numa tela que só
  * diz "Reconectando…".

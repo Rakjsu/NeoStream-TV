@@ -1,9 +1,14 @@
 // Assistente de primeira configuração (item 60).
 //
 // O app já tinha as duas primeiras etapas: escolher idioma (LanguageSelection)
-// e entrar com a playlist (Login). Faltava o resto — tema e TMDB ficavam
-// escondidos nas Configurações e quase ninguém chegava lá. Este overlay fecha
-// o fluxo logo depois do primeiro login e nunca mais aparece.
+// e entrar com a playlist (Login). Faltava o resto — tema e tamanho da
+// interface ficavam escondidos nas Configurações e quase ninguém chegava lá.
+// Este overlay fecha o fluxo logo depois do primeiro login e nunca mais aparece.
+//
+// Toda opção aqui GRAVA a escolha (SetupWizard.opcoesGravam.test.tsx). A
+// etapa do TMDB saiu porque as duas opções dela não gravavam nada: a chave
+// fica nas Configurações (Integração TMDB), que têm o campo de verdade, e
+// digitar a chave no D-pad não cabe num passo de boas-vindas.
 //
 // A flag vive em chave PRÓPRIA de propósito: gravar no objeto
 // `neostream_settings` faria `storage.hasSettings()` virar true cedo demais e
@@ -21,17 +26,15 @@ import {
     type BackgroundId,
 } from '../services/themeService';
 import { a11yService, TEXT_SCALES, type TextScale } from '../services/a11yService';
-import { storage } from '../services/storage';
 import { setupWizard } from '../services/wizardState';
 import './SetupWizard.css';
 
-type StepId = 'fundo' | 'cor' | 'tamanho' | 'tmdb';
+type StepId = 'fundo' | 'cor' | 'tamanho';
 
 const STEPS: Array<{ id: StepId; title: string; help: string }> = [
     { id: 'fundo', title: 'Fundo da tela', help: 'AMOLED deixa o preto realmente preto e economiza energia em telas OLED.' },
     { id: 'cor', title: 'Cor de destaque', help: 'É a cor do foco: o que mostra onde você está na tela.' },
     { id: 'tamanho', title: 'Tamanho da interface', help: 'Se você assiste de longe ou enxerga pouco, aumente aqui.' },
-    { id: 'tmdb', title: 'Capas e sinopses (opcional)', help: 'Com uma chave do TMDB o app busca capas e sinopses melhores. Dá pra fazer depois nas Configurações.' },
 ];
 
 interface SetupWizardProps {
@@ -64,17 +67,11 @@ export function SetupWizard({ onFinish }: SetupWizardProps) {
                 apply: () => { themeService.setAccent(id); setAccent(id); },
             }));
         }
-        if (step.id === 'tamanho') {
-            return TEXT_SCALES.map(scale => ({
-                label: `${scale}%`,
-                selected: textScale === scale,
-                apply: () => { a11yService.setTextScale(scale); setTextScale(scale); },
-            }));
-        }
-        return [
-            { label: 'Tenho uma chave — configuro depois', selected: false, apply: () => { } },
-            { label: 'Não vou usar TMDB', selected: !storage.getTmdbApiKey(), apply: () => { } },
-        ];
+        return TEXT_SCALES.map(scale => ({
+            label: `${scale}%`,
+            selected: textScale === scale,
+            apply: () => { a11yService.setTextScale(scale); setTextScale(scale); },
+        }));
     }, [step.id, background, accent, textScale]);
 
     const goNext = useCallback(() => {
@@ -114,7 +111,7 @@ export function SetupWizard({ onFinish }: SetupWizardProps) {
     });
 
     return (
-        <div className="wizard-overlay">
+        <div className="wizard-overlay ns-surface">
             <div className="wizard-panel">
                 <div className="wizard-steps">
                     <span className="wizard-done">✓ Idioma</span>

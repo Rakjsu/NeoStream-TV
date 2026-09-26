@@ -41,9 +41,9 @@ export function Welcome({ onGoToLogin, onRequestExit, onCancelExit }: WelcomePro
     };
 
     return (
-        <div className="welcome-container">
+        <div className="welcome-container ns-surface">
             {/* Animated Background */}
-            <div className="welcome-bg">
+            <div className="welcome-bg ns-surface-decor">
                 <div className="welcome-orb welcome-orb-1" />
                 <div className="welcome-orb welcome-orb-2" />
                 <div className="welcome-orb welcome-orb-3" />

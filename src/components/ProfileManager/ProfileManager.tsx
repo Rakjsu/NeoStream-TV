@@ -484,9 +484,9 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
 
     // Handle delete profile
     return (
-        <div className="pm-overlay">
+        <div className="pm-overlay ns-surface">
             {/* Animated Background */}
-            <div className="pm-backdrop">
+            <div className="pm-backdrop ns-surface-decor">
                 <div className="pm-orb pm-orb-1" />
                 <div className="pm-orb pm-orb-2" />
                 <div className="pm-orb pm-orb-3" />
@@ -511,7 +511,9 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                 <div className="pm-profiles-grid">
                     {profiles.map((profile, index) => {
                         const isActive = profile.id === activeProfile?.id;
-                        const isFocused = focusedIndex === index;
+                        // Com o X aceso o anel é DELE: o cartão de onde se
+                        // subiu não pode continuar parecendo focado (o OK fecha)
+                        const isFocused = !closeButtonFocused && focusedIndex === index;
 
                         return (
                             <div
@@ -575,7 +577,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                     {/* Add New Profile Card */}
                     {profiles.length < 5 && (
                         <button
-                            className={`pm-add-card ${focusedIndex === profiles.length ? 'focused' : ''}`}
+                            className={`pm-add-card ${!closeButtonFocused && focusedIndex === profiles.length ? 'focused' : ''}`}
                             onClick={() => {
                                 setFocusedIndex(profiles.length);
                                 setFormName('');

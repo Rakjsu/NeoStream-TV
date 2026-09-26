@@ -13,7 +13,7 @@ export interface QualityLevel {
 }
 
 export type { StreamErrorCause } from '../services/playerDecisions';
-import { classifyStreamError, chooseCappedLevel } from '../services/playerDecisions';
+import { classifyStreamError, chooseCappedLevel, classifyMediaElementError } from '../services/playerDecisions';
 import type { StreamErrorCause } from '../services/playerDecisions';
 
 /** Faixa embutida no stream (áudio ou legenda) — itens 39 e 40 */
@@ -72,6 +72,10 @@ export function useHls({
     const preferredTracksSrcRef = useRef<string>('');
     const preferredAudioRef = useRef<number | null>(null);
     const preferredSubtitleRef = useRef<number | null>(null);
+    // Fonte direta: este src já chegou a carregar? Sobrevive ao reload() de
+    // propósito — é o que separa "arquivo não existe" de "rede caiu" (T121).
+    // Zerado junto com as faixas, quando o conteúdo muda.
+    const directLoadedRef = useRef(false);
 
     // Re-init sob demanda (retry/watchdog): bump re-roda o effect principal
     const [reloadTick, setReloadTick] = useState(0);
@@ -186,6 +190,7 @@ export function useHls({
             preferredTracksSrcRef.current = src;
             preferredAudioRef.current = null;
             preferredSubtitleRef.current = null;
+            directLoadedRef.current = false;
         }
         srcRef.current = src;
 
@@ -197,6 +202,8 @@ export function useHls({
 
         // Check if source is HLS
         const isHls = src.includes('.m3u8');
+        // Ouvintes da fonte direta: armados por src, desarmados no cleanup
+        let disarmDirect: (() => void) | undefined;
 
         if (isHls) {
             if (Hls.isSupported()) {
@@ -367,6 +374,20 @@ export function useHls({
             }
         } else {
             // Direct video source (MP4, etc.)
+            // Filme/episódio não passam pelo hls.js: sem hls.on(ERROR), a queda
+            // do provedor no meio do filme só aparece no próprio <video>.
+            // Entrega na MESMA máquina de reconexão do ao vivo (T121).
+            const directEvents = ['loadedmetadata', 'error'];
+            const handleDirect = (event: Event) => {
+                if (event.type !== 'error') {
+                    directLoadedRef.current = true;
+                    return;
+                }
+                const cause = classifyMediaElementError(video.error, directLoadedRef.current);
+                if (cause) onStreamErrorRef.current?.(cause);
+            };
+            directEvents.forEach(type => video.addEventListener(type, handleDirect));
+            disarmDirect = () => directEvents.forEach(type => video.removeEventListener(type, handleDirect));
             video.src = src;
             if (autoPlay) {
                 video.addEventListener('loadedmetadata', () => {
@@ -376,6 +397,7 @@ export function useHls({
         }
 
         return () => {
+            disarmDirect?.();
             cleanup();
             srcRef.current = '';
         };

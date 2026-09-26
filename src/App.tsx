@@ -379,7 +379,7 @@ function App() {
   const handleLoginSuccess = () => {
     setAddingPlaylist(false);
     setAuthState('authenticated');
-    // Primeira vez: fecha o fluxo de configuração (tema, tamanho, TMDB).
+    // Primeira vez: fecha o fluxo de configuração (fundo, cor, tamanho).
     // Ao ADICIONAR uma playlist extra o assistente não volta.
     if (!setupWizard.isDone() && !addingPlaylist) openWizard();
   };
