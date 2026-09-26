@@ -112,6 +112,10 @@ const RESUME_REWIND_SECONDS = 5;
 const AUTO_EPISODE_LIMIT = 3;
 const STILL_WATCHING_TIMEOUT_MS = 90000;
 const DIGIT_TIMEOUT_MS = 1400;
+/** Posição na lista do canal de número `num` (-1 se não há). Coerção: muitos
+ *  painéis Xtream mandam num como string no JSON. */
+const indiceDoNumero = (lista: PlayerChannel[] | undefined, num: number) =>
+    lista ? lista.findIndex(c => Number(c.num) === num) : -1;
 // CH+/CH− acumulam; a troca sai uma vez, quando a tecla assenta (T002)
 const ZAP_COMMIT_MS = 600;
 const ZAP_WINDOW = 9; // linhas visíveis no overlay de zapping
@@ -803,9 +807,13 @@ export function VideoPlayer({
             digitTimeoutRef.current = null;
             const num = Number(digitBuffer);
             setDigitBuffer('');
-            // Coerção: muitos painéis Xtream mandam num como string no JSON
-            const found = channelList?.find(c => Number(c.num) === num);
-            if (found) onSwitchChannel?.(found.stream_id);
+            const index = indiceDoNumero(channelList, num);
+            if (index < 0) return;
+            // Com a lista 📺 aberta o número só leva o FOCO ao canal (T004):
+            // quem troca continua sendo o OK. Abrir/fechar a lista zera o
+            // buffer, então o modo lido aqui é o mesmo de quando se digitou.
+            if (playerFocusRef.current === 'zap-list') setZapIndex(index);
+            else onSwitchChannel?.(channelList![index].stream_id);
         }, DIGIT_TIMEOUT_MS);
         return () => {
             if (digitTimeoutRef.current) {
@@ -816,8 +824,9 @@ export function VideoPlayer({
     }, [digitBuffer, channelList, onSwitchChannel]);
 
     // Teclas extras do controle: CH+/CH− (427/428, PageUp/PageDown) e dígitos.
-    // Só na camada de controles — com menu/overlay aberto, zapear por baixo
-    // deixaria o foco dessas camadas apontando pro conteúdo errado.
+    // Na camada de controles elas zapeiam; na lista 📺 elas só movem o foco da
+    // lista (T004). Com o menu aberto, zapear por baixo deixaria o foco dele
+    // apontando pro conteúdo errado.
     const playerFocusRef = useRef(playerFocus);
     useEffect(() => {
         playerFocusRef.current = playerFocus;
@@ -852,8 +861,18 @@ export function VideoPlayer({
     useEffect(() => {
         if (!canZap) return;
         if (!teclasAtivas) return;
+        // Lista 📺 (T004): CH± saltam uma tela da lista, parando nas pontas —
+        // antes a única forma de andar em milhares de canais era ↓ de um em um.
+        // Rolar a lista descarta um número digitado: quem rola mudou de ideia.
+        // (canZap garante channelList com pelo menos um canal.)
+        const ultimo = channelList!.length - 1;
+        const paginarLista = (passo: number) => {
+            setDigitBuffer('');
+            setZapIndex(prev => Math.max(0, Math.min(ultimo, prev + passo)));
+        };
         const handleExtraKeys = (event: KeyboardEvent) => {
-            if (playerFocusRef.current !== 'controls') return;
+            const foco = playerFocusRef.current;
+            if (foco !== 'controls' && foco !== 'zap-list') return;
             const key = event.key || String(event.keyCode);
             const code = event.keyCode;
 
@@ -862,11 +881,13 @@ export function VideoPlayer({
                 // Trocar de canal reexibe a barra: sem isso o usuário zapeava
                 // sem nenhuma pista de onde tinha caído
                 resetHideControlsTimer();
-                nudgeZap(-1);
+                if (foco === 'zap-list') paginarLista(-ZAP_WINDOW);
+                else nudgeZap(-1);
             } else if (key === 'MediaChannelDown' || code === 428 || key === 'PageDown' || code === 34) {
                 event.preventDefault();
                 resetHideControlsTimer();
-                nudgeZap(1);
+                if (foco === 'zap-list') paginarLista(ZAP_WINDOW);
+                else nudgeZap(1);
             } else if (/^[0-9]$/.test(key) || (code >= 48 && code <= 57) || (code >= 96 && code <= 105)) {
                 event.preventDefault();
                 // Digitar um número muda de ideia: o CH± pendente não sai
@@ -877,7 +898,7 @@ export function VideoPlayer({
         };
         window.addEventListener('keydown', handleExtraKeys);
         return () => window.removeEventListener('keydown', handleExtraKeys);
-    }, [canZap, nudgeZap, cancelZap, resetHideControlsTimer, teclasAtivas]);
+    }, [canZap, nudgeZap, cancelZap, resetHideControlsTimer, teclasAtivas, channelList]);
 
     // ----- Sleep timer -----
     // O estado "remaining" é setado no handler (cycleSleep) e no callback do
@@ -943,12 +964,19 @@ export function VideoPlayer({
     }, [hlsRef]);
 
     // ----- Overlay de zapping -----
+    // Abrir ou fechar a lista zera o número pendente (T004): digitado na barra
+    // ele trocaria de canal, na lista só move o foco — não pode atravessar a
+    // fronteira. Fechar com "30" na tela e ver o canal trocar 1,4 s depois,
+    // sem ter confirmado nada, era o pior dos dois. O cleanup do effect do
+    // digit-jump desarma a pausa quando o buffer esvazia.
     const openZapList = useCallback(() => {
+        setDigitBuffer('');
         setPlayerFocus('zap-list');
         setZapIndex(currentChannelIndex >= 0 ? currentChannelIndex : 0);
     }, [currentChannelIndex]);
 
     const closeZapList = useCallback(() => {
+        setDigitBuffer('');
         setPlayerFocus('controls');
     }, []);
 
@@ -1471,6 +1499,9 @@ export function VideoPlayer({
 
         if (playerFocus === 'zap-list') {
             const total = channelList?.length || 0;
+            // Voltar pro D-pad descarta um número digitado (T004): sem isso o
+            // foco seria puxado pro número segundos depois de o usuário andar
+            if (direction === 'up' || direction === 'down') setDigitBuffer('');
             if (direction === 'up') {
                 setZapIndex(prev => Math.max(0, prev - 1));
             } else if (direction === 'down') {
@@ -1558,7 +1589,13 @@ export function VideoPlayer({
         resetHideControlsTimer();
 
         if (playerFocus === 'zap-list') {
-            const channel = channelList?.[zapIndex];
+            // OK com número ainda na tela (T004) confirma o NÚMERO, não a
+            // linha acesa: quem digita 33 e aperta OK quer o 33. Número que
+            // não existe só some — trocar pra linha acesa seria um canal que
+            // ninguém pediu.
+            const alvo = digitBuffer ? indiceDoNumero(channelList, Number(digitBuffer)) : zapIndex;
+            setDigitBuffer('');
+            const channel = channelList?.[alvo];
             if (channel) {
                 onSwitchChannel?.(channel.stream_id);
                 closeZapList();
@@ -1573,7 +1610,7 @@ export function VideoPlayer({
             executeControlAction();
         }
     }, [playerFocus, menuIndex, menuEntries, executeControlAction, resetHideControlsTimer,
-        channelList, zapIndex, onSwitchChannel, closeZapList, commitSeek, togglePlay,
+        channelList, zapIndex, onSwitchChannel, closeZapList, commitSeek, togglePlay, digitBuffer,
         stillWatching, confirmStillWatching, showControls, error, tentarDeNovo]);
 
     const handleBack = useCallback(() => {
@@ -1761,7 +1798,7 @@ export function VideoPlayer({
                                 );
                             })}
                         </div>
-                        <div className="zap-overlay-hint">↑↓ Navegar · OK Assistir · ← Fechar</div>
+                        <div className="zap-overlay-hint">↑↓ Navegar · CH± Página · 0-9 Nº · OK Assistir · ← Fechar</div>
                     </div>
                 );
             })()}
