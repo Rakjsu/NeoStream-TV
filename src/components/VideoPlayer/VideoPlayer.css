@@ -1084,3 +1084,12 @@
     font-size: 26px;
     font-weight: 700;
 }
+
+/* Canal-alvo do CH± enquanto a tecla não assenta (T002). A barra de
+   controles aparece junto e ocupa o rodapé: o alvo sobe para baixo do título */
+.zap-banner.zap-banner-alvo {
+    top: 72px;
+    bottom: auto;
+    left: 20px;
+    z-index: 95;
+}
