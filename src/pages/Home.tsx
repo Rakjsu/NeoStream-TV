@@ -374,8 +374,11 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 String(serie.series_id),
                 serie.name,
                 serie.cover || '',
-                season ?? 1,
-                episode ?? 1
+                // Sem default (T133): um `?? 1` aqui virava "T1 E1" para série
+                // sem T1, e temporada sem episódio caía no 1º da SÉRIE, não no
+                // da temporada. Sem valor, o buildEpisodeQueue já resolve.
+                season,
+                episode
             );
             if (queue) {
                 setSeriesQueue(queue);
