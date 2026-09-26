@@ -14,7 +14,7 @@ import { VideoPlayer } from './VideoPlayer';
 import { MoviePlayer } from './MoviePlayer';
 import { SeriesQueuePlayer } from './SeriesQueuePlayer';
 import { ContentDetailModal } from './ContentDetailModal';
-import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
+import { montarFilaOuAviso, type EpisodeQueue } from '../services/seriesPlayback';
 import './GlobalSearch.css';
 
 interface GlobalSearchProps {
@@ -92,16 +92,13 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
         }
     };
 
+    // Sem fila, devolve o aviso — a ficha continua aberta e o mostra (T135)
     const playSeriesEpisode = async (series: Series, season?: number, episode?: number) => {
-        try {
-            const queue = await buildEpisodeQueue(series.series_id, series.name, series.cover, season, episode);
-            if (queue) {
-                setSeriesQueue(queue);
-                setModalSeries(null);
-            }
-        } catch (err) {
-            console.error('Error building episode queue:', err);
-        }
+        const { fila, aviso } = await montarFilaOuAviso(series.series_id, series.name, series.cover, season, episode);
+        if (!fila) return aviso;
+        setSeriesQueue(fila);
+        setModalSeries(null);
+        return null;
     };
 
     const overlayBusy = !!(playingChannel || playingMovie || modalSeries || seriesQueue);
@@ -253,9 +250,7 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
                         genre: modalSeries.genre,
                         release_date: modalSeries.release_date,
                     }}
-                    onPlay={(season, episode) => {
-                        void playSeriesEpisode(modalSeries, season, episode);
-                    }}
+                    onPlay={(season, episode) => playSeriesEpisode(modalSeries, season, episode)}
                 />
             )}
 

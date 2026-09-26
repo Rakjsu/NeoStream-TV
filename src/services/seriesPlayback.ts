@@ -51,6 +51,37 @@ export async function buildEpisodeQueue(
     return { seriesId: String(seriesId), seriesName, poster, episodes, index };
 }
 
+// T135 — o OK em "Assistir" de série tinha TRÊS finais e as telas só
+// conheciam um. Fila vazia (o painel devolveu get_series_info sem episódios)
+// e falha de rede caíam no mesmo `if (queue)` sem else, com o erro só no
+// console — e a TV não tem console: a ficha fechava (Séries) ou ficava imóvel
+// (Home, Minha Lista, Favoritos, busca) sem uma palavra. Quem chama recebe a
+// fila OU a frase que tem de ir pra tela; não há terceiro caminho mudo.
+const AVISO_SERIE_SEM_EPISODIOS = 'Esta série está sem episódios no provedor agora. Tente mais tarde.';
+const AVISO_SERIE_FALHOU = 'Não deu para carregar os episódios. Confira a conexão e tente de novo.';
+/** Quanto tempo o aviso fica na tela — a três metros, uma frase inteira. */
+export const DURACAO_DO_AVISO_DE_SERIE_MS = 5000;
+
+export type FilaOuAviso =
+    | { fila: EpisodeQueue; aviso: null }
+    | { fila: null; aviso: string };
+
+export async function montarFilaOuAviso(
+    seriesId: string | number,
+    seriesName: string,
+    poster?: string,
+    season?: number,
+    episode?: number
+): Promise<FilaOuAviso> {
+    try {
+        const fila = await buildEpisodeQueue(seriesId, seriesName, poster, season, episode);
+        return fila ? { fila, aviso: null } : { fila: null, aviso: AVISO_SERIE_SEM_EPISODIOS };
+    } catch (err) {
+        console.error('Erro ao montar a fila de episódios:', err);
+        return { fila: null, aviso: AVISO_SERIE_FALHOU };
+    }
+}
+
 export function currentEpisode(queue: EpisodeQueue): QueueEpisode {
     return queue.episodes[queue.index];
 }

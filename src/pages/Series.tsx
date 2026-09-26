@@ -10,7 +10,7 @@ import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMen
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
-import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
+import { montarFilaOuAviso, type EpisodeQueue } from '../services/seriesPlayback';
 import {
     catalogSort, sortCatalog, hideWatched, isRecentlyAdded, newEpisodes, SORT_LABELS, type CatalogSort,
     catalogFilters, matchesFilters, normalizeSearch, fuzzyMatches, searchNameOf, DECADES, MIN_RATINGS,
@@ -657,18 +657,18 @@ export function Series() {
                     }}
                     onPlay={async (season, episode) => {
                         // Monta a fila de episódios (habilita próximo/anterior + resume)
-                        try {
-                            const queue = await buildEpisodeQueue(
-                                selectedSeries.series_id,
-                                selectedSeries.name,
-                                selectedSeries.cover,
-                                season,
-                                episode
-                            );
-                            if (queue) setSeriesQueue(queue);
-                        } catch (err) {
-                            console.error('Error getting episode info:', err);
-                        }
+                        const { fila, aviso } = await montarFilaOuAviso(
+                            selectedSeries.series_id,
+                            selectedSeries.name,
+                            selectedSeries.cover,
+                            season,
+                            episode
+                        );
+                        // T135: a ficha só fecha quando há o que tocar. Antes
+                        // ela fechava SEMPRE — sem fila, o OK devolvia a pessoa
+                        // pra grade sem nada acontecido. O aviso vai pra ficha.
+                        if (!fila) return aviso;
+                        setSeriesQueue(fila);
                         setShowModal(false);
                     }}
                 />

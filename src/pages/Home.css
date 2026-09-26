@@ -498,3 +498,22 @@
     white-space: nowrap;
     margin-left: 18px;
 }
+
+/* T135 — OK num card de série do Continuar Assistindo que não achou o que
+   tocar. Fixo no rodapé: a fileira pode estar em qualquer altura da Home
+   rolada. Nada de `inset`: Chromium 69. */
+.home-aviso-serie {
+    position: fixed;
+    bottom: 64px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 80%;
+    padding: 14px 26px;
+    background: rgba(10, 10, 20, 0.95);
+    border: 1px solid rgba(var(--ns-accent-rgb), 0.6);
+    border-radius: 12px;
+    color: #fff;
+    font-size: 18px;
+    text-align: center;
+    z-index: 50;
+}

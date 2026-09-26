@@ -1001,3 +1001,22 @@
     overflow: hidden;
     overflow-wrap: break-word;
 }
+
+/* T135 — por que o Assistir não tocou (série sem episódio no painel, rede
+   caída). Fixo no rodapé da tela, acima da ficha: a fila de ações pode estar
+   no fim da ficha rolada. Nada de `inset`: Chromium 69. */
+.modal-play-aviso {
+    position: fixed;
+    bottom: 64px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 80%;
+    padding: 14px 26px;
+    background: rgba(10, 10, 20, 0.95);
+    border: 1px solid rgba(var(--ns-accent-rgb), 0.6);
+    border-radius: 12px;
+    color: #fff;
+    font-size: 18px;
+    text-align: center;
+    z-index: 20;
+}

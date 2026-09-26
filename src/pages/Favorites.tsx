@@ -10,7 +10,7 @@ import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { VideoPlayer } from '../components/VideoPlayer';
-import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
+import { montarFilaOuAviso, type EpisodeQueue } from '../services/seriesPlayback';
 import './Favorites.css';
 
 interface FavoritesProps {
@@ -83,16 +83,13 @@ export function Favorites({ onNavigate }: FavoritesProps) {
         }
     };
 
+    // Sem fila, devolve o aviso — a ficha continua aberta e o mostra (T135)
     const playSeriesEpisode = async (item: FavoriteItem, season?: number, episode?: number) => {
-        try {
-            const queue = await buildEpisodeQueue(item.id, item.title, item.poster, season, episode);
-            if (queue) {
-                setSeriesQueue(queue);
-                setModalItem(null);
-            }
-        } catch (err) {
-            console.error('Error building episode queue:', err);
-        }
+        const { fila, aviso } = await montarFilaOuAviso(item.id, item.title, item.poster, season, episode);
+        if (!fila) return aviso;
+        setSeriesQueue(fila);
+        setModalItem(null);
+        return null;
     };
 
     // TV Navigation
@@ -368,7 +365,7 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                             setPlayingMovie(modalItem);
                             setModalItem(null);
                         } else {
-                            void playSeriesEpisode(modalItem, season, episode);
+                            return playSeriesEpisode(modalItem, season, episode);
                         }
                     }}
                 />
