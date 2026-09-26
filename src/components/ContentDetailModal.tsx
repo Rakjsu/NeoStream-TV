@@ -867,10 +867,18 @@ export function ContentDetailModal({
 
                         {/* Trailer (item 18). A MESMA expressão `hasTrailer`
                             governa este botão e a zona de foco: na TV ele só
-                            existe quando o aparelho sabe abrir um app externo. */}
+                            existe quando o aparelho sabe abrir um app externo.
+                            Texto VISÍVEL (T032): era um ▶ pelado com a etiqueta
+                            num `title`, tooltip de mouse que a TV nunca mostra —
+                            dois triângulos de play lado a lado. Ícone diferente
+                            do play e, na TV, o aviso de que o OK sai do app
+                            (quem abre é o sistema; não dá pra prometer qual app).
+                            O rótulo vai num <span>: no Chromium 69 não há `gap`
+                            em flex, e o fallback (.action-btn > * + *) só afasta
+                            elementos — texto solto colaria no ícone. */}
                         {hasTrailer && (
                             <button
-                                className={`action-btn favorite-btn ${focusZone === 'trailer' ? 'focused' : ''}`}
+                                className={`action-btn secondary-btn ${focusZone === 'trailer' ? 'focused' : ''}`}
                                 onClick={() => {
                                     if (naTv) {
                                         abrirExterno(`https://www.youtube.com/watch?v=${encodeURIComponent(trailerKey)}`);
@@ -878,9 +886,9 @@ export function ContentDetailModal({
                                         setTrailerAberto(true);
                                     }
                                 }}
-                                title="Ver o trailer"
                             >
-                                ▶
+                                <span className="icon">🎬</span>
+                                <span>{naTv ? 'Trailer (sai do app)' : 'Trailer'}</span>
                             </button>
                         )}
                     </div>
