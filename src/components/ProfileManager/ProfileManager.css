@@ -170,6 +170,16 @@
     transform: rotate(90deg);
 }
 
+/* Foco do D-pad no X: o handleNavigate liga a classe ao subir da primeira
+   fileira e o OK fecha o gerenciador — sem esta regra nada acendia na tela.
+   Sem o rotate(90deg) do :hover, que a 3 m só embaralha o X. */
+.pm-close-btn.focused {
+    background: rgba(var(--ns-accent-rgb), 0.6);
+    border-color: var(--ns-accent);
+    box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.85);
+    transform: scale(1.1);
+}
+
 /* Profiles Grid */
 .pm-profiles-grid {
     width: 100%;
