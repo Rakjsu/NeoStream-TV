@@ -172,8 +172,11 @@ beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
-afterEach(() => {
+afterEach(async () => {
     cleanup();
+    // Carga pendente da tela desmontada termina aqui, e não no armazenamento
+    // do próximo teste
+    await new Promise(resolve => setTimeout(resolve, 0));
     vi.restoreAllMocks();
     clearSearchCatalogCache();
 });
@@ -424,6 +427,12 @@ describe('Home — ficha aberta pela fileira Séries Recentes', () => {
         vi.spyOn(api, 'getVODStreams').mockResolvedValue([]);
         vi.spyOn(api, 'getSeries').mockResolvedValue([serie(7, 'Série Nova')]);
         await montarHome();
+        // A fileira chega depois dos contadores: descer antes dela existir
+        // levava o foco pra baixo dela, e o ↓ não sobe de volta (falhava
+        // ~1 em 15 com "o foco ainda não chegou em Séries Recentes")
+        await waitFor(() => {
+            expect(document.querySelector('#home-series .card-title')?.textContent).toBe('Série Nova');
+        });
         // Desce até a fileira: a ordem das fileiras depende do que existe, então
         // espera a CONDIÇÃO "foco nela" apertando ↓ enquanto ela não chega
         await waitFor(() => {
