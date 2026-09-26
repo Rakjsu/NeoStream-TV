@@ -17,12 +17,19 @@ interface LoginProps {
     /** Fluxo ➕ Adicionar playlist: não pré-preencher com a credencial ativa */
     startBlank?: boolean;
     onLanguageSelect?: () => void;
+    /**
+     * Voltar (botão, OK no foco 6 e tecla Voltar do controle). Quem abriu o
+     * Login decide pra onde ele volta: Configurações no ➕ Adicionar playlist,
+     * boas-vindas no primeiro uso. Antes era `window.location.reload()`: o
+     * bundle inteiro subia de novo e o ➕ terminava na Home.
+     */
+    onBack: () => void;
 }
 
 // Navigation order: 0=url, 1=username, 2=password, 3=includeTV, 4=includeVOD, 5=lang, 6=back, 7=submit
 const MAX_FOCUS = 7;
 
-export function Login({ onLoginSuccess, onLanguageSelect, startBlank = false }: LoginProps) {
+export function Login({ onLoginSuccess, onLanguageSelect, onBack, startBlank = false }: LoginProps) {
     const { t } = useTranslation();
     const [url, setUrl] = useState('');
     const [username, setUsername] = useState('');
@@ -125,10 +132,6 @@ export function Login({ onLoginSuccess, onLanguageSelect, startBlank = false }: 
         }
     }, [includeTV, includeVOD, onLoginSuccess, password, t, url, username]);
 
-    const handleBack = () => {
-        window.location.reload();
-    };
-
     // Blur all inputs - used when closing keyboard
     const blurAllInputs = useCallback(() => {
         urlRef.current?.blur();
@@ -195,13 +198,13 @@ export function Login({ onLoginSuccess, onLanguageSelect, startBlank = false }: 
                 if (onLanguageSelect) onLanguageSelect();
                 break;
             case 6: // Back button
-                handleBack();
+                onBack();
                 break;
             case 7: // Submit button
                 handleLogin();
                 break;
         }
-    }, [editingField, focusedField, stopEditingInput, onLanguageSelect, handleLogin]);
+    }, [editingField, focusedField, stopEditingInput, onLanguageSelect, handleLogin, onBack]);
 
     const handleBackAction = useCallback(() => {
         // If editing, just blur (close keyboard)
@@ -209,8 +212,8 @@ export function Login({ onLoginSuccess, onLanguageSelect, startBlank = false }: 
             stopEditingInput();
             return;
         }
-        handleBack();
-    }, [editingField, stopEditingInput]);
+        onBack();
+    }, [editingField, stopEditingInput, onBack]);
 
     useTVNavigation({
         onNavigate: (direction) => {
@@ -399,7 +402,7 @@ export function Login({ onLoginSuccess, onLanguageSelect, startBlank = false }: 
 
                         <button
                             type="button"
-                            onClick={handleBack}
+                            onClick={onBack}
                             className={`login-btn login-btn-secondary ${focusedField === 6 ? 'focused' : ''}`}
                             disabled={loading}
                             tabIndex={-1}

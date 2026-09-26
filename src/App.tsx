@@ -360,7 +360,20 @@ function App() {
   }, [checkAuth]);
 
   const handleGoToLogin = () => {
+    // Pelas boas-vindas nunca é "adicionar playlist". A flag podia sobrar de
+    // um ➕ abandonado (idioma → checkAuth → sair da conta) e aí o Voltar do
+    // Login mandava pro app principal sem conta nenhuma.
+    setAddingPlaylist(false);
     setAuthState('login');
+  };
+
+  // Voltar do Login: no ➕ Adicionar playlist volta pro app na mesma página
+  // (currentPage continua 'settings'; Configurações remonta, então abre do
+  // começo) e sem autenticar de novo; no primeiro uso volta pras boas-vindas.
+  const handleLoginBack = () => {
+    const destino: AuthState = addingPlaylist ? 'authenticated' : 'welcome';
+    setAddingPlaylist(false);
+    setAuthState(destino);
   };
 
   const handleLoginSuccess = () => {
@@ -432,7 +445,7 @@ function App() {
 
   // Login screen
   if (authState === 'login') {
-    return <Login onLoginSuccess={handleLoginSuccess} startBlank={addingPlaylist} onLanguageSelect={() => setAuthState('languageSelection')} />;
+    return <Login onLoginSuccess={handleLoginSuccess} startBlank={addingPlaylist} onLanguageSelect={() => setAuthState('languageSelection')} onBack={handleLoginBack} />;
   }
 
   // Main app with sidebar
