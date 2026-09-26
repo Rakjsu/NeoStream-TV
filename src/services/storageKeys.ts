@@ -14,6 +14,8 @@ export const KEYS_CONTA = [
     'neostream_parental_pin',
     'neostream_parental_gates',
     'neostream_parental_lock',
+    // Tentativas erradas do PIN de cada perfil (T048): estado do aparelho
+    'neostream_profile_pin_lock',
     'neostream_account_info',
     'neostream_expiry_snooze',
     'neostream_settings',

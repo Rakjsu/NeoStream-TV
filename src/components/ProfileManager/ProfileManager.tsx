@@ -659,6 +659,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                     title="Digite o PIN"
                     hint={`Perfil: ${pendingProfile.name}`}
                     confirmLabel={ROTULO_ACAO[pendingAction]}
+                    trava={profileService.travaDoPin(pendingProfile.id)}
                     onSubmit={handlePinSubmit}
                     onCancel={() => {
                         setMode('list');
