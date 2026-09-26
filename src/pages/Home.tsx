@@ -1,6 +1,6 @@
 // Home Page - Matching NeoStream Desktop
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import type { VODStream, Series } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
@@ -81,10 +81,10 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     // Novos episódios de séries seguidas + roleta 🎲
     const [newEpisodesList, setNewEpisodesList] = useState<Series[]>([]);
     const rouletteRef = useRef<{ pool: VODStream[]; affinity: Map<string, number> } | null>(null);
-
-    const refreshContinue = useCallback(() => {
-        setContinueItems(kidsActive ? [] : progressService.getContinueWatching());
-    }, [kidsActive]);
+    // Card da fileira "Continuar Assistindo" que foi pro player (T132): na
+    // volta a fileira se REORDENA (o recém-assistido vai pra frente) e o foco
+    // tem de ir junto com ele, não ficar no índice antigo
+    const tocadoDaFileiraRef = useRef<string | null>(null);
 
     // Update clock every minute
     useEffect(() => {
@@ -295,6 +295,38 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     const sectionIndex = (id: string) => sections.findIndex(s => s.id === id);
     const focusedSection = Math.max(0, sectionIndex(focusedSectionId));
 
+    const chaveDoContinue = (item: ContinueItem) =>
+        item.kind === 'movie' ? `m-${item.progress.id}` : `s-${item.progress.seriesId}`;
+
+    /**
+     * Troca a fileira "Continuar Assistindo" e REANCORA o foco se ele está
+     * nela (T132). É a ÚNICA fileira da Home que muda depois do fetch, e muda
+     * debaixo do foco: na volta do player o filme que acabou sai dela e o que
+     * foi só adiantado vai pra frente. O foco segue o card `seguir` se ele
+     * ficou; senão fica na mesma posição, limitada ao novo fim (o índice cru
+     * além do fim deixava a Home sem realce e o OK sem efeito); e, se a
+     * fileira sumiu, desce pra seção que ocupa o lugar dela, em vez de cair
+     * nos contadores do topo (onde o OK abre a TV ao Vivo).
+     */
+    const reancorarContinue = (restantes: ContinueItem[], seguir: string | null = null) => {
+        setContinueItems(restantes);
+        if (focusedSectionId !== 'continue') return;
+        if (restantes.length === 0) {
+            setFocusedSectionId(sections[focusedSection + 1]?.id ?? 'stats');
+            setFocusedItem(0);
+            return;
+        }
+        const alvo = seguir === null ? -1 : restantes.findIndex(item => chaveDoContinue(item) === seguir);
+        setFocusedItem(alvo >= 0 ? alvo : Math.min(focusedItem, restantes.length - 1));
+    };
+
+    /** Volta do player (filme ou série): relê a fileira e reancora o foco. */
+    const refreshContinue = () => {
+        const seguir = tocadoDaFileiraRef.current;
+        tocadoDaFileiraRef.current = null;
+        reancorarContinue(kidsActive ? [] : progressService.getContinueWatching(), seguir);
+    };
+
     // 🔴 na fileira "Continuar Assistindo" tira o card focado (T029). Antes
     // não havia tecla nenhuma pra isso: o filme largado aos 4 minutos ficava
     // na primeira fileira da primeira tela até o LRU de 50 expulsá-lo. Um
@@ -308,16 +340,9 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
             item.kind,
             item.kind === 'movie' ? item.progress.id : item.progress.seriesId
         );
-        const restantes = progressService.getContinueWatching();
-        setContinueItems(restantes);
-        if (restantes.length === 0) {
-            // A fileira some: o foco vai pra seção seguinte, em vez de ficar
-            // preso num id que saiu da lista e cair nos contadores
-            setFocusedSectionId(sections[focusedSection + 1]?.id ?? 'stats');
-            setFocusedItem(0);
-        } else {
-            setFocusedItem(Math.min(focusedItem, restantes.length - 1));
-        }
+        // A fileira some → o foco vai pra seção seguinte; senão fica na mesma
+        // posição, agora no card seguinte
+        reancorarContinue(progressService.getContinueWatching());
     };
 
     // Roleta 🎲: filme não visto, ponderado pelas categorias que o usuário curte
@@ -363,6 +388,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
 
     const playContinueItem = async (item: ContinueItem) => {
         if (item.kind === 'movie') {
+            tocadoDaFileiraRef.current = chaveDoContinue(item);
             setPlayingMovie(item.progress);
         } else {
             try {
@@ -373,7 +399,10 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     item.progress.season,
                     item.progress.episode
                 );
-                if (queue) setSeriesQueue(queue);
+                if (queue) {
+                    tocadoDaFileiraRef.current = chaveDoContinue(item);
+                    setSeriesQueue(queue);
+                }
             } catch (err) {
                 console.error('Error resuming series:', err);
             }
