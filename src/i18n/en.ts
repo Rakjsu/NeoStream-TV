@@ -5,6 +5,11 @@ export const en = {
     language_en: "English",
     language_es: "Español",
 
+    // Boot (checking the saved login)
+    boot_connecting: "Connecting to the provider…",
+    boot_slow: "This is taking longer than usual.",
+    boot_back_hint: "Press Back to cancel",
+
     // Welcome
     welcome_title: "Welcome to NeoStream",
     welcome_subtitle: "IPTV Player",

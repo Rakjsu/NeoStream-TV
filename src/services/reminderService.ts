@@ -66,8 +66,10 @@ function schedule(reminder: Reminder): void {
     }
     timers.set(reminder.id, setTimeout(() => {
         timers.delete(reminder.id);
-        fire(reminder);
+        // Sai da lista ANTES de avisar: quem ouve o disparo (o painel ⏰ Meus
+        // lembretes relê a lista nessa hora) tem de ver o estado já final
         reminderService.remove(reminder.id);
+        fire(reminder);
     }, delay));
 }
 
@@ -86,6 +88,24 @@ export const reminderService = {
 
     list(): Reminder[] {
         return read();
+    },
+
+    /**
+     * O que a tela ⏰ Meus lembretes mostra: do mais próximo ao mais distante,
+     * sem o que já passou da janela de limpeza (o mesmo corte do init). O init
+     * só poda no boot: o lembrete que já estava no ar ao ligar não tem timer
+     * e, com o app aberto, passa da janela sem sair da lista guardada.
+     */
+    upcoming(): Reminder[] {
+        const now = Date.now();
+        return read()
+            .filter(r => r.startMs > now - KEEP_AFTER_MS)
+            .sort((a, b) => a.startMs - b.startMs);
+    },
+
+    /** O programa do lembrete já começou (no painel: selo NO AR, e o OK assiste em vez de cancelar). */
+    isOnAir(reminder: Reminder, now: number = Date.now()): boolean {
+        return reminder.startMs <= now;
     },
 
     has(streamId: number, startMs: number): boolean {

@@ -18,6 +18,8 @@ vi.mock('./api', () => ({
         getSimpleDataTable: (...args: unknown[]) => getSimpleDataTable(...args),
         getProviderOffsetMs: () => getProviderOffsetMs(),
     },
+    // O epgService se registra no ciclo de vida do catálogo ao carregar (T064)
+    aoLimparCacheDeCatalogo: () => {},
 }));
 
 vi.mock('./playlistService', () => ({

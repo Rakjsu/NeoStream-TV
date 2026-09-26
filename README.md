@@ -120,9 +120,10 @@ Every push and pull request runs [CI](.github/workflows/ci.yml):
 
 | Gate | What it protects |
 | --- | --- |
+| `npm audit --omit=dev --audit-level=high` | Production dependencies only — what ships inside the `.wgt`. The TV app has no updater, so a vulnerable package stays on the TV until someone reinstalls. It can turn red without any code change, when a new advisory is published. |
 | `npx tsc -b` | The same type-check the build performs. `tsc --noEmit` lets errors through in a project with references. |
 | `npm run lint` | ESLint, including the React Hooks rules the project treats as errors. |
-| `npm test` | 226 tests. Node environment, except the `useTVNavigation` suite, which needs jsdom. |
+| `npm test` | Vitest. Node environment by default; a test that needs the DOM declares `// @vitest-environment jsdom` on its first line. |
 | `npm run check:css` | CSS features Chromium 69 ignores. They break neither the build nor the browser — they only disappear on the TV. |
 | `npm run build:tizen` | Fails if `tizen/index.html` points at assets the build did not produce (that ships a black screen). |
 | `npm run check:bundle` | Size budget. On a 2019 TV the cost of a large bundle is parse time and heap, not bandwidth. |
