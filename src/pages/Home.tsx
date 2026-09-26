@@ -14,6 +14,7 @@ import { kidsFilter } from '../services/kidsFilter';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
+import { HomeHeader } from '../components/HomeHeader';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
 import './Home.css';
 import { accountService } from '../services/accountService';
@@ -53,7 +54,6 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     // "Porque você assistiu X" (item 27): semente EXPLÍCITA e nomeada, ao
     // contrário da fileira de recomendações, que é afinidade anônima
     const [seedRow, setSeedRow] = useState<{ nome: string; itens: (VODStream | Series)[] } | null>(null);
-    const [currentTime, setCurrentTime] = useState(new Date());
     // Foco por ID de seção: as seções condicionais (continue/newepisodes)
     // entram ASSINCRONAMENTE e deslocariam um índice posicional
     const [focusedSectionId, setFocusedSectionId] = useState('stats');
@@ -85,12 +85,6 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     // volta a fileira se REORDENA (o recém-assistido vai pra frente) e o foco
     // tem de ir junto com ele, não ficar no índice antigo
     const tocadoDaFileiraRef = useRef<string | null>(null);
-
-    // Update clock every minute
-    useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-        return () => clearInterval(timer);
-    }, []);
 
     // Fetch data
     useEffect(() => {
@@ -254,27 +248,6 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
 
         fetchData();
     }, []);
-
-    // Time formatting
-    const formatTime = (date: Date) => {
-        return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    };
-
-    const formatDate = (date: Date) => {
-        return date.toLocaleDateString('pt-BR', {
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long'
-        });
-    };
-
-    // Greeting based on time of day (as per original app)
-    const getGreeting = () => {
-        const hour = currentTime.getHours();
-        if (hour < 12) return 'Bom dia';
-        if (hour < 18) return 'Boa tarde';
-        return 'Boa noite';
-    };
 
     // TV Navigation - seções dinâmicas ("continue"/"newepisodes" condicionais)
     // A ORDEM aqui tem que ser a MESMA do DOM, senão ↓ move o foco pra cima na
@@ -559,17 +532,9 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 </div>
             )}
 
-            {/* Header */}
-            <header className="home-header">
-                <div className="home-header-left">
-                    <div className="home-date">{formatDate(currentTime)}</div>
-                    <h1 className="home-greeting">
-                        {getGreeting()}! <span className="waving-hand">👋</span>
-                    </h1>
-                    <p className="home-subtitle">O que você quer assistir hoje?</p>
-                </div>
-                <div className="home-clock">{formatTime(currentTime)}</div>
-            </header>
+            {/* Header — o relógio vive no próprio componente (T117): o tique
+                do minuto não re-renderiza as fileiras */}
+            <HomeHeader />
 
             {loadError && (
                 <div className="home-load-error">
