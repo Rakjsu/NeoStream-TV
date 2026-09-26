@@ -19,6 +19,7 @@ import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMen
 import { ChannelAgendaOverlay } from '../components/ChannelAgendaOverlay';
 import { EpgGrid } from '../components/EpgGrid';
 import { FavoritesNowPanel, SportsPanel } from '../components/LivePanels';
+import { RemindersPanel } from '../components/RemindersPanel';
 import { reminderService } from '../services/reminderService';
 import { favoriteOrder, isRadioChannel, isSportsCategory, type SportsEvent } from '../services/liveDiscovery';
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
@@ -84,6 +85,8 @@ export function LiveTV() {
     // R4: painéis, lembretes e ordem manual dos favoritos
     const [showFavoritesPanel, setShowFavoritesPanel] = useState(false);
     const [showSportsPanel, setShowSportsPanel] = useState(false);
+    // ⏰ Meus lembretes: o único lugar que mostra (e cancela) o que está marcado
+    const [showRemindersPanel, setShowRemindersPanel] = useState(false);
     const [favOrderTick, setFavOrderTick] = useState(0);
 
     // Focus states for TV navigation
@@ -379,7 +382,7 @@ export function LiveTV() {
 
     // Botões da toolbar na ordem do JSX — vira a extensão da zona do header
     // (sem isso, ⭐ Agora e ⚽ Jogos só abriam por mouse)
-    const toolbarItems: Array<'variants' | 'onlyepg' | 'guide' | 'random' | 'hidden' | 'favpanel' | 'sports'> = [
+    const toolbarItems: Array<'variants' | 'onlyepg' | 'guide' | 'random' | 'hidden' | 'favpanel' | 'sports' | 'reminders'> = [
         'variants',
         'onlyepg',
         'guide',
@@ -390,6 +393,9 @@ export function LiveTV() {
         ...(hiddenIds.size > 0 || showOnlyHidden ? (['hidden'] as const) : []),
         ...(favoriteChannels.length > 0 ? (['favpanel'] as const) : []),
         ...(sportsChannels.length > 0 ? (['sports'] as const) : []),
+        // Sempre presente e no FIM: a lista pode esvaziar com o painel aberto,
+        // e um botão que some deixaria o índice focado apontando pro nada
+        'reminders',
     ];
     const HEADER_BASE = 2; // 0 = busca, 1 = menu de categorias
     const toolbarFocusIndex = (item: string) => HEADER_BASE + toolbarItems.indexOf(item as typeof toolbarItems[number]);
@@ -742,6 +748,7 @@ export function LiveTV() {
                 else if (item === 'hidden') setShowOnlyHidden(prev => !prev);
                 else if (item === 'favpanel') setShowFavoritesPanel(true);
                 else if (item === 'sports') setShowSportsPanel(true);
+                else if (item === 'reminders') setShowRemindersPanel(true);
             }
         } else if (focusArea === 'preview') {
             if (!selectedChannel) return;
@@ -799,7 +806,7 @@ export function LiveTV() {
         onEnter: handleEnter,
         onBack: handleBack,
         onAction: handleAction,
-        enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !showGuide && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel,
+        enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !showGuide && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel && !showRemindersPanel,
     });
 
     // Logo quebrado: cada `error` de <img> chega num evento separado, e um
@@ -968,6 +975,13 @@ export function LiveTV() {
                         ⚽ Jogos
                     </button>
                 )}
+                <button
+                    className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('reminders') ? 'tv-focused' : ''}`}
+                    onClick={() => setShowRemindersPanel(true)}
+                    title="Meus lembretes"
+                >
+                    ⏰ Lembretes
+                </button>
             </div>
 
             {/* Channel Preview (when selected) */}
@@ -1237,6 +1251,18 @@ export function LiveTV() {
                     onRemind={(event: SportsEvent) => toggleReminder(event.channel, event.program)}
                     isReminded={(event: SportsEvent) =>
                         reminderService.has(event.channel.stream_id, event.program.start)}
+                />
+            )}
+
+            {/* ⏰ Meus lembretes: ver e cancelar o que está marcado */}
+            {showRemindersPanel && (
+                <RemindersPanel
+                    resolveChannel={(streamId) => streams.find(s => s.stream_id === streamId)}
+                    onClose={() => setShowRemindersPanel(false)}
+                    onPlay={(channel) => {
+                        setShowRemindersPanel(false);
+                        playChannel(channel);
+                    }}
                 />
             )}
 
