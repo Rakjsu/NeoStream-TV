@@ -19,6 +19,7 @@ import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMen
 import { ChannelAgendaOverlay } from '../components/ChannelAgendaOverlay';
 import { EpgGrid } from '../components/EpgGrid';
 import { FavoritesNowPanel, SportsPanel } from '../components/LivePanels';
+import { RemindersPanel } from '../components/RemindersPanel';
 import { reminderService } from '../services/reminderService';
 import { favoriteOrder, isRadioChannel, isSportsCategory, type SportsEvent } from '../services/liveDiscovery';
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
@@ -85,6 +86,8 @@ export function LiveTV() {
     // R4: painéis, lembretes e ordem manual dos favoritos
     const [showFavoritesPanel, setShowFavoritesPanel] = useState(false);
     const [showSportsPanel, setShowSportsPanel] = useState(false);
+    // ⏰ Meus lembretes: o único lugar que mostra (e cancela) o que está marcado
+    const [showRemindersPanel, setShowRemindersPanel] = useState(false);
     const [favOrderTick, setFavOrderTick] = useState(0);
 
     // Focus states for TV navigation
@@ -380,7 +383,7 @@ export function LiveTV() {
 
     // Botões da toolbar na ordem do JSX — vira a extensão da zona do header
     // (sem isso, ⭐ Agora e ⚽ Jogos só abriam por mouse)
-    const toolbarItems: Array<'variants' | 'onlyepg' | 'guide' | 'random' | 'hidden' | 'favpanel' | 'sports'> = [
+    const toolbarItems: Array<'variants' | 'onlyepg' | 'guide' | 'random' | 'hidden' | 'favpanel' | 'sports' | 'reminders'> = [
         'variants',
         'onlyepg',
         'guide',
@@ -391,6 +394,9 @@ export function LiveTV() {
         ...(hiddenIds.size > 0 || showOnlyHidden ? (['hidden'] as const) : []),
         ...(favoriteChannels.length > 0 ? (['favpanel'] as const) : []),
         ...(sportsChannels.length > 0 ? (['sports'] as const) : []),
+        // Sempre presente e no FIM: a lista pode esvaziar com o painel aberto,
+        // e um botão que some deixaria o índice focado apontando pro nada
+        'reminders',
     ];
     const HEADER_BASE = 2; // 0 = busca, 1 = menu de categorias
     const toolbarFocusIndex = (item: string) => HEADER_BASE + toolbarItems.indexOf(item as typeof toolbarItems[number]);
@@ -743,6 +749,7 @@ export function LiveTV() {
                 else if (item === 'hidden') setShowOnlyHidden(prev => !prev);
                 else if (item === 'favpanel') setShowFavoritesPanel(true);
                 else if (item === 'sports') setShowSportsPanel(true);
+                else if (item === 'reminders') setShowRemindersPanel(true);
             }
         } else if (focusArea === 'preview') {
             if (!selectedChannel) return;
@@ -800,11 +807,33 @@ export function LiveTV() {
         onEnter: handleEnter,
         onBack: handleBack,
         onAction: handleAction,
-        enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !showGuide && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel,
+        enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !showGuide && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel && !showRemindersPanel,
     });
 
+    // Logo quebrado: cada `error` de <img> chega num evento separado, e um
+    // setState por evento repintava a página inteira uma vez por logo. Os ids
+    // se acumulam aqui e entram no estado de uma vez, numa janela fixa.
+    // (Canal SEM logo nem monta <img>: o React 19 tira o src vazio e um <img>
+    // sem src nunca dispara `error` — o card ficava sem o 📺 pra sempre.)
+    const pendingBrokenRef = useRef<Set<number>>(new Set());
+    const brokenFlushRef = useRef<number | null>(null);
+    useEffect(() => () => {
+        if (brokenFlushRef.current !== null) window.clearTimeout(brokenFlushRef.current);
+    }, []);
+
     const handleImageError = (streamId: number) => {
-        setBrokenImages(prev => new Set(prev).add(streamId));
+        pendingBrokenRef.current.add(streamId);
+        if (brokenFlushRef.current !== null) return;
+        brokenFlushRef.current = window.setTimeout(() => {
+            brokenFlushRef.current = null;
+            const ids = pendingBrokenRef.current;
+            pendingBrokenRef.current = new Set();
+            setBrokenImages(prev => {
+                const next = new Set(prev);
+                ids.forEach(id => next.add(id));
+                return next;
+            });
+        }, 100);
     };
 
     const getLivePlaybackUrl = (stream: LiveStream) => {
@@ -947,6 +976,13 @@ export function LiveTV() {
                         ⚽ Jogos
                     </button>
                 )}
+                <button
+                    className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('reminders') ? 'tv-focused' : ''}`}
+                    onClick={() => setShowRemindersPanel(true)}
+                    title="Meus lembretes"
+                >
+                    ⏰ Lembretes
+                </button>
             </div>
 
             {/* Channel Preview (when selected) */}
@@ -965,11 +1001,11 @@ export function LiveTV() {
                     <div className="preview-content">
                         <div className="preview-video">
                             <div className="preview-placeholder">
-                                {brokenImages.has(selectedChannel.stream_id) ? (
+                                {!selectedChannel.stream_icon || brokenImages.has(selectedChannel.stream_id) ? (
                                     <span className="placeholder-emoji">📺</span>
                                 ) : (
                                     <img decoding="async"
-                                        src={selectedChannel?.stream_icon || ''}
+                                        src={selectedChannel.stream_icon}
                                         alt={selectedChannel?.name || 'Canal'}
                                         onError={() => handleImageError(selectedChannel.stream_id)}
                                     />
@@ -1096,7 +1132,7 @@ export function LiveTV() {
                                     raiz={scrollContainerRef}
                                     onError={() => handleImageError(stream.stream_id)}
                                 >
-                                    {brokenImages.has(stream.stream_id) && (
+                                    {(!stream.stream_icon || brokenImages.has(stream.stream_id)) && (
                                         <span className="channel-placeholder">📺</span>
                                     )}
                                 </PosterPreguicoso>
@@ -1218,6 +1254,18 @@ export function LiveTV() {
                     onRemind={(event: SportsEvent) => toggleReminder(event.channel, event.program)}
                     isReminded={(event: SportsEvent) =>
                         reminderService.has(event.channel.stream_id, event.program.start)}
+                />
+            )}
+
+            {/* ⏰ Meus lembretes: ver e cancelar o que está marcado */}
+            {showRemindersPanel && (
+                <RemindersPanel
+                    resolveChannel={(streamId) => streams.find(s => s.stream_id === streamId)}
+                    onClose={() => setShowRemindersPanel(false)}
+                    onPlay={(channel) => {
+                        setShowRemindersPanel(false);
+                        playChannel(channel);
+                    }}
                 />
             )}
 

@@ -239,14 +239,6 @@ html.no-flex-gap .language-btn > * + * {
 
 /* ---- pages/LiveTV.css ---- */
 
-html.no-flex-gap .livetv-search-container > * + * {
-    margin-left: 12px;
-}
-
-html.no-flex-gap .livetv-categories > * + * {
-    margin-left: 8px;
-}
-
 html.no-flex-gap .preview-content > * + * {
     margin-left: 24px;
 }
