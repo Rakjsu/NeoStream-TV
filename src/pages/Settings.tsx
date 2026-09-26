@@ -14,7 +14,7 @@ import { accountService, EXPIRY_WARN_DAYS } from '../services/accountService';
 import { parentalService } from '../services/parentalService';
 import { configSnapshot } from '../services/configSnapshot';
 import { DATA_GROUPS, DATA_GROUP_IDS, resetGroup, groupSizeKb } from '../services/dataReset';
-import { PinPrompt } from '../components/PinPrompt';
+import { PinPrompt, PinRecovery } from '../components/PinPrompt';
 import { RemoteGuide } from '../components/RemoteGuide';
 import { DiagnosticsOverlay, QrBackupOverlay } from '../components/SystemOverlays';
 import { WrappedOverlay } from '../components/WrappedOverlay';
@@ -118,9 +118,12 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     // 'entry'  = trava de ENTRADA da página (cancelar NÃO destranca)
     // 'unlock' = destravar as opções parentais (cancelar só fecha o diálogo)
     // 'define' = criar um PIN novo
-    const [pinMode, setPinMode] = useState<'none' | 'entry' | 'unlock' | 'define'>(
+    // 'recover' = PIN esquecido: a senha da conta IPTV remove o PIN (T073)
+    const [pinMode, setPinMode] = useState<'none' | 'entry' | 'unlock' | 'define' | 'recover'>(
         () => (parentalService.requires('settings') ? 'entry' : 'none')
     );
+    // De qual teclado de PIN o resgate saiu: Voltar devolve pra ele
+    const [resgateDe, setResgateDe] = useState<'entry' | 'unlock'>('entry');
     // O que fazer depois de um 'unlock' bem-sucedido
     const [afterUnlock, setAfterUnlock] = useState<
         | null
@@ -538,6 +541,34 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     const hasSavedKey = savedKey.length > 0;
     const expiryDays = accountService.daysUntilExpiry(account);
 
+    // PIN esquecido (T073): sem isto a trava de entrada não tinha saída — o
+    // único apagador do PIN morava DENTRO da página trancada. Só é oferecido
+    // quando há senha de conta pra conferir.
+    const esqueciOPin = (de: 'entry' | 'unlock') => (
+        parentalService.podeResgatar()
+            ? () => {
+                setResgateDe(de);
+                setPinMode('recover');
+            }
+            : undefined
+    );
+
+    if (pinMode === 'recover') {
+        return (
+            <PinRecovery
+                enabled={appFocusZone === 'content'}
+                onRecovered={() => {
+                    setPinSet(false);
+                    setParentalUnlocked(true);
+                    setAfterUnlock(null);
+                    setPinMode('none');
+                    setMessage('PIN parental removido pela senha da conta. Crie um novo em Controle parental.');
+                }}
+                onCancel={() => setPinMode(resgateDe)}
+            />
+        );
+    }
+
     // Porta de entrada: com PIN parental exigido, a página não renderiza nada
     // antes de o PIN ser aceito (item 55). Cancelar devolve o foco à sidebar —
     // a Settings não tinha caminho de volta por D-pad nenhum.
@@ -550,6 +581,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 // Cancelar devolve o foco pra sidebar mas a trava CONTINUA na
                 // tela: sem isto os dois receberiam a mesma tecla
                 enabled={appFocusZone === 'content'}
+                onForgot={esqueciOPin('entry')}
                 onSubmit={async (pin) => {
                     const ok = await parentalService.verify(pin);
                     if (!ok) return false;
@@ -572,6 +604,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             <PinPrompt
                 title="Confirmar com o PIN"
                 parental
+                onForgot={esqueciOPin('unlock')}
                 hint={afterUnlock?.kind === 'removepin'
                     ? 'Digite o PIN atual para removê-lo.'
                     : afterUnlock?.kind === 'resetconta'

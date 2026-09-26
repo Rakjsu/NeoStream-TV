@@ -7,6 +7,7 @@
 // nasce sem PIN nenhum.
 
 import { writeRaw, removeKey } from './safeStorage';
+import { storage } from './storage';
 
 const PIN_KEY = 'neostream_parental_pin';
 const GATES_KEY = 'neostream_parental_gates';
@@ -79,6 +80,18 @@ function gravarTrava(estado: EstadoTrava): void {
     writeRaw(LOCK_KEY, JSON.stringify(estado));
 }
 
+/** Conta um erro — de PIN ou de senha do resgate — e arma a espera quando é a vez. */
+function registrarErro(): void {
+    const estado = lerTrava();
+    const erros = estado.erros + 1;
+    if (erros >= ERROS_ATE_TRAVAR) {
+        const espera = ESPERAS_MS[Math.min(estado.rodadas, ESPERAS_MS.length - 1)];
+        gravarTrava({ erros: 0, travadoAte: Date.now() + espera, rodadas: estado.rodadas + 1 });
+    } else {
+        gravarTrava({ ...estado, erros });
+    }
+}
+
 async function hash(pin: string): Promise<string> {
     const data = new TextEncoder().encode(SALT + pin);
     const digest = await crypto.subtle.digest('SHA-256', data);
@@ -124,20 +137,39 @@ export const parentalService = {
         if (this.travaRestanteMs() > 0) return false;
 
         const ok = (await hash(pin)) === stored;
-        const estado = lerTrava();
         if (ok) {
             gravarTrava(SEM_TRAVA);
             return true;
         }
 
-        const erros = estado.erros + 1;
-        if (erros >= ERROS_ATE_TRAVAR) {
-            const espera = ESPERAS_MS[Math.min(estado.rodadas, ESPERAS_MS.length - 1)];
-            gravarTrava({ erros: 0, travadoAte: Date.now() + espera, rodadas: estado.rodadas + 1 });
-        } else {
-            gravarTrava({ ...estado, erros });
-        }
+        registrarErro();
         return false;
+    },
+
+    /**
+     * Resgate do PIN esquecido (T073): a senha da conta IPTV salva no aparelho
+     * remove o PIN — e SÓ o PIN (favoritos, histórico, perfis e a conta ficam).
+     *
+     * Não é "apagar tudo sem provar nada": esse caminho lateral foi fechado de
+     * propósito no "Apagar dados → Conta e perfis". A senha do provedor é o
+     * segredo do dono do aparelho, que a criança no perfil Kids não tem — e
+     * cada senha errada conta no MESMO limite de tentativas do PIN.
+     */
+    resgatarComSenhaDaConta(senha: string): boolean {
+        if (!this.isSet()) return false;
+        if (this.travaRestanteMs() > 0) return false;
+        const esperada = storage.getCredentials()?.password || '';
+        if (esperada && senha === esperada) {
+            this.clear();
+            return true;
+        }
+        registrarErro();
+        return false;
+    },
+
+    /** Há PIN pra resgatar e senha de conta pra conferir? Sem ela, não há resgate. */
+    podeResgatar(): boolean {
+        return this.isSet() && !!storage.getCredentials()?.password;
     },
 
     /** Quanto falta da espera, em ms. 0 = pode tentar. */
