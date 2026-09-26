@@ -4,7 +4,8 @@ import { purgeProfileData } from './profileScope';
 import { writeJson } from './safeStorage';
 
 const STORAGE_KEY = 'neostream_tv_profiles';
-const MAX_PROFILES = 5;
+/** Teto de perfis. Exportado para a tela dizer o número quando ele bate (T047). */
+export const MAX_PROFILES = 5;
 
 // Simple SHA-256 hash
 async function hashPin(pin: string): Promise<string> {
