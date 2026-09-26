@@ -21,6 +21,18 @@ const avatarOptions = [DEFAULT_AVATAR, 'A', 'B', 'C', 'D', 'E', 'F', 'G'];
 
 type ModalMode = 'list' | 'create' | 'edit' | 'pin-verify' | 'delete-confirm';
 
+/**
+ * O que a pessoa quer fazer com um perfil. Entrar, editar e excluir passam
+ * pela MESMA porta de PIN (T046): editar/excluir abriam direto, e do Kids
+ * dava pra tirar o PIN do adulto ou apagar o perfil dele sem provar nada.
+ */
+type AcaoPerfil = 'switch' | 'edit' | 'delete';
+const ROTULO_ACAO: Record<AcaoPerfil, string> = {
+    switch: 'Entrar',
+    edit: 'Editar perfil',
+    delete: 'Excluir perfil',
+};
+
 export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerProps) {
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
@@ -45,6 +57,8 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
     const [pendingProfile, setPendingProfile] = useState<Profile | null>(null);
     // Perfil que só entra depois do PIN PARENTAL (saída do modo Kids, item 55)
     const [parentalTarget, setParentalTarget] = useState<Profile | null>(null);
+    // O que acontece quando o PIN (parental e/ou do perfil) for aceito
+    const [pendingAction, setPendingAction] = useState<AcaoPerfil>('switch');
     // Sub-foco DENTRO do card: os botões Editar/Excluir existiam no desenho e
     // nenhuma seta chegava neles — não havia como excluir um perfil pela TV.
     const [cardZone, setCardZone] = useState<'card' | 'edit' | 'delete'>('card');
@@ -69,24 +83,69 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         onClose();
     }, [refreshProfiles, onProfileSwitched, onClose]);
 
+    /** Abre o formulário de edição — só depois da porta (pedirPinDoPerfil). */
+    const abrirEdicao = useCallback((profile: Profile) => {
+        setEditingProfile(profile);
+        setFormName(profile.name);
+        setFormAvatar(profile.avatar);
+        setFormPin('');
+        setRemovePin(false);
+        setAvatarFocusIndex(Math.max(0, avatarOptions.indexOf(profile.avatar)));
+        setEditFocusZone('name');
+        setButtonFocusIndex(0);
+        setSaveError('');
+        setMode('edit');
+    }, []);
+
+    /** Abre a confirmação de exclusão — só depois da porta (pedirPinDoPerfil). */
+    const abrirExclusao = useCallback((profile: Profile) => {
+        setDeleteTarget(profile);
+        // Nasce em "Cancelar": exclusão nunca é o padrão
+        setDeleteFocusIndex(0);
+        setSaveError('');
+        setMode('delete-confirm');
+    }, []);
+
+    const executarAcao = useCallback((profile: Profile, acao: AcaoPerfil) => {
+        if (acao === 'switch') commitSwitch(profile);
+        else if (acao === 'edit') abrirEdicao(profile);
+        else abrirExclusao(profile);
+    }, [commitSwitch, abrirEdicao, abrirExclusao]);
+
+    /**
+     * Porta ÚNICA de PIN para entrar, editar ou excluir um perfil. Mexer num
+     * perfil que NÃO é o ativo exige exatamente o que entrar nele exigiria:
+     * o PIN parental ao sair do Kids e o PIN do próprio perfil. Editar o
+     * perfil ativo não pede nada — quem está nele já passou pela porta.
+     */
+    const pedirPinDoPerfil = useCallback((profile: Profile, acao: AcaoPerfil) => {
+        if (acao !== 'switch' && profile.id === activeProfile?.id) {
+            executarAcao(profile, acao);
+            return;
+        }
+        const leavingKids = !!activeProfile?.isKids && !profile.isKids;
+        if (leavingKids && parentalService.requires('leaveKids')) {
+            setPendingAction(acao);
+            setParentalTarget(profile);
+            return;
+        }
+        if (profile.pin) {
+            setPendingAction(acao);
+            setPendingProfile(profile);
+            setMode('pin-verify');
+            return;
+        }
+        executarAcao(profile, acao);
+    }, [activeProfile, executarAcao]);
+
     /**
      * Caminho ÚNICO de troca de perfil. Havia dois (tecla OK e clique no card)
      * com a mesma lógica duplicada — e a trava do modo Kids precisa valer nos
      * dois, senão sair do Kids por clique burlava o controle parental.
      */
     const requestSwitch = useCallback((profile: Profile) => {
-        const leavingKids = !!activeProfile?.isKids && !profile.isKids;
-        if (leavingKids && parentalService.requires('leaveKids')) {
-            setParentalTarget(profile);
-            return;
-        }
-        if (profile.pin) {
-            setPendingProfile(profile);
-            setMode('pin-verify');
-            return;
-        }
-        commitSwitch(profile);
-    }, [activeProfile, commitSwitch]);
+        pedirPinDoPerfil(profile, 'switch');
+    }, [pedirPinDoPerfil]);
 
     // Load profiles
     useEffect(() => {
@@ -99,19 +158,10 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
     // Calculate total focusable items (profiles + add button if < 5)
     const totalItems = profiles.length + (profiles.length < 5 ? 1 : 0);
 
-    // Start editing a profile
+    // Start editing a profile (perfil alheio com PIN passa pela porta antes)
     const startEdit = useCallback((profile: Profile) => {
-        setEditingProfile(profile);
-        setFormName(profile.name);
-        setFormAvatar(profile.avatar);
-        setFormPin('');
-        setRemovePin(false);
-        setAvatarFocusIndex(Math.max(0, avatarOptions.indexOf(profile.avatar)));
-        setEditFocusZone('name');
-        setButtonFocusIndex(0);
-        setSaveError('');
-        setMode('edit');
-    }, []);
+        pedirPinDoPerfil(profile, 'edit');
+    }, [pedirPinDoPerfil]);
 
     // Handle create profile
     const handleCreateProfile = useCallback(async () => {
@@ -276,16 +326,15 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         setDeleteFocusIndex(0);
     }, [deleteTarget, refreshProfiles]);
 
-    /** Abre a confirmação de exclusão (o perfil ativo e o Kids não podem). */
+    /**
+     * Abre a confirmação de exclusão (o perfil ativo e o Kids não podem).
+     * Excluir apaga o perfil E os dados dele: passa pela mesma porta de PIN.
+     */
     const startDelete = useCallback((profile: Profile) => {
         if (profile.id === activeProfile?.id) return;
         if (profile.isKids) return;
-        setDeleteTarget(profile);
-        // Nasce em "Cancelar": exclusão nunca é o padrão
-        setDeleteFocusIndex(0);
-        setSaveError('');
-        setMode('delete-confirm');
-    }, [activeProfile]);
+        pedirPinDoPerfil(profile, 'delete');
+    }, [activeProfile, pedirPinDoPerfil]);
 
     const handleEnter = useCallback((fromInput?: boolean) => {
         // OK vindo de dentro do campo Nome/PIN já fechou o teclado; seguir
@@ -394,10 +443,11 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         if (!pendingProfile) return false;
         const isValid = await profileService.verifyPin(pendingProfile.id, pin);
         if (!isValid) return false;
-        profileService.setActiveProfile(pendingProfile.id);
-        refreshProfiles();
-        onProfileSwitched?.();
-        onClose();
+        const target = pendingProfile;
+        setPendingProfile(null);
+        // Troca fecha o gerenciador; editar/excluir trocam o modo em seguida
+        setMode('list');
+        executarAcao(target, pendingAction);
         return true;
     };
 
@@ -608,7 +658,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                 <PinPrompt
                     title="Digite o PIN"
                     hint={`Perfil: ${pendingProfile.name}`}
-                    confirmLabel="Entrar"
+                    confirmLabel={ROTULO_ACAO[pendingAction]}
                     onSubmit={handlePinSubmit}
                     onCancel={() => {
                         setMode('list');
@@ -649,23 +699,28 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                     </div>
                 </div>
             )}
-            {/* Sair do modo Kids exige o PIN parental (item 55) */}
+            {/* Sair do modo Kids exige o PIN parental (item 55) — e mexer
+                num perfil adulto a partir do Kids também (T046) */}
             {parentalTarget && (
                 <PinPrompt
-                    title="Sair do modo Kids"
+                    title={pendingAction === 'switch' ? 'Sair do modo Kids' : 'Controle parental'}
                     parental
-                    hint={`Digite o PIN parental para entrar em "${parentalTarget.name}".`}
+                    confirmLabel={pendingAction === 'switch' ? undefined : ROTULO_ACAO[pendingAction]}
+                    hint={pendingAction === 'switch'
+                        ? `Digite o PIN parental para entrar em "${parentalTarget.name}".`
+                        : `Digite o PIN parental para ${pendingAction === 'edit' ? 'editar' : 'excluir'} "${parentalTarget.name}".`}
                     onSubmit={async (pin) => {
                         const ok = await parentalService.verify(pin);
                         if (!ok) return false;
                         const target = parentalTarget;
                         setParentalTarget(null);
                         // O PIN do PRÓPRIO perfil ainda vale depois deste
+                        // (a ação pendente segue a mesma até o fim)
                         if (target.pin) {
                             setPendingProfile(target);
                             setMode('pin-verify');
                         } else {
-                            commitSwitch(target);
+                            executarAcao(target, pendingAction);
                         }
                         return true;
                     }}
