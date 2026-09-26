@@ -150,7 +150,11 @@
     opacity: 0.5;
 }
 
-.live-badge {
+/* Escopados na ficha do canal: o player usa as MESMAS classes (.live-badge,
+   .live-dot) na fileira de controles e o app vai num CSS só — sem o escopo,
+   o position:absolute e a animação daqui arrancavam o selo/botão VOLTAR AO
+   VIVO da fileira do player e cobriam o anel de foco dele (T130). */
+.channel-preview .live-badge {
     position: absolute;
     top: 12px;
     right: 12px;
@@ -180,7 +184,7 @@
     }
 }
 
-.live-dot {
+.channel-preview .live-dot {
     width: 6px;
     height: 6px;
     background: white;
@@ -479,7 +483,8 @@
     }
 }
 
-.loading-text {
+/* Escopado: o "Carregando..." do player também é .loading-text (T130) */
+.livetv-loading-container .loading-text {
     display: flex;
     align-items: center;
     gap: 8px;
