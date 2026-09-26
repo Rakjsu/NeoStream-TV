@@ -189,13 +189,19 @@ html[data-playing] .video-player-container *::after {
 
 /* Menu parado marca painel OLED. Depois de 5 min sem tecla a interface
    escurece — mas NUNCA durante a reprodução (`data-playing` é posto pelo
-   VideoPlayer enquanto ele existe). */
-html.app-dimmed:not([data-playing]) .app {
+   VideoPlayer enquanto ele existe).
+
+   O alvo é o ponto de montagem do React (`#root`, no index.html e no
+   tizen/index.html), e não o `.app`: o <div className="app"> só existe no
+   app principal. Idioma, boas-vindas, login e "sem conexão" saem do App por
+   `return` antes dele — e são as telas estáticas, de alto contraste, que
+   mais ficam esquecidas na TV. Com `.app` a classe entrava e nada escurecia. */
+html.app-dimmed:not([data-playing]) #root {
     opacity: 0.35;
     transition: opacity 1.2s ease;
 }
 
-html:not(.app-dimmed) .app {
+html:not(.app-dimmed) #root {
     transition: opacity 0.4s ease;
 }
 
