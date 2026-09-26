@@ -19,6 +19,7 @@ import {
     SUBTITLE_SIZE_LABELS,
     type SubtitleSize,
 } from '../../services/playerPrefs';
+import { logWarning } from '../../services/diagnostics';
 import './VideoPlayer.css';
 
 export interface PlayerChannel {
@@ -121,23 +122,42 @@ const CAUSE_MESSAGES: Record<string, string> = {
     fatal: 'Erro no stream.',
 };
 
+// Numa TV Tizen a falha do segura-screensaver não pode ser silenciosa: o
+// `webapis` só existe se o tizen/index.html carregar `$WEBAPIS/webapis/webapis.js`
+// (o `tizen` a plataforma injeta sozinha; o `webapis`, não). Fora da TV
+// (navegador, build web) não há screensaver pra segurar nem nada a avisar.
+function reportScreenSaverFailure(reason: string): void {
+    if (!(window as unknown as { tizen?: unknown }).tizen) return;
+    logWarning(`Screensaver da TV fora do controle do app: ${reason}`, 'screensaver');
+}
+
+function failureReason(error: unknown): string {
+    if (error && typeof error === 'object' && 'message' in error) {
+        return String((error as { message: unknown }).message);
+    }
+    return String(error);
+}
+
 // Segura o screensaver do sistema durante a reprodução (Tizen)
 function holdSystemScreenSaver(hold: boolean): void {
     try {
         const webapis = (window as unknown as {
             webapis?: { appcommon?: {
-                setScreenSaver: (state: number, ok?: () => void, err?: () => void) => void;
+                setScreenSaver: (state: number, ok?: () => void, err?: (error: unknown) => void) => void;
                 AppCommonScreenSaverState: { SCREEN_SAVER_OFF: number; SCREEN_SAVER_ON: number };
             } };
         }).webapis;
         const appcommon = webapis?.appcommon;
-        if (!appcommon) return;
+        if (!appcommon) {
+            reportScreenSaverFailure('webapis.appcommon ausente (webapis.js não carregou)');
+            return;
+        }
         const state = hold
             ? appcommon.AppCommonScreenSaverState.SCREEN_SAVER_OFF
             : appcommon.AppCommonScreenSaverState.SCREEN_SAVER_ON;
-        appcommon.setScreenSaver(state, undefined, undefined);
-    } catch {
-        // Fora do Tizen (dev no browser) — sem screensaver pra segurar
+        appcommon.setScreenSaver(state, undefined, (error) => reportScreenSaverFailure(failureReason(error)));
+    } catch (error) {
+        reportScreenSaverFailure(failureReason(error));
     }
 }
 
