@@ -57,17 +57,40 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
             onOpenChange?.(open);
         };
 
+        // Timer da animação de fechar. Guardado pra ser desarmado quando o
+        // fechamento termina antes (tecla durante a animação) e no desmonte.
+        const closeTimerRef = useRef<number | null>(null);
+
+        const finishClose = () => {
+            if (closeTimerRef.current !== null) {
+                window.clearTimeout(closeTimerRef.current);
+                closeTimerRef.current = null;
+            }
+            setIsOpen(false);
+            setIsClosing(false);
+            notifyOpenChange(false);
+        };
+
         const handleClose = () => {
+            // Já fechando (Voltar/OK de novo, clique no fundo): não arma outro
+            // timer nem avisa a página duas vezes — só encerra a animação.
+            if (closeTimerRef.current !== null) {
+                finishClose();
+                return;
+            }
             setIsClosing(true);
             // Wait for closing animation to finish. onOpenChange(false) só no
             // fim: reabilitar o hook da página com o painel ainda visível
             // deixava 300ms de teclas vazando pro grid atrás do painel.
-            setTimeout(() => {
-                setIsOpen(false);
-                setIsClosing(false);
-                notifyOpenChange(false);
-            }, 300);
+            closeTimerRef.current = window.setTimeout(finishClose, 300);
         };
+
+        // Desmontou no meio da animação: só desarma o timer. LiveTV, Filmes e
+        // Séries renderizam o menu sem condição, então ele só desmonta junto
+        // com a página — não sobra ninguém pra avisar.
+        useEffect(() => () => {
+            if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+        }, []);
 
         const handleOpen = () => {
             setIsClosing(false);
@@ -98,9 +121,17 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
             handleClose();
         };
 
-        // D-pad dentro do painel
+        // D-pad dentro do painel. Continua ouvindo durante a animação de
+        // fechar: a página só religa no fim dela, e com os dois desligados o
+        // controle ficava 300ms morto. Nesse intervalo qualquer tecla encerra
+        // o fechamento na hora e é consumida aqui — não vaza pra grade com o
+        // painel ainda na tela, nem seleciona outra categoria.
         useTVNavigation({
             onNavigate: (direction) => {
+                if (isClosing) {
+                    finishClose();
+                    return;
+                }
                 if (direction === 'up') {
                     setFocusedIndex(prev => Math.max(0, prev - 1));
                 } else if (direction === 'down') {
@@ -108,11 +139,22 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
                 }
             },
             onEnter: () => {
+                if (isClosing) {
+                    finishClose();
+                    return;
+                }
                 const entry = allEntries[focusedIndex];
                 if (entry) handleSelectCategory(entry.category_id);
             },
             onBack: handleClose,
             onAction: (action) => {
+                // Durante a animação: 🔵 e as outras teclas de ação encerram o
+                // fechamento. 'enter'/'back' não — o hook chama onAction logo
+                // depois do onEnter/onBack da mesma tecla, que já responderam.
+                if (isClosing) {
+                    if (action !== 'enter' && action !== 'back') finishClose();
+                    return;
+                }
                 // 🔵 oculta/mostra a categoria focada (não vale pras virtuais)
                 if (action === 'blue' && onToggleHideCategory) {
                     const entry = allEntries[focusedIndex];
@@ -121,7 +163,7 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
                     }
                 }
             },
-            enabled: isOpen && !isClosing,
+            enabled: isOpen,
         });
 
         // Mantém o item focado visível

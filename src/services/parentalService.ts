@@ -7,6 +7,7 @@
 // nasce sem PIN nenhum.
 
 import { writeRaw, removeKey } from './safeStorage';
+import { criarTravaDePin, estaVazia, normalizarEstado, SEM_TRAVA, type EstadoTrava } from './pinLock';
 import { storage } from './storage';
 
 const PIN_KEY = 'neostream_parental_pin';
@@ -27,51 +28,23 @@ export interface ParentalGates {
 const DEFAULT_GATES: ParentalGates = { settings: true, leaveKids: true };
 
 // ---------------------------------------------------------------------------
-// Limite de tentativas.
-//
-// Sem isto o gate era uma senha de 4 dígitos SEM limite nenhum: 10.000
-// combinações, e um controle de TV faz uma tentativa por segundo. Uma tarde de
-// domingo bastava. E como o contador de tentativas precisa sobreviver a fechar
-// e reabrir o app (é o primeiro reflexo de quem está tentando), ele vive em
-// localStorage e não em memória.
-//
-// A espera cresce a cada rodada de erros: 30s, 2min, 10min, 30min. Passar de
-// 30min seria punir o adulto que esqueceu o PIN — que é o caso muito mais
-// comum que o do invasor.
+// Limite de tentativas: 5 erros e a espera cresce (30s, 2min, 10min, 30min).
+// A regra mora em pinLock (é a mesma do PIN de perfil, T048); aqui só o lugar
+// onde o estado vive — a chave de sempre, no formato de sempre, para quem já
+// estava em espera continuar em espera depois de atualizar o app.
 // ---------------------------------------------------------------------------
-
-/** Erros tolerados antes da primeira espera. */
-const ERROS_ATE_TRAVAR = 5;
-const ESPERAS_MS = [30_000, 120_000, 600_000, 1_800_000];
-
-interface EstadoTrava {
-    /** Erros desde o último acerto */
-    erros: number;
-    /** Instante (epoch ms) em que a espera acaba; 0 = sem espera */
-    travadoAte: number;
-    /** Quantas rodadas de espera já aconteceram (escolhe a duração) */
-    rodadas: number;
-}
-
-const SEM_TRAVA: EstadoTrava = { erros: 0, travadoAte: 0, rodadas: 0 };
 
 function lerTrava(): EstadoTrava {
     try {
         const raw = localStorage.getItem(LOCK_KEY);
-        if (!raw) return SEM_TRAVA;
-        const parsed = JSON.parse(raw) as Partial<EstadoTrava>;
-        return {
-            erros: Number(parsed.erros) || 0,
-            travadoAte: Number(parsed.travadoAte) || 0,
-            rodadas: Number(parsed.rodadas) || 0,
-        };
+        return raw ? normalizarEstado(JSON.parse(raw)) : SEM_TRAVA;
     } catch {
         return SEM_TRAVA;
     }
 }
 
 function gravarTrava(estado: EstadoTrava): void {
-    if (estado.erros === 0 && estado.travadoAte === 0 && estado.rodadas === 0) {
+    if (estaVazia(estado)) {
         removeKey(LOCK_KEY);
         return;
     }
@@ -80,17 +53,7 @@ function gravarTrava(estado: EstadoTrava): void {
     writeRaw(LOCK_KEY, JSON.stringify(estado));
 }
 
-/** Conta um erro — de PIN ou de senha do resgate — e arma a espera quando é a vez. */
-function registrarErro(): void {
-    const estado = lerTrava();
-    const erros = estado.erros + 1;
-    if (erros >= ERROS_ATE_TRAVAR) {
-        const espera = ESPERAS_MS[Math.min(estado.rodadas, ESPERAS_MS.length - 1)];
-        gravarTrava({ erros: 0, travadoAte: Date.now() + espera, rodadas: estado.rodadas + 1 });
-    } else {
-        gravarTrava({ ...estado, erros });
-    }
-}
+const trava = criarTravaDePin({ ler: lerTrava, gravar: gravarTrava });
 
 async function hash(pin: string): Promise<string> {
     const data = new TextEncoder().encode(SALT + pin);
@@ -132,18 +95,8 @@ export const parentalService = {
     async verify(pin: string): Promise<boolean> {
         const stored = localStorage.getItem(PIN_KEY);
         if (!stored) return false;
-        // Em espera nem chega a comparar: cada tentativa recusada aqui é uma
-        // tentativa que não conta pro invasor
-        if (this.travaRestanteMs() > 0) return false;
-
-        const ok = (await hash(pin)) === stored;
-        if (ok) {
-            gravarTrava(SEM_TRAVA);
-            return true;
-        }
-
-        registrarErro();
-        return false;
+        // Em espera nem chega a comparar (a trava recusa antes do hash)
+        return trava.conferir(async () => (await hash(pin)) === stored);
     },
 
     /**
@@ -163,7 +116,7 @@ export const parentalService = {
             this.clear();
             return true;
         }
-        registrarErro();
+        trava.registrarErro();
         return false;
     },
 
@@ -174,25 +127,17 @@ export const parentalService = {
 
     /** Quanto falta da espera, em ms. 0 = pode tentar. */
     travaRestanteMs(): number {
-        const { travadoAte } = lerTrava();
-        if (!travadoAte) return 0;
-        const falta = travadoAte - Date.now();
-        // Relógio da TV pra trás (ou fuso mudando) não pode travar pra sempre
-        if (falta > ESPERAS_MS[ESPERAS_MS.length - 1]) {
-            gravarTrava(SEM_TRAVA);
-            return 0;
-        }
-        return falta > 0 ? falta : 0;
+        return trava.restanteMs();
     },
 
     /** Quantas tentativas ainda restam antes da próxima espera. */
     tentativasRestantes(): number {
-        return Math.max(0, ERROS_ATE_TRAVAR - lerTrava().erros);
+        return trava.tentativasRestantes();
     },
 
     /** Zera a contagem — usado ao definir ou remover o PIN. */
     limparTrava(): void {
-        gravarTrava(SEM_TRAVA);
+        trava.limpar();
     },
 
     getGates(): ParentalGates {

@@ -1,10 +1,70 @@
 // Profile Service for NeoStream TV
 import type { Profile, ProfilesData, CreateProfileData, UpdateProfileData } from '../types/profile';
 import { purgeProfileData } from './profileScope';
-import { writeJson } from './safeStorage';
+import { writeJson, writeRaw, removeKey } from './safeStorage';
+import { criarTravaDePin, estaVazia, normalizarEstado, SEM_TRAVA, type EstadoTrava, type TravaDePin, type TravaVisivel } from './pinLock';
 
 const STORAGE_KEY = 'neostream_tv_profiles';
-const MAX_PROFILES = 5;
+/** Teto de perfis. Exportado para a tela dizer o número quando ele bate (T047). */
+export const MAX_PROFILES = 5;
+
+// ---------------------------------------------------------------------------
+// Limite de tentativas do PIN de PERFIL (T048).
+//
+// O PIN parental já travava depois de 5 erros; o de perfil tem o mesmo espaço
+// de 4 dígitos e não tinha limite nenhum — do Kids, o PIN do adulto caía numa
+// tarde. A regra é a mesma (pinLock), com uma trava POR PERFIL: errar o PIN
+// de um não tranca a porta do outro. Todas moram numa chave só, { id: estado },
+// fora do registro do perfil: a lista de perfis é regravada a cada troca, e a
+// contagem não pode depender dessa gravação.
+// ---------------------------------------------------------------------------
+
+const PIN_LOCK_KEY = 'neostream_profile_pin_lock';
+
+function lerTravas(): Record<string, EstadoTrava> {
+    const travas: Record<string, EstadoTrava> = {};
+    try {
+        const raw = localStorage.getItem(PIN_LOCK_KEY);
+        const parsed: unknown = raw ? JSON.parse(raw) : null;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return travas;
+        for (const id of Object.keys(parsed)) {
+            travas[id] = normalizarEstado((parsed as Record<string, unknown>)[id]);
+        }
+    } catch {
+        // Chave corrompida: nem trava nem abre — recomeça a contagem
+    }
+    return travas;
+}
+
+function gravarTravaDoPerfil(profileId: string, estado: EstadoTrava): void {
+    const travas = lerTravas();
+    if (estaVazia(estado)) delete travas[profileId];
+    else travas[profileId] = estado;
+    if (Object.keys(travas).length === 0) {
+        removeKey(PIN_LOCK_KEY);
+        return;
+    }
+    // Pelo safeStorage: com a quota cheia o contador precisa caber (poda os
+    // caches), senão o limite deixava de existir sem ninguém ver
+    writeRaw(PIN_LOCK_KEY, JSON.stringify(travas));
+}
+
+const travasPorPerfil = new Map<string, TravaDePin>();
+
+function travaDoPerfil(profileId: string): TravaDePin {
+    let trava = travasPorPerfil.get(profileId);
+    if (!trava) {
+        trava = criarTravaDePin({
+            ler: () => {
+                const travas = lerTravas();
+                return Object.prototype.hasOwnProperty.call(travas, profileId) ? travas[profileId] : SEM_TRAVA;
+            },
+            gravar: estado => gravarTravaDoPerfil(profileId, estado),
+        });
+        travasPorPerfil.set(profileId, trava);
+    }
+    return trava;
+}
 
 // Simple SHA-256 hash
 async function hashPin(pin: string): Promise<string> {
@@ -143,7 +203,11 @@ export const profileService = {
             }
         }
 
-        return saveStorageData(data);
+        const saved = saveStorageData(data);
+        // PIN trocado ou removido: a contagem era do PIN velho. Quem chega a
+        // editar já passou pela porta (T046), como no parentalService.set.
+        if (saved && updates.pin !== undefined) travaDoPerfil(profileId).limpar();
+        return saved;
     },
 
     // Delete profile
@@ -172,6 +236,8 @@ export const profileService = {
         // Sem isto, favoritos/progresso do perfil excluido ficariam orfaos no
         // localStorage e voltariam se alguem recriasse um perfil com o mesmo id
         purgeProfileData(removedId);
+        // A trava do PIN dele também: sem isto ficava órfã na chave
+        travaDoPerfil(removedId).limpar();
         return true;
     },
 
@@ -185,8 +251,17 @@ export const profileService = {
         // com hasPin(). O fail-open aqui fazia o modo Kids ser contornavel.
         if (!profile.pin) return false;
 
-        const hashedPin = await hashPin(pin);
-        return hashedPin === profile.pin;
+        // 5 erros e vem a espera (T048); durante ela nem o PIN certo passa
+        const stored = profile.pin;
+        return travaDoPerfil(profileId).conferir(async () => (await hashPin(pin)) === stored);
+    },
+
+    /**
+     * A trava do PIN deste perfil, só para LER: espera restante e tentativas
+     * (PinPrompt). Contar e zerar ficam aqui dentro (verifyPin/updateProfile).
+     */
+    travaDoPin(profileId: string): TravaVisivel {
+        return travaDoPerfil(profileId);
     },
 
     // Check if profile has PIN

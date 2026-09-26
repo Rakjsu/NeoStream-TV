@@ -59,6 +59,8 @@ export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: Favorit
 
     useTVNavigation({
         onNavigate: (direction) => {
+            // ← fecha (a dica diz "← Fechar"), menos no modo reordenar: lá ←→ movem o canal
+            if (direction === 'left' && !(reordering && onMove)) { onClose(); return; }
             if (visible.length === 0) return;
             if (direction === 'up') setFocusedIndex(prev => Math.max(0, prev - 1));
             else if (direction === 'down') setFocusedIndex(prev => Math.min(visible.length - 1, prev + 1));
@@ -133,7 +135,7 @@ export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: Favorit
                     <span>CH± Página</span>
                     <span>OK Assistir</span>
                     {onMove && <span>{reordering ? '🟡 Sair de reordenar · ←→ Mover' : '🟡 Reordenar'}</span>}
-                    <span>← Fechar</span>
+                    <span>{reordering && onMove ? 'Voltar Fechar' : '← Fechar'}</span>
                 </div>
             </div>
         </div>
@@ -180,6 +182,8 @@ export function SportsPanel({ channels, onClose, onPlay, onRemind, isReminded }:
 
     useTVNavigation({
         onNavigate: (direction) => {
+            // A dica diz "← Fechar": fecha até enquanto procura os eventos
+            if (direction === 'left') { onClose(); return; }
             if (list.length === 0) return;
             if (direction === 'up') setFocusedIndex(prev => Math.max(0, prev - 1));
             else if (direction === 'down') setFocusedIndex(prev => Math.min(list.length - 1, prev + 1));

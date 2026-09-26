@@ -1,6 +1,6 @@
 ﻿// ProfileManager Component - TV Optimized
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { profileService } from '../../services/profileService';
+import { profileService, MAX_PROFILES } from '../../services/profileService';
 import type { Profile } from '../../types/profile';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
 import './ProfileManager.css';
@@ -17,6 +17,11 @@ const DEFAULT_AVATAR = 'P';
 // Gravação que não coube nem depois de podar os caches (T107): sem isto a
 // tela voltava pra lista como se o perfil existisse, e ele sumia no boot.
 const SEM_ESPACO = 'Não foi possível salvar: a memória da TV está cheia. Libere espaço em Configurações → Sistema → Apagar dados e tente de novo.';
+// O Salvar sempre responde (T047): antes, nome vazio e PIN incompleto davam
+// um `return` mudo, e o limite de perfis caía no aviso de memória cheia.
+const SEM_NOME = 'Dê um nome ao perfil.';
+const PIN_INCOMPLETO = 'O PIN precisa ter 4 dígitos.';
+const LIMITE_PERFIS = `Limite de ${MAX_PROFILES} perfis atingido. Exclua um perfil para criar outro.`;
 const avatarOptions = [DEFAULT_AVATAR, 'A', 'B', 'C', 'D', 'E', 'F', 'G'];
 
 type ModalMode = 'list' | 'create' | 'edit' | 'pin-verify' | 'delete-confirm';
@@ -163,10 +168,36 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         pedirPinDoPerfil(profile, 'edit');
     }, [pedirPinDoPerfil]);
 
+    /**
+     * Confere o formulário antes de salvar. Se falta algo, diz o quê e leva o
+     * anel do D-pad pro campo — o OK seguinte já abre o teclado nele.
+     */
+    const formularioValido = useCallback((): boolean => {
+        if (!formName.trim()) {
+            setSaveError(SEM_NOME);
+            setEditFocusZone('name');
+            return false;
+        }
+        if (formPin && formPin.length !== 4) {
+            setSaveError(PIN_INCOMPLETO);
+            setEditFocusZone('pin');
+            return false;
+        }
+        return true;
+    }, [formName, formPin]);
+
     // Handle create profile
     const handleCreateProfile = useCallback(async () => {
-        if (!formName.trim()) return;
-        if (formPin && formPin.length !== 4) return;
+        if (!formularioValido()) return;
+        // O serviço devolve null tanto pro limite quanto pra memória cheia:
+        // confere o limite antes, senão a tela mandava liberar espaço na TV
+        if (profileService.getAllProfiles().length >= MAX_PROFILES) {
+            setSaveError(LIMITE_PERFIS);
+            // A lista por trás ainda era a de antes: ao cancelar, o
+            // "+ Adicionar" voltaria a oferecer a vaga que acabou de sumir
+            refreshProfiles();
+            return;
+        }
 
         const criado = await profileService.createProfile({
             name: formName.trim(),
@@ -179,12 +210,11 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         }
         refreshProfiles();
         setMode('list');
-    }, [formAvatar, formName, formPin, refreshProfiles]);
+    }, [formAvatar, formName, formPin, refreshProfiles, formularioValido]);
 
     // Handle edit profile
     const handleEditProfile = useCallback(async () => {
-        if (!editingProfile || !formName.trim()) return;
-        if (formPin && formPin.length !== 4) return;
+        if (!editingProfile || !formularioValido()) return;
 
         // PIN: vazio = mantém o atual; 4 dígitos = troca; removePin = tira
         const salvo = await profileService.updateProfile(editingProfile.id, {
@@ -199,7 +229,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         refreshProfiles();
         setEditingProfile(null);
         setMode('list');
-    }, [editingProfile, formAvatar, formName, formPin, removePin, refreshProfiles]);
+    }, [editingProfile, formAvatar, formName, formPin, removePin, refreshProfiles, formularioValido]);
 
     // Handle navigation
     const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
@@ -410,6 +440,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                     // Remover PIN (toggle)
                     setRemovePin(prev => !prev);
                     setFormPin('');
+                    setSaveError('');
                 }
             }
         }
@@ -579,7 +610,11 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                             type="text"
                             className={`pm-input ${editFocusZone === 'name' ? 'tv-focused' : ''}`}
                             value={formName}
-                            onChange={(e) => setFormName(e.target.value)}
+                            onChange={(e) => {
+                                setFormName(e.target.value);
+                                // O aviso era sobre o que estava aqui antes
+                                setSaveError('');
+                            }}
                             placeholder="Digite o nome..."
                             maxLength={20}
                             autoFocus
@@ -596,6 +631,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                             onChange={(e) => {
                                 setFormPin(e.target.value.replace(/\D/g, '').slice(0, 4));
                                 setRemovePin(false);
+                                setSaveError('');
                             }}
                             placeholder={mode === 'edit' && editingProfile?.pin ? '••••' : 'Sem PIN'}
                             maxLength={4}
@@ -630,7 +666,6 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                         <button
                             className={`pm-btn pm-btn-save ${editFocusZone === 'buttons' && buttonFocusIndex === 1 ? 'focused' : ''}`}
                             onClick={mode === 'create' ? handleCreateProfile : handleEditProfile}
-                            disabled={!formName.trim()}
                         >
                             ✓ Salvar
                         </button>
@@ -640,6 +675,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                                 onClick={() => {
                                     setRemovePin(prev => !prev);
                                     setFormPin('');
+                                    setSaveError('');
                                 }}
                             >
                                 {removePin ? '↩ Manter PIN' : '🗑 Remover PIN'}
@@ -659,6 +695,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                     title="Digite o PIN"
                     hint={`Perfil: ${pendingProfile.name}`}
                     confirmLabel={ROTULO_ACAO[pendingAction]}
+                    trava={profileService.travaDoPin(pendingProfile.id)}
                     onSubmit={handlePinSubmit}
                     onCancel={() => {
                         setMode('list');

@@ -8,9 +8,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { parentalService } from '../services/parentalService';
+import type { TravaVisivel } from '../services/pinLock';
 import './PinPrompt.css';
 
 const PIN_LENGTH = 4;
+// Constante do módulo: identidade estável para as dependências dos hooks
+const TRAVA_PARENTAL: TravaVisivel = {
+    restanteMs: () => parentalService.travaRestanteMs(),
+    tentativasRestantes: () => parentalService.tentativasRestantes(),
+};
 // Grade 3x4: 1..9, ⌫, 0, OK
 const PAD = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0', 'ok'] as const;
 const COLUMNS = 3;
@@ -33,12 +39,14 @@ interface PinPromptProps {
     onCancel: () => void;
     /** Rótulo do que acontece ao acertar (ex.: "Abrir Configurações") */
     confirmLabel?: string;
-    /**
-     * Mostrar a espera do controle parental. Fica desligado quando o prompt
-     * não é do PIN parental (ex.: PIN de entrada de um perfil), que tem a
-     * própria contagem.
-     */
+    /** Atalho para `trava` = a do PIN parental. */
     parental?: boolean;
+    /**
+     * Limite de tentativas do PIN que este prompt confere (T048): com ela a
+     * tela mostra a espera e avisa quando faltam poucas tentativas. O PIN de
+     * perfil passa a trava do perfil; sem nenhuma, só "PIN incorreto.".
+     */
+    trava?: TravaVisivel;
     /**
      * Falso quando o foco do app saiu desta tela (ex.: a trava de entrada das
      * Configurações continua na tela, mas o usuário voltou pra sidebar).
@@ -52,25 +60,26 @@ interface PinPromptProps {
     onForgot?: () => void;
 }
 
-export function PinPrompt({ title, hint, onSubmit, onCancel, confirmLabel, parental = false, enabled = true, onForgot }: PinPromptProps) {
+export function PinPrompt({ title, hint, onSubmit, onCancel, confirmLabel, parental = false, trava: travaRecebida, enabled = true, onForgot }: PinPromptProps) {
+    const trava = travaRecebida ?? (parental ? TRAVA_PARENTAL : undefined);
     const [pin, setPin] = useState('');
     const [padIndex, setPadIndex] = useState(0);
     const [error, setError] = useState('');
     const [checking, setChecking] = useState(false);
-    // Espera do controle parental, em segundos. Sem mostrar isto o usuário via
-    // "PIN incorreto" com o PIN CERTO e não tinha como saber o porquê.
+    // Espera da trava, em segundos. Sem mostrar isto o usuário via "PIN
+    // incorreto" com o PIN CERTO e não tinha como saber o porquê.
     const [esperaSeg, setEsperaSeg] = useState(
-        () => (parental ? Math.ceil(parentalService.travaRestanteMs() / 1000) : 0)
+        () => (trava ? Math.ceil(trava.restanteMs() / 1000) : 0)
     );
 
-    // Conta regressiva enquanto a espera durar
+    // Conta regressiva enquanto a espera durar; acabou (ou fechou), o timer morre
     useEffect(() => {
-        if (!parental || esperaSeg <= 0) return;
+        if (!trava || esperaSeg <= 0) return;
         const timer = window.setInterval(() => {
-            setEsperaSeg(Math.ceil(parentalService.travaRestanteMs() / 1000));
+            setEsperaSeg(Math.ceil(trava.restanteMs() / 1000));
         }, 1000);
         return () => clearInterval(timer);
-    }, [parental, esperaSeg]);
+    }, [trava, esperaSeg]);
 
     const travado = esperaSeg > 0;
 
@@ -81,22 +90,22 @@ export function PinPrompt({ title, hint, onSubmit, onCancel, confirmLabel, paren
         setChecking(false);
         if (ok) return;
         setPin('');
-        if (!parental) {
+        if (!trava) {
             setError('PIN incorreto.');
             return;
         }
         // A tentativa pode ter sido a que disparou a espera
-        const restante = Math.ceil(parentalService.travaRestanteMs() / 1000);
+        const restante = Math.ceil(trava.restanteMs() / 1000);
         setEsperaSeg(restante);
         if (restante > 0) {
             setError('');
             return;
         }
-        const faltam = parentalService.tentativasRestantes();
+        const faltam = trava.tentativasRestantes();
         setError(faltam <= 2
             ? `PIN incorreto. Mais ${faltam} ${faltam === 1 ? 'tentativa' : 'tentativas'} antes da espera.`
             : 'PIN incorreto.');
-    }, [onSubmit, checking, parental]);
+    }, [onSubmit, checking, trava]);
 
     const press = useCallback((keyId: string) => {
         if (travado) return; // digitar durante a espera só gasta o controle
