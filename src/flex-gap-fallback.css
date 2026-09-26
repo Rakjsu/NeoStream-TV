@@ -243,6 +243,10 @@ html.no-flex-gap .preview-content > * + * {
     margin-left: 24px;
 }
 
+html.no-flex-gap .channel-preview .live-badge > * + * {
+    margin-left: 6px;
+}
+
 html.no-flex-gap .preview-actions > * + * {
     margin-left: 12px;
 }
@@ -259,7 +263,7 @@ html.no-flex-gap .livetv-hints > * + * {
     margin-left: 32px;
 }
 
-html.no-flex-gap .loading-text > * + * {
+html.no-flex-gap .livetv-loading-container .loading-text > * + * {
     margin-left: 8px;
 }
 
