@@ -29,9 +29,19 @@ const alvo = join(root, process.argv[2] || join('dist-tizen', 'assets'));
 // Os tetos são esses valores com ~5% de folga — apertado de propósito.
 const ORCAMENTO = {
     /** Soma de todo JS. */
-    jsTotal: 1150,
-    /** O maior arquivo isolado — é ele que trava a thread principal no parse. */
-    maiorJs: 1030,
+    jsTotal: 1155,
+    /**
+     * O maior arquivo isolado — é ele que trava a thread principal no parse.
+     *
+     * 1030 → 1036 (e jsTotal 1150 → 1155) em 25/09/2026, leva T4 da TV: a main
+     * media 1054840 bytes, sem folga, e quatro itens da leva cabem juntos aqui —
+     * janela da grade de Filmes (T020, ~0,6 KB), cache de boot de Filmes e
+     * Séries (T118, ~3 KB), reconexão de filme/episódio (T121, ~0,5 KB) e o
+     * aviso de série sem episódio (T135, ~0,7 KB). Medido com os quatro juntos:
+     * index.js 1060047 bytes (1035,2 KB), JS total 1153,7 KB. Os quatro PRs
+     * levam ESTE MESMO trecho, pra entrarem em qualquer ordem sem conflito.
+     */
+    maiorJs: 1036,
     /** Todo o CSS. */
     cssTotal: 160,
 };

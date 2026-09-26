@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../services/api';
 import type { VODStream, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useJanelaDaGrade } from '../hooks/useJanelaDaGrade';
 import { useFocusZone } from '../contexts/FocusContext';
 import { mapaDeGeneros, generosDisponiveis, rotuloDoGenero } from '../services/catalogGenres';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
@@ -39,7 +40,6 @@ export function Movies() {
     // continua sendo o do grupo, que é a chave de progresso/favoritos
     const [playingMovie, setPlayingMovie] = useState<(VODStream & { playStreamId?: number }) | null>(null);
     const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
-    const [visibleCount, setVisibleCount] = useState(24); // Start with reasonable default
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     // Ordenação / esconder assistidos / selo NOVO (Fase 3)
@@ -68,33 +68,6 @@ export function Movies() {
     const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
     const searchRef = useRef<AnimatedSearchBarHandle>(null);
     const categoryMenuRef = useRef<CategoryMenuHandle>(null);
-
-    // Calculate initial visible count based on screen size
-    useEffect(() => {
-        const calculateVisibleItems = () => {
-            const container = scrollContainerRef.current;
-            if (!container) return;
-
-            // Card dimensions (160px min width + 20px gap)
-            const cardWidth = 180;
-            const cardHeight = 290; // 2:3 aspect ratio (~240px) + title (~50px)
-
-            const containerWidth = container.clientWidth - 32; // minus padding
-            const containerHeight = window.innerHeight;
-
-            // Calculate columns and rows that fit on screen + 1 extra row
-            const cols = Math.floor(containerWidth / cardWidth);
-            const rows = Math.ceil(containerHeight / cardHeight) + 1; // +1 extra row
-
-            const initialCount = cols * rows;
-            setVisibleCount(Math.max(initialCount, 12)); // Minimum 12 items
-        };
-
-        calculateVisibleItems();
-        window.addEventListener('resize', calculateVisibleItems);
-
-        return () => window.removeEventListener('resize', calculateVisibleItems);
-    }, [loading]); // Recalculate when loading finishes
 
     // Fetch data
     useEffect(() => {
@@ -248,36 +221,21 @@ export function Movies() {
     // Índice focado sempre no range (lista encolhe ao esconder assistidos)
     const safeMovieIndex = Math.min(focusedMovieIndex, Math.max(0, filteredStreams.length - 1));
 
-    // Lazy loading scroll - load one more row when scrolling near bottom
+    // Cards MONTADOS: uma janela de fileiras que anda com o foco e com a
+    // rolagem, com teto (T020). A "fatia crescente" (`visibleCount`) ganhava
+    // 24 cards a cada ↓ e nunca encolhia: descer até o item 6 mil montava 6
+    // mil cards, o mesmo crash que o salto da barra A-Z já tinha causado.
+    // A janela também dispensa o "recalcular visibleCount" da carga, do resize
+    // e da troca de filtro: ela segue o foco quando a lista muda de tamanho.
+    const janela = useJanelaDaGrade({
+        total: filteredStreams.length,
+        foco: safeMovieIndex,
+        colunas: 6, // .movies-grid: repeat(6, 1fr); o D-pad abaixo usa o mesmo
+        rolagemRef: scrollContainerRef,
+    });
+
+    // Reset on filter change
     useEffect(() => {
-        const container = scrollContainerRef.current;
-        if (!container) return;
-
-        const handleScroll = () => {
-            const { scrollTop, scrollHeight, clientHeight } = container;
-            // Load more when user scrolls to 80% of the content
-            if (scrollTop + clientHeight >= scrollHeight * 0.8 && visibleCount < filteredStreams.length) {
-                setVisibleCount(prev => Math.min(prev + 12, filteredStreams.length));
-            }
-        };
-
-        container.addEventListener('scroll', handleScroll);
-        return () => container.removeEventListener('scroll', handleScroll);
-    }, [filteredStreams.length, visibleCount]);
-
-    // Reset on filter change - recalculate visible count
-    useEffect(() => {
-        const container = scrollContainerRef.current;
-        if (!container) return;
-
-        const cardWidth = 180;
-        const cardHeight = 290;
-        const containerWidth = container.clientWidth - 32;
-        const containerHeight = window.innerHeight;
-        const cols = Math.floor(containerWidth / cardWidth);
-        const rows = Math.ceil(containerHeight / cardHeight) + 1;
-
-        setVisibleCount(Math.max(cols * rows, 12));
         setSelectedMovie(null);
     }, [searchQuery, selectedCategory]);
 
@@ -310,14 +268,8 @@ export function Movies() {
                     setFocusedMovieIndex(prev => Math.max(0, prev - cols));
                 }
             } else if (direction === 'down') {
-                setFocusedMovieIndex(prev => {
-                    const next = Math.min(totalMovies - 1, prev + cols);
-                    // If we're getting close to the visible limit, load more
-                    if (next >= visibleCount - 10) {
-                        setVisibleCount(current => Math.min(current + cols * 4, totalMovies));
-                    }
-                    return next;
-                });
+                // A janela da grade segue o foco sozinha (useJanelaDaGrade)
+                setFocusedMovieIndex(prev => Math.min(totalMovies - 1, prev + cols));
             } else if (direction === 'left') {
                 if (currentCol === 0) {
                     // At first column - go to sidebar
@@ -332,13 +284,7 @@ export function Movies() {
                     setAlphabetIndexFocus(0);
                     return;
                 }
-                setFocusedMovieIndex(prev => {
-                    const next = Math.min(totalMovies - 1, prev + 1);
-                    if (next >= visibleCount - 5) {
-                        setVisibleCount(current => Math.min(current + cols * 4, totalMovies));
-                    }
-                    return next;
-                });
+                setFocusedMovieIndex(prev => Math.min(totalMovies - 1, prev + 1));
             }
         } else if (focusArea === 'alphabet') {
             const letters = alphabetIndex ? [...alphabetIndex.keys()] : [];
@@ -591,19 +537,13 @@ export function Movies() {
             const isDown = key === 'MediaChannelDown' || code === 428 || key === 'PageDown' || code === 34;
             if (!isUp && !isDown) return;
             event.preventDefault();
-            setFocusedMovieIndex(prev => {
-                const next = isUp
-                    ? Math.max(0, prev - pageSize)
-                    : Math.min(filteredStreams.length - 1, prev + pageSize);
-                if (next >= visibleCount - cols) {
-                    setVisibleCount(current => Math.min(current + pageSize, filteredStreams.length));
-                }
-                return next;
-            });
+            setFocusedMovieIndex(prev => isUp
+                ? Math.max(0, prev - pageSize)
+                : Math.min(filteredStreams.length - 1, prev + pageSize));
         };
         window.addEventListener('keydown', handlePageKeys);
         return () => window.removeEventListener('keydown', handlePageKeys);
-    }, [navEnabled, focusArea, filteredStreams.length, visibleCount]);
+    }, [navEnabled, focusArea, filteredStreams.length]);
 
     const handleImageError = (streamId: number) => {
         setBrokenImages(prev => new Set(prev).add(streamId));
@@ -813,8 +753,11 @@ export function Movies() {
                         </span>
                     </div>
                 ) : (
-                    <div className="movies-grid">
-                        {filteredStreams.slice(0, visibleCount).map((movie, index) => (
+                    <div className="movies-grid" ref={janela.gradeRef}>
+                        {filteredStreams.slice(janela.inicio, janela.fim).map((movie, posicao) => {
+                            // Índice na LISTA (o foco e o D-pad contam por ele), não na janela
+                            const index = janela.inicio + posicao;
+                            return (
                             <div
                                 key={movie.stream_id}
                                 className={`movie-card ${focusArea === 'movies' && safeMovieIndex === index ? 'tv-focused' : ''} ${selectedMovie?.stream_id === movie.stream_id ? 'selected' : ''}`}
@@ -855,7 +798,8 @@ export function Movies() {
                                 </PosterPreguicoso>
                                 <div className="movie-title">{movie?.name || 'Filme Sem Nome'}</div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>
