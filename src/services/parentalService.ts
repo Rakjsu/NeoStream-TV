@@ -8,6 +8,7 @@
 
 import { writeRaw, removeKey } from './safeStorage';
 import { criarTravaDePin, estaVazia, normalizarEstado, SEM_TRAVA, type EstadoTrava } from './pinLock';
+import { storage } from './storage';
 
 const PIN_KEY = 'neostream_parental_pin';
 const GATES_KEY = 'neostream_parental_gates';
@@ -96,6 +97,32 @@ export const parentalService = {
         if (!stored) return false;
         // Em espera nem chega a comparar (a trava recusa antes do hash)
         return trava.conferir(async () => (await hash(pin)) === stored);
+    },
+
+    /**
+     * Resgate do PIN esquecido (T073): a senha da conta IPTV salva no aparelho
+     * remove o PIN — e SÓ o PIN (favoritos, histórico, perfis e a conta ficam).
+     *
+     * Não é "apagar tudo sem provar nada": esse caminho lateral foi fechado de
+     * propósito no "Apagar dados → Conta e perfis". A senha do provedor é o
+     * segredo do dono do aparelho, que a criança no perfil Kids não tem — e
+     * cada senha errada conta no MESMO limite de tentativas do PIN.
+     */
+    resgatarComSenhaDaConta(senha: string): boolean {
+        if (!this.isSet()) return false;
+        if (this.travaRestanteMs() > 0) return false;
+        const esperada = storage.getCredentials()?.password || '';
+        if (esperada && senha === esperada) {
+            this.clear();
+            return true;
+        }
+        trava.registrarErro();
+        return false;
+    },
+
+    /** Há PIN pra resgatar e senha de conta pra conferir? Sem ela, não há resgate. */
+    podeResgatar(): boolean {
+        return this.isSet() && !!storage.getCredentials()?.password;
     },
 
     /** Quanto falta da espera, em ms. 0 = pode tentar. */

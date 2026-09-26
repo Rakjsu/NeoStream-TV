@@ -115,3 +115,40 @@
     opacity: 0.35;
     cursor: not-allowed;
 }
+
+/* Resgate do PIN esquecido (T073): o botão fica abaixo do teclado e o campo da
+   senha usa máscara por CSS, como o Login (o Tizen tem bugs com type=password). */
+.pin-forgot {
+    display: block;
+    margin: 14px auto 0;
+    padding: 10px 24px;
+    background: transparent;
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    border-radius: 12px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.pin-forgot.tv-focused {
+    background: var(--ns-accent);
+    border-color: var(--ns-accent);
+    color: #fff;
+    box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.6);
+}
+
+.pin-recover-input {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 24px 0 12px;
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 2px solid var(--ns-accent);
+    border-radius: 12px;
+    color: #fff;
+    font-size: 22px;
+    outline: none;
+    -webkit-text-security: disc;
+}

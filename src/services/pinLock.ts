@@ -50,6 +50,11 @@ export interface TravaDePin extends TravaVisivel {
      * tentativa que não conta pro invasor — e nem o PIN certo passa.
      */
     conferir(confere: () => Promise<boolean>): Promise<boolean>;
+    /**
+     * Conta um erro sem conferir PIN nenhum — para outra prova que divide o
+     * MESMO limite (a senha da conta no resgate do PIN parental, T073).
+     */
+    registrarErro(): void;
     /** Zera a contagem — ao definir ou remover o PIN. */
     limpar(): void;
 }
@@ -91,12 +96,17 @@ export function criarTravaDePin(armazem: ArmazemDeTrava): TravaDePin {
             if (trava.restanteMs() > 0) return false;
 
             const ok = await confere();
-            const estado = armazem.ler();
             if (ok) {
                 armazem.gravar(SEM_TRAVA);
                 return true;
             }
 
+            trava.registrarErro();
+            return false;
+        },
+
+        registrarErro(): void {
+            const estado = armazem.ler();
             const erros = estado.erros + 1;
             if (erros >= ERROS_ATE_TRAVAR) {
                 const espera = ESPERAS_MS[Math.min(estado.rodadas, ESPERAS_MS.length - 1)];
@@ -104,7 +114,6 @@ export function criarTravaDePin(armazem: ArmazemDeTrava): TravaDePin {
             } else {
                 armazem.gravar({ ...estado, erros });
             }
-            return false;
         },
 
         limpar(): void {
