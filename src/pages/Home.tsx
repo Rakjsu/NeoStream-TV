@@ -14,7 +14,7 @@ import { kidsFilter } from '../services/kidsFilter';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
-import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
+import { montarFilaOuAviso, DURACAO_DO_AVISO_DE_SERIE_MS, type EpisodeQueue } from '../services/seriesPlayback';
 import './Home.css';
 import { accountService } from '../services/accountService';
 
@@ -74,6 +74,10 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     const [loadError, setLoadError] = useState('');
     const [playingMovie, setPlayingMovie] = useState<PlayableMovie | null>(null);
     const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
+    // T135: OK num card de série do Continuar Assistindo que não achou o que
+    // tocar (painel sem episódio, rede caída). Aqui não há ficha aberta pra
+    // mostrar o motivo — sem isto o OK simplesmente não respondia.
+    const [avisoSerie, setAvisoSerie] = useState('');
 
     // Top 10 pelos mais assistidos locais (item 33)
     const [topItems, setTopItems] = useState<Array<VODStream | Series>>([]);
@@ -85,6 +89,13 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     // volta a fileira se REORDENA (o recém-assistido vai pra frente) e o foco
     // tem de ir junto com ele, não ficar no índice antigo
     const tocadoDaFileiraRef = useRef<string | null>(null);
+
+    // O aviso some sozinho; o timer morre com ele ou com a Home (T135)
+    useEffect(() => {
+        if (!avisoSerie) return;
+        const timer = setTimeout(() => setAvisoSerie(''), DURACAO_DO_AVISO_DE_SERIE_MS);
+        return () => clearTimeout(timer);
+    }, [avisoSerie]);
 
     // Update clock every minute
     useEffect(() => {
@@ -367,23 +378,22 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     /** Abre a ficha do título (mesmo caminho de Filmes, Séries e Favoritos). */
     const openDetail = (item: VODStream | Series) => setDetailItem(item);
 
-    /** Monta a fila de episódios a partir da ficha e começa a tocar. */
+    /**
+     * Monta a fila de episódios a partir da ficha e começa a tocar. Sem fila,
+     * devolve o aviso — a ficha continua aberta e o mostra (T135).
+     */
     const playSeriesFromDetail = async (serie: Series, season?: number, episode?: number) => {
-        try {
-            const queue = await buildEpisodeQueue(
-                String(serie.series_id),
-                serie.name,
-                serie.cover || '',
-                season ?? 1,
-                episode ?? 1
-            );
-            if (queue) {
-                setSeriesQueue(queue);
-                setDetailItem(null);
-            }
-        } catch (err) {
-            console.error('Erro ao montar a fila de episódios:', err);
-        }
+        const { fila, aviso } = await montarFilaOuAviso(
+            String(serie.series_id),
+            serie.name,
+            serie.cover || '',
+            season ?? 1,
+            episode ?? 1
+        );
+        if (!fila) return aviso;
+        setSeriesQueue(fila);
+        setDetailItem(null);
+        return null;
     };
 
     const playContinueItem = async (item: ContinueItem) => {
@@ -391,21 +401,20 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
             tocadoDaFileiraRef.current = chaveDoContinue(item);
             setPlayingMovie(item.progress);
         } else {
-            try {
-                const queue = await buildEpisodeQueue(
-                    item.progress.seriesId,
-                    item.progress.seriesName,
-                    item.progress.poster,
-                    item.progress.season,
-                    item.progress.episode
-                );
-                if (queue) {
-                    tocadoDaFileiraRef.current = chaveDoContinue(item);
-                    setSeriesQueue(queue);
-                }
-            } catch (err) {
-                console.error('Error resuming series:', err);
+            setAvisoSerie('');
+            const { fila, aviso } = await montarFilaOuAviso(
+                item.progress.seriesId,
+                item.progress.seriesName,
+                item.progress.poster,
+                item.progress.season,
+                item.progress.episode
+            );
+            if (!fila) {
+                setAvisoSerie(aviso);
+                return;
             }
+            tocadoDaFileiraRef.current = chaveDoContinue(item);
+            setSeriesQueue(fila);
         }
     };
 
@@ -903,7 +912,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                             } as PlayableMovie);
                             setDetailItem(null);
                         } else {
-                            void playSeriesFromDetail(detailItem, season, episode);
+                            return playSeriesFromDetail(detailItem, season, episode);
                         }
                     }}
                 />
@@ -920,6 +929,11 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                         refreshContinue();
                     }}
                 />
+            )}
+
+            {/* T135: o card de série do Continuar Assistindo não achou o que tocar */}
+            {avisoSerie && (
+                <div className="home-aviso-serie" role="alert">⚠️ {avisoSerie}</div>
             )}
 
             {/* Continue Watching: Series Player */}

@@ -9,7 +9,7 @@ import { listsService, NOMES_SUGERIDOS, MAX_LISTAS, type ListaNomeada } from '..
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
-import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
+import { montarFilaOuAviso, type EpisodeQueue } from '../services/seriesPlayback';
 import './MyList.css';
 
 interface MyListProps {
@@ -146,16 +146,13 @@ export function MyList({ onNavigate }: MyListProps) {
         }
     };
 
+    // Sem fila, devolve o aviso — a ficha continua aberta e o mostra (T135)
     const playSeriesEpisode = async (item: WatchLaterItem, season?: number, episode?: number) => {
-        try {
-            const queue = await buildEpisodeQueue(item.id, item.title, item.poster, season, episode);
-            if (queue) {
-                setSeriesQueue(queue);
-                setModalItem(null);
-            }
-        } catch (err) {
-            console.error('Error building episode queue:', err);
-        }
+        const { fila, aviso } = await montarFilaOuAviso(item.id, item.title, item.poster, season, episode);
+        if (!fila) return aviso;
+        setSeriesQueue(fila);
+        setModalItem(null);
+        return null;
     };
 
     // Remove o item da VISTA atual: dentro de uma lista nomeada, 🔴 tira dali
@@ -608,7 +605,7 @@ export function MyList({ onNavigate }: MyListProps) {
                             setPlayingMovie(modalItem);
                             setModalItem(null);
                         } else {
-                            void playSeriesEpisode(modalItem, season, episode);
+                            return playSeriesEpisode(modalItem, season, episode);
                         }
                     }}
                 />

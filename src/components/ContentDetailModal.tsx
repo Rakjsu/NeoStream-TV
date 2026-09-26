@@ -12,6 +12,7 @@ import { TrailerOverlay } from './TrailerOverlay';
 import { ImagemPreguicosa } from './ImagemPreguicosa';
 import { extrairChaveYoutube } from '../services/trailer';
 import { progressService } from '../services/progressService';
+import { DURACAO_DO_AVISO_DE_SERIE_MS } from '../services/seriesPlayback';
 import type { Episode, SeriesInfo } from '../types';
 import './ContentDetailModal.css';
 
@@ -41,7 +42,12 @@ interface ContentDetailModalProps {
          */
         youtubeTrailer?: string;
     };
-    onPlay: (season?: number, episode?: number) => void;
+    /**
+     * Pode devolver uma Promise (T135): se ela resolver com TEXTO, não deu pra
+     * tocar — a ficha continua aberta e mostra esse texto. Série cujo painel
+     * não manda episódio, ou rede que caiu, não pode ser um OK que não faz nada.
+     */
+    onPlay: (season?: number, episode?: number) => void | Promise<string | null | void>;
     /** Versões do mesmo título (DUB/LEG/4K) — item 21 */
     versions?: Array<{ id: string; label: string }>;
     onSelectVersion?: (versionId: string) => void;
@@ -92,6 +98,27 @@ export function ContentDetailModal({
     const [isClosing, setIsClosing] = useState(false);
     const [, setRefresh] = useState(0);
     const modalRef = useRef<HTMLDivElement>(null);
+
+    // T135: o motivo de o OK em Assistir não ter tocado (fila vazia, rede).
+    // Antes o erro morria no console e a ficha ficava imóvel.
+    const [avisoPlay, setAvisoPlay] = useState('');
+    // Só o ÚLTIMO OK fala: a resposta atrasada de um OK anterior (rede lenta,
+    // a pessoa apertou de novo e já está no player) não pode aparecer depois
+    // numa ficha reaberta como se fosse a de agora.
+    const ultimoPlayRef = useRef(0);
+    const pedirPlay = useCallback((season?: number, episode?: number) => {
+        const pedido = ++ultimoPlayRef.current;
+        setAvisoPlay('');
+        void Promise.resolve(onPlay(season, episode)).then(aviso => {
+            if (aviso && pedido === ultimoPlayRef.current) setAvisoPlay(aviso);
+        });
+    }, [onPlay]);
+    // O aviso some sozinho — e o timer morre junto com ele ou com a ficha
+    useEffect(() => {
+        if (!avisoPlay) return;
+        const timer = setTimeout(() => setAvisoPlay(''), DURACAO_DO_AVISO_DE_SERIE_MS);
+        return () => clearTimeout(timer);
+    }, [avisoPlay]);
 
     // TMDB data states.
     //
@@ -490,7 +517,7 @@ export function ContentDetailModal({
         if (!isOpen) return;
 
         if (focusZone === 'play') {
-            onPlay(
+            pedirPlay(
                 contentType === 'series' ? selectedSeason : undefined,
                 contentType === 'series' ? selectedEpisode : undefined
             );
@@ -527,11 +554,11 @@ export function ContentDetailModal({
                 // OK no episódio TOCA. Antes só selecionava, e o usuário
                 // ainda tinha que achar o botão Assistir lá embaixo.
                 setSelectedEpisode(Number(ep.episode_num));
-                onPlay(selectedSeason, Number(ep.episode_num));
+                pedirPlay(selectedSeason, Number(ep.episode_num));
             }
         }
     }, [isOpen, focusZone, contentType, selectedSeason, selectedEpisode, buildSavedItem, seasons,
-        seasonFocusIndex, episodes, episodeFocusIndex, onPlay, handleClose, versions,
+        seasonFocusIndex, episodes, episodeFocusIndex, pedirPlay, handleClose, versions,
         versionFocusIndex, onSelectVersion, saga, collectionFocusIndex, onOpenRelated,
         trailerKey, naTv]);
 
@@ -828,7 +855,7 @@ export function ContentDetailModal({
                         <button
                             className={`action-btn play-btn ${focusZone === 'play' ? 'focused' : ''}`}
                             onClick={() => {
-                                onPlay(
+                                pedirPlay(
                                     contentType === 'series' ? selectedSeason : undefined,
                                     contentType === 'series' ? selectedEpisode : undefined
                                 );
@@ -894,6 +921,13 @@ export function ContentDetailModal({
                     </div>
                 </div>
             </div>
+
+            {/* T135: por que o Assistir não tocou. Fixo na tela: a fila de
+                ações pode estar no fim da ficha rolada, e o aviso tem de ser
+                visto onde quer que o foco esteja. */}
+            {avisoPlay && (
+                <div className="modal-play-aviso" role="alert">⚠️ {avisoPlay}</div>
+            )}
 
             {/* No navegador o trailer abre aqui; na TV quem abre é o sistema */}
             {trailerAberto && trailerKey && (
