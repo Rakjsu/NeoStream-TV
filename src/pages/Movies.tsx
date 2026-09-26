@@ -563,6 +563,8 @@ export function Movies() {
         onNavigate: (direction) => {
             if (direction === 'up') setContextIndex(prev => Math.max(0, prev - 1));
             else if (direction === 'down') setContextIndex(prev => Math.min(contextActions.length - 1, prev + 1));
+            // A dica do menu diz "← Fechar"
+            else if (direction === 'left') setContextItem(null);
         },
         onEnter: () => {
             const action = contextActions[contextIndex];

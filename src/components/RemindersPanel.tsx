@@ -83,6 +83,8 @@ export function RemindersPanel({ resolveChannel, onClose, onPlay }: RemindersPan
 
     useTVNavigation({
         onNavigate: (direction) => {
+            // A dica diz "← Fechar": fecha até com a lista vazia
+            if (direction === 'left') { onClose(); return; }
             if (lista.length === 0) return;
             if (direction === 'up') setFocusedIndex(Math.max(0, safeIndex - 1));
             else if (direction === 'down') setFocusedIndex(Math.min(lista.length - 1, safeIndex + 1));
