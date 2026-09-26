@@ -32,10 +32,22 @@ navegação, foco, inputs ou player.
 - [ ] Em VOD, posição de retomada (`resumeTime`) é respeitada
 
 ## Build
-- [ ] `npx tsc --noEmit` passa sem erros
+Os portões de qualidade do CI (`.github/workflows/ci.yml`, tabela "Quality
+gates" do README) valem aqui também: empacotar sem eles é mandar pra TV o
+que o CI recusaria.
+
+- [ ] `npx tsc -b` passa sem erros (o mesmo type-check do build e do CI;
+      `tsc --noEmit` deixa erros passarem num projeto com references)
 - [ ] `npm run lint` passa sem warnings
+- [ ] `npm test` passa (suíte inteira verde)
+- [ ] `npm run check:css` passa — CSS que o Chromium 69 ignora não quebra o
+      build nem aparece no navegador de dev: só some na TV
 - [ ] `npm run build` (Web) gera artefatos sem erro
 - [ ] `npm run build:tizen` gera output com transpile legacy aplicado
+- [ ] `npm audit --omit=dev --audit-level=high` passa — só as dependências de produção, as que vão
+      dentro do `.wgt` (a TV não se atualiza sozinha: pacote vulnerável fica lá até reinstalar)
+- [ ] `npm run check:bundle` passa — sempre DEPOIS do `build:tizen`, que é
+      quem produz o `dist-tizen/assets` que ele mede
 - [ ] `tizen/config.xml` com `id`/`version` corretos para release
 
 ## Visual em TV

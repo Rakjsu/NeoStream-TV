@@ -88,6 +88,11 @@
       window.__NEOSTREAM_BOOT_ERROR__(message);
     };
   </script>
+  <!-- API de produto da Samsung (webapis.appcommon: segurar o screensaver
+       durante a reproducao). Ao contrario do objeto `tizen`, a plataforma NAO
+       injeta o `webapis` sozinha: sem esta tag ele e undefined na TV e o
+       player nao segura o descanso de tela. Tem de vir antes do bundle. -->
+  <script src="$WEBAPIS/webapis/webapis.js"></script>
   <script src="./assets/polyfills.js"></script>
 </head>
 

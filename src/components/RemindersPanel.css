@@ -1,0 +1,61 @@
+/* ⏰ Meus lembretes — a casca (overlay, cabeçalho, dicas) vem de LivePanels.css */
+
+.reminders-row {
+    display: flex;
+    align-items: center;
+    padding: 12px 24px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 18px;
+    cursor: pointer;
+}
+
+/* gap em flex só existe no Chromium 84+ (Tizen 6.5); usar margens */
+.reminders-row > * + * {
+    margin-left: 14px;
+}
+
+.reminders-row.tv-focused {
+    background: rgba(var(--ns-accent-rgb), 0.3);
+    box-shadow: inset 3px 0 0 var(--ns-accent);
+}
+
+.reminders-time {
+    min-width: 120px;
+    font-weight: 700;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.reminders-program {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.reminders-channel {
+    min-width: 190px;
+    max-width: 190px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.reminders-badge-live {
+    background: #dc2626;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 800;
+    padding: 3px 9px;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+
+.reminders-badge-hint {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 16px;
+    white-space: nowrap;
+}

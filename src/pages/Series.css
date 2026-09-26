@@ -523,19 +523,6 @@
     margin-bottom: 24px;
 }
 
-.series-error-container h2 {
-    font-size: 24px;
-    font-weight: 600;
-    color: white;
-    margin-bottom: 8px;
-}
-
-.series-error-container p {
-    font-size: 14px;
-    color: rgba(248, 113, 113, 1);
-    margin-bottom: 32px;
-}
-
 .retry-button {
     display: inline-flex;
     align-items: center;

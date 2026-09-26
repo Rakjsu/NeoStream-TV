@@ -2,7 +2,7 @@
 // Estratégia da matriz de paridade: nada de xmltv.php inteiro numa TV de 1GB.
 // Os campos title/description vêm em base64 (UTF-8).
 
-import { api } from './api';
+import { api, aoLimparCacheDeCatalogo } from './api';
 
 export interface EpgProgram {
     title: string;
@@ -74,6 +74,10 @@ const dayCache = new Map<number, { at: number; programs: EpgProgram[] }>();
 // Dedupe de requisições em voo: ficha + player pedem o MESMO canal no mesmo
 // ciclo (playChannel seta os dois estados juntos) — sem isso são 2 fetches.
 const inflight = new Map<number, Promise<ChannelEpg>>();
+// Sobe a cada clearCache. Resposta que saiu pra rede numa geração e voltou
+// noutra (troca de conta no meio) é da conta ANTERIOR: devolve a quem pediu,
+// mas não grava — senão o cache recém-limpo nascia com o EPG do provedor velho.
+let geracao = 0;
 
 function decodeBase64Utf8(value: string): string {
     try {
@@ -139,11 +143,13 @@ export const epgService = {
         const pending = inflight.get(streamId);
         if (pending) return pending;
 
+        const minhaGeracao = geracao;
         const request = (async (): Promise<ChannelEpg> => {
             try {
                 const data = (await api.getShortEpg(streamId, limit)) as ShortEpgResponse;
                 const programs = parseListings(data);
                 const result = classify(programs);
+                if (minhaGeracao !== geracao) return result;
 
                 if (cache.size >= CACHE_MAX) {
                     let oldestKey: number | null = null;
@@ -158,7 +164,9 @@ export const epgService = {
             } catch {
                 return { now: null, next: null, programs: [] };
             } finally {
-                inflight.delete(streamId);
+                // Depois de um clearCache o slot pode ser de um pedido da
+                // conta nova pro mesmo id: esse não é nosso pra apagar.
+                if (minhaGeracao === geracao) inflight.delete(streamId);
             }
         })();
 
@@ -170,9 +178,11 @@ export const epgService = {
     async getDayEpg(streamId: number): Promise<EpgProgram[]> {
         const cached = dayCache.get(streamId);
         if (cached && Date.now() - cached.at < DAY_TTL_MS) return cached.programs;
+        const minhaGeracao = geracao;
         try {
             const data = (await api.getSimpleDataTable(streamId)) as ShortEpgResponse;
             const programs = parseListings(data);
+            if (minhaGeracao !== geracao) return programs;
             if (dayCache.size >= 20) {
                 const oldest = [...dayCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
                 if (oldest) dayCache.delete(oldest[0]);
@@ -194,7 +204,15 @@ export const epgService = {
     },
 
     clearCache(): void {
+        geracao++;
         cache.clear();
         dayCache.clear();
+        // Em voo também: o dedupe entregaria à conta nova a promessa da velha.
+        inflight.clear();
     },
 };
+
+// Sai junto com o catálogo (logout, troca de conta). O cache é chaveado SÓ
+// pelo stream_id, e ids Xtream começam em 1 em todo provedor: sem isto a
+// grade da conta nova mostrava os programas da anterior por até 10 minutos.
+aoLimparCacheDeCatalogo(() => epgService.clearCache());
