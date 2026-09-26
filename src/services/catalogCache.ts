@@ -28,8 +28,26 @@ const MAX_BYTES = 1_500 * 1024;
 // A LiveTV remonta a cada visita; regravar o catálogo em toda uma delas é
 // desperdício puro. Uma hora é folgado pro que a lista muda.
 const REWRITE_AFTER_MS = 60 * 60 * 1000;
+// Teto SOMADO de todas as entradas do catálogo (T118). Com Filmes e Séries
+// guardados também, o teto por entrada deixou de bastar: 'live' + 'vod' +
+// 'series' + as categorias podiam passar de 4 MB — quase a quota inteira — e
+// a próxima gravação de progresso ou favorito estourava, derrubando junto o
+// cache do TMDB. Metade da quota fica pro catálogo; a outra metade é do resto
+// do app.
+const MAX_TOTAL_BYTES = 2_500 * 1024;
 
 export type CatalogKind = 'live' | 'vod' | 'series' | 'live-cats' | 'vod-cats' | 'series-cats';
+
+const TODOS_OS_TIPOS: readonly CatalogKind[] = ['live', 'vod', 'series', 'live-cats', 'vod-cats', 'series-cats'];
+// A TV ao vivo é a razão de o cache existir (é a tela do boot): Filmes e
+// Séries usam o que SOBRA do teto somado e nunca tiram espaço dela.
+const PRIORITARIOS: readonly CatalogKind[] = ['live', 'live-cats'];
+// Listas que já foram recusadas por não caber. O api.ts devolve o MESMO array
+// por 5 min, e o catálogo de filmes grande — justamente o que não cabe —
+// repetia a medição e a serialização a cada visita a Filmes só pra ouvir "não
+// cabe" de novo, com a grade esperando atrás. Lista nova (fetch novo) tenta de
+// novo; a velha sai daqui sozinha junto com o array.
+const naoCouberam = new WeakSet<object>();
 
 interface CacheEntry<T> {
     at: number;
@@ -86,22 +104,119 @@ export function writeCatalog<T, S>(kind: CatalogKind, items: T[], trim: (item: T
     // começava PARSEANDO 1,2 MB.
     const gravadoEm = readJson<number>(keyAt(kind), 0);
     if (gravadoEm > 0 && Date.now() - gravadoEm < REWRITE_AFTER_MS) return true;
-
-    const agora = Date.now();
-    const slim = items.map(trim);
-    const json = JSON.stringify({ at: agora, items: slim } satisfies CacheEntry<S>);
-    // INTEIRA ou nada: meia lista de canais é pior que lista nenhuma — o
-    // usuário procura um canal que existe, não acha, e conclui que sumiu.
-    if (json.length * 2 > MAX_BYTES) {
+    if (naoCouberam.has(items)) {
         dropCatalog(kind);
         return false;
     }
 
+    const agora = Date.now();
+    const chave = key(kind);
+    const chaveAt = keyAt(kind);
+    const espaco = espacoDoCatalogo(kind, [chave, chaveAt]);
+    // O limite já desconta o que não pode sair: um catálogo de filmes que não
+    // cabe é descoberto no primeiro pedaço que passa, não depois de
+    // serializar 40 mil títulos.
+    const limite = Math.min(MAX_BYTES, MAX_TOTAL_BYTES - espaco.fixo)
+        - (chave.length + chaveAt.length + String(agora).length) * 2;
+    const json = serializar(agora, items, trim, limite);
+    // INTEIRA ou nada: meia lista de canais é pior que lista nenhuma — o
+    // usuário procura um canal que existe, não acha, e conclui que sumiu.
+    if (json === null) {
+        naoCouberam.add(items);
+        dropCatalog(kind);
+        return false;
+    }
+
+    // Abre espaço no teto somado, do descartável pro menos descartável
+    const custo = bytesDe(chave, json) + bytesDe(chaveAt, String(agora));
+    let ocupado = espaco.fixo + espaco.removiveis.reduce((soma, r) => soma + r.bytes, 0);
+    for (const removivel of espaco.removiveis) {
+        if (ocupado + custo <= MAX_TOTAL_BYTES) break;
+        // Entrada e carimbo saem JUNTOS: o carimbo órfão faria a próxima
+        // gravação daquele tipo ser pulada por "ainda é recente"
+        removeKey(removivel.chave);
+        removeKey(`${removivel.chave}_at`);
+        ocupado -= removivel.bytes;
+    }
+
     // `writeRaw` com a string que já existe: `writeJson` serializaria a mesma
     // lista uma segunda vez, e são centenas de KB.
-    const gravou = writeRaw(key(kind), json).ok;
-    if (gravou) writeRaw(keyAt(kind), String(agora));
+    const gravou = writeRaw(chave, json).ok;
+    if (gravou) writeRaw(chaveAt, String(agora));
     return gravou;
+}
+
+/** Bytes que uma chave ocupa na quota (UTF-16: 2 por unidade, chave + valor). */
+function bytesDe(chave: string, valor: string): number {
+    return (chave.length + valor.length) * 2;
+}
+
+/**
+ * O que as OUTRAS entradas do catálogo ocupam, separado entre o que pode sair
+ * pra dar lugar a `kind` e o que não pode.
+ *
+ * `removiveis` vem em ordem de sacrifício: primeiro o catálogo de OUTRA
+ * playlist (ninguém está olhando pra ele agora), depois — só se
+ * `kind` for da TV ao vivo — Filmes e Séries da playlist ativa.
+ */
+function espacoDoCatalogo(kind: CatalogKind, proprias: string[]): {
+    fixo: number;
+    removiveis: Array<{ chave: string; bytes: number }>;
+} {
+    const doContextoAtivo = new Set<string>();
+    const secundariasAtivas = new Set<string>();
+    for (const tipo of TODOS_OS_TIPOS) {
+        doContextoAtivo.add(key(tipo));
+        doContextoAtivo.add(keyAt(tipo));
+        if (PRIORITARIOS.indexOf(tipo) === -1) {
+            secundariasAtivas.add(key(tipo));
+            secundariasAtivas.add(keyAt(tipo));
+        }
+    }
+    const prioritario = PRIORITARIOS.indexOf(kind) !== -1;
+    let fixo = 0;
+    // Agrupado pela chave da entrada: o `_at` conta (e sai) junto com ela
+    const alheias = new Map<string, number>();
+    const secundarias = new Map<string, number>();
+    const somar = (grupo: Map<string, number>, nome: string, bytes: number) => {
+        const entrada = nome.slice(-3) === '_at' ? nome.slice(0, -3) : nome;
+        grupo.set(entrada, (grupo.get(entrada) || 0) + bytes);
+    };
+    try {
+        for (let i = 0; i < localStorage.length; i++) {
+            const nome = localStorage.key(i);
+            if (!nome || !nome.startsWith(BASE_KEY) || proprias.indexOf(nome) !== -1) continue;
+            const bytes = bytesDe(nome, localStorage.getItem(nome) ?? '');
+            if (!doContextoAtivo.has(nome)) somar(alheias, nome, bytes);
+            else if (prioritario && secundariasAtivas.has(nome)) somar(secundarias, nome, bytes);
+            else fixo += bytes;
+        }
+    } catch {
+        // Sem como medir: o teto por entrada continua valendo
+    }
+    const removiveis: Array<{ chave: string; bytes: number }> = [];
+    alheias.forEach((bytes, chave) => removiveis.push({ chave, bytes }));
+    secundarias.forEach((bytes, chave) => removiveis.push({ chave, bytes }));
+    return { fixo, removiveis };
+}
+
+/**
+ * Serializa `{ at, items }` item a item, podando no caminho, e desiste (null)
+ * assim que passa de `limite` bytes. Gera o mesmo JSON que um
+ * `JSON.stringify` da entrada inteira geraria.
+ */
+function serializar<T, S>(agora: number, items: T[], trim: (item: T) => S, limite: number): string | null {
+    const cabecalho = `{"at":${agora},"items":[`;
+    let bytes = (cabecalho.length + 2) * 2;
+    if (bytes > limite) return null;
+    const partes: string[] = [];
+    for (const item of items) {
+        const parte = JSON.stringify(trim(item));
+        bytes += (parte.length + 1) * 2;
+        if (bytes > limite) return null;
+        partes.push(parte);
+    }
+    return `${cabecalho}${partes.join(',')}]}`;
 }
 
 /** Descarta uma entrada do catálogo guardado. */
@@ -150,4 +265,54 @@ export function trimLive(stream: {
 
 export function trimCategory(category: { category_id: string; category_name: string }) {
     return { category_id: category.category_id, category_name: category.category_name };
+}
+
+/** O que sobra de um filme depois da poda — NÃO é um VODStream completo. */
+export type CachedVodStream = ReturnType<typeof trimVod>;
+
+// Grade de Filmes: capa, nome, nota (exibida e 5-based pra ordenar/filtrar),
+// categoria, `added` (ordenação "Recentes" e selo NOVO), `release_date`
+// (filtro de década) e `container_extension`, sem o qual o Play não monta a URL.
+export function trimVod(stream: {
+    num: number; name: string; stream_id: number; stream_icon: string; category_id: string;
+    rating: string; rating_5based: number; added: string; container_extension: string;
+    release_date?: string; tmdb_id?: string;
+}) {
+    return {
+        num: stream.num,
+        name: stream.name,
+        stream_id: stream.stream_id,
+        stream_icon: stream.stream_icon,
+        category_id: stream.category_id,
+        rating: stream.rating,
+        rating_5based: stream.rating_5based,
+        added: stream.added,
+        container_extension: stream.container_extension,
+        release_date: stream.release_date || '',
+        tmdb_id: stream.tmdb_id || '',
+    };
+}
+
+/** O que sobra de uma série depois da poda — NÃO é um Series completo. */
+export type CachedSeries = ReturnType<typeof trimSeries>;
+
+// Grade de Séries: a capa é o `cover` (série não tem stream_icon) e o
+// `last_modified` faz o papel do `added` — ordenação e selo de novidade.
+export function trimSeries(series: {
+    num: number; name: string; series_id: number; cover: string; category_id: string;
+    rating: string; rating_5based: number; last_modified: string;
+    release_date?: string; tmdb_id?: string;
+}) {
+    return {
+        num: series.num,
+        name: series.name,
+        series_id: series.series_id,
+        cover: series.cover,
+        category_id: series.category_id,
+        rating: series.rating,
+        rating_5based: series.rating_5based,
+        last_modified: series.last_modified,
+        release_date: series.release_date || '',
+        tmdb_id: series.tmdb_id || '',
+    };
 }

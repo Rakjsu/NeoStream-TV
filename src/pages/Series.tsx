@@ -19,6 +19,7 @@ import {
 import { kidsFilter } from '../services/kidsFilter';
 import { progressService } from '../services/progressService';
 import { storage } from '../services/storage';
+import { readCatalog, writeCatalog, dropCatalog, trimSeries, trimCategory, type CachedSeries } from '../services/catalogCache';
 import './Series.css';
 import { ErrorScreen } from '../components/ErrorScreen';
 import { PosterPreguicoso } from '../components/PosterPreguicoso';
@@ -29,6 +30,8 @@ export function Series() {
     const [error, setError] = useState('');
     const [series, setSeries] = useState<SeriesType[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
+    // true enquanto a grade mostra a lista de ontem (catalogCache, T118)
+    const [doCache, setDoCache] = useState(false);
     // Gênero (item 31): extraído do NOME da categoria — ver catalogGenres.ts
     const [genero, setGenero] = useState<string | null>(null);
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -91,17 +94,60 @@ export function Series() {
     // Fetch data
     useEffect(() => {
         async function fetchData() {
+            // Stale-while-revalidate (T118), o mesmo da TV ao vivo: a lista de
+            // ontem entra na hora e a de hoje troca por baixo quando chega.
+            const cachedSeries = readCatalog<CachedSeries>('series');
+            const cachedCategories = readCatalog<Category>('series-cats');
+            let servedFromCache = false;
+            if (cachedSeries && cachedCategories) {
+                // Podado: completa o que o tipo exige e a grade não usa. Sinopse,
+                // elenco etc. chegam com o fetch logo atrás.
+                const restored = cachedSeries.map(item => ({
+                    ...item,
+                    plot: '',
+                    cast: '',
+                    director: '',
+                    genre: '',
+                    backdrop_path: [],
+                    youtube_trailer: '',
+                    episode_run_time: '',
+                } satisfies SeriesType));
+                const gatedCache = kidsFilter.apply(restored, cachedCategories);
+                setSeries(gatedCache.items);
+                setCategories(gatedCache.categories);
+                setDoCache(true);
+                setLoading(false);
+                servedFromCache = true;
+            }
+
             try {
-                setLoading(true);
+                if (!servedFromCache) setLoading(true);
                 const [seriesData, categoriesData] = await Promise.all([
                     api.getSeries(),
                     api.getSeriesCategories()
                 ]);
+                // Os dois andam juntos: sem as categorias o cache nunca é
+                // servido, e a lista sozinha só ocuparia a quota
+                if (writeCatalog('series', seriesData, trimSeries)) {
+                    if (!writeCatalog('series-cats', categoriesData, trimCategory)) dropCatalog('series');
+                } else {
+                    dropCatalog('series-cats');
+                }
                 // Gate do perfil Kids (remove categorias adultas e suas séries)
                 const gated = kidsFilter.apply(seriesData, categoriesData);
                 setSeries(gated.items);
                 setCategories(gated.categories);
+                setDoCache(false);
+                // Ficha aberta sobre um item do cache: troca pelo completo, senão
+                // ela ficaria sem sinopse, elenco e trailer
+                if (servedFromCache) {
+                    const porId = new Map(gated.items.map(item => [item.series_id, item]));
+                    setSelectedSeries(atual => (atual && porId.get(atual.series_id)) || atual);
+                }
             } catch (err: unknown) {
+                // Com o cache na tela, cair a rede não apaga o que o usuário já
+                // está navegando
+                if (servedFromCache) return;
                 setError(err instanceof Error ? err.message : 'Erro ao carregar s�ries');
             } finally {
                 setLoading(false);
@@ -123,13 +169,16 @@ export function Series() {
 
     // Semeia o baseline de last_modified das séries seguidas (1x por carga)
     useEffect(() => {
-        if (series.length === 0) return;
+        // Só com a lista FRESCA: semear com o last_modified de ontem faria a
+        // série recém-seguida ganhar selo de "episódio novo" assim que a de
+        // hoje chegasse, sem episódio novo nenhum
+        if (series.length === 0 || doCache) return;
         newEpisodes.seed(
             series
                 .filter(s => followedSeriesIds.has(String(s.series_id)))
                 .map(s => ({ seriesId: String(s.series_id), lastModified: s.last_modified || '0' }))
         );
-    }, [series, followedSeriesIds]);
+    }, [series, followedSeriesIds, doCache]);
 
     useEffect(() => {
         if (!toast) return;
