@@ -802,8 +802,30 @@ export function LiveTV() {
         enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !showGuide && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel,
     });
 
+    // Logo quebrado: cada `error` de <img> chega num evento separado, e um
+    // setState por evento repintava a página inteira uma vez por logo. Os ids
+    // se acumulam aqui e entram no estado de uma vez, numa janela fixa.
+    // (Canal SEM logo nem monta <img>: o React 19 tira o src vazio e um <img>
+    // sem src nunca dispara `error` — o card ficava sem o 📺 pra sempre.)
+    const pendingBrokenRef = useRef<Set<number>>(new Set());
+    const brokenFlushRef = useRef<number | null>(null);
+    useEffect(() => () => {
+        if (brokenFlushRef.current !== null) window.clearTimeout(brokenFlushRef.current);
+    }, []);
+
     const handleImageError = (streamId: number) => {
-        setBrokenImages(prev => new Set(prev).add(streamId));
+        pendingBrokenRef.current.add(streamId);
+        if (brokenFlushRef.current !== null) return;
+        brokenFlushRef.current = window.setTimeout(() => {
+            brokenFlushRef.current = null;
+            const ids = pendingBrokenRef.current;
+            pendingBrokenRef.current = new Set();
+            setBrokenImages(prev => {
+                const next = new Set(prev);
+                ids.forEach(id => next.add(id));
+                return next;
+            });
+        }, 100);
     };
 
     const getLivePlaybackUrl = (stream: LiveStream) => {
@@ -964,11 +986,11 @@ export function LiveTV() {
                     <div className="preview-content">
                         <div className="preview-video">
                             <div className="preview-placeholder">
-                                {brokenImages.has(selectedChannel.stream_id) ? (
+                                {!selectedChannel.stream_icon || brokenImages.has(selectedChannel.stream_id) ? (
                                     <span className="placeholder-emoji">📺</span>
                                 ) : (
                                     <img decoding="async"
-                                        src={selectedChannel?.stream_icon || ''}
+                                        src={selectedChannel.stream_icon}
                                         alt={selectedChannel?.name || 'Canal'}
                                         onError={() => handleImageError(selectedChannel.stream_id)}
                                     />
@@ -1087,11 +1109,11 @@ export function LiveTV() {
                                 style={{ animationDelay: `${Math.min(index * 0.03, 0.5)}s` }}
                             >
                                 <div className="channel-logo">
-                                    {brokenImages.has(stream.stream_id) ? (
+                                    {!stream.stream_icon || brokenImages.has(stream.stream_id) ? (
                                         <span className="channel-placeholder">📺</span>
                                     ) : (
                                         <img decoding="async"
-                                            src={stream?.stream_icon || ''}
+                                            src={stream.stream_icon}
                                             alt={stream?.name || 'Canal'}
                                             onError={() => handleImageError(stream.stream_id)}
                                         />
