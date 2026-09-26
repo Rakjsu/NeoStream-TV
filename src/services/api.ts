@@ -306,6 +306,11 @@ class XtreamAPI {
                     this.username = username;
                     this.password = password;
                     this.learnProviderOffset(data);
+                    // Adicionar playlist autentica OUTRA conta por cima da
+                    // atual, sem logout: os caches registrados chaveados só
+                    // por id (o do EPG) ainda seriam da anterior. No boot e
+                    // depois de um logout eles já estão vazios.
+                    limparCacheDeCatalogo();
 
                     return data;
                 } catch (error: unknown) {
