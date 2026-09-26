@@ -1,6 +1,6 @@
 ﻿// ContentDetailModal.tsx - Premium modal matching original NeoStream app
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
 import { searchMovieByName, searchSeriesByName, fetchMovieDetails, fetchSeriesDetails, getImageUrl, formatGenres, type TMDBMovieDetails, type TMDBSeriesDetails, IMAGE_SIZE_FICHA, IMAGE_SIZE_FUNDO } from '../services/tmdb';
@@ -150,7 +150,7 @@ export function ContentDetailModal({
     const [tmdbLoading, setTmdbLoading] = useState(false);
 
     // Focus management for TV navigation
-    type FocusZone = 'play' | 'watchLater' | 'favorite' | 'close' | 'season' | 'episode' | 'version' | 'collection' | 'trailer';
+    type FocusZone = 'play' | 'watchLater' | 'favorite' | 'close' | 'season' | 'episode' | 'version' | 'collection' | 'trailer' | 'overview';
     const [focusZone, setFocusZone] = useState<FocusZone>('play');
     const [seasonFocusIndex, setSeasonFocusIndex] = useState(0);
     const [episodeFocusIndex, setEpisodeFocusIndex] = useState(0);
@@ -238,6 +238,39 @@ export function ContentDetailModal({
         item?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }, [focusZone, collectionFocusIndex]);
 
+    // ---- Sinopse (T115) ----
+    // Recolhida em 4 linhas para a ficha caber; o OK na zona dela mostra o
+    // texto inteiro. O corte é no PRÓPRIO parágrafo (line-clamp), não na
+    // dobra: rolar a ficha nunca revelava o resto. A zona só existe quando o
+    // texto NÃO cabe — uma parada do D-pad que não revela nada seria só um
+    // degrau a mais até o Assistir.
+    const [sinopseAberta, setSinopseAberta] = useState(false);
+    // A MESMA expressão governa a zona de foco e o convite no JSX. Aberta
+    // implica "tem mais": só se abre pela zona, e a medida não roda com ela
+    // aberta (a caixa mostraria tudo e diria "cabe") — vale a última medida
+    // recolhida.
+    const [temMaisSinopse, setTemMaisSinopse] = useState(false);
+    const sinopseRef = useRef<HTMLParagraphElement>(null);
+    const sinopseZonaRef = useRef<HTMLDivElement>(null);
+
+    // Mede ANTES da pintura: o convite "Ler sinopse inteira" não pisca. A
+    // sinopse do TMDB chega depois da do provedor, por isso `tmdbData` e
+    // `plot` estão nas dependências.
+    useLayoutEffect(() => {
+        if (!isOpen || sinopseAberta) return;
+        const el = sinopseRef.current;
+        setTemMaisSinopse(!!el && el.scrollHeight > el.clientHeight + 1);
+    }, [isOpen, sinopseAberta, tmdbData, contentData.plot]);
+
+    // Com o foco nela: se o texto novo passou a caber, a zona some e o foco
+    // não fica parado no vazio; senão a zona — e o texto que cresceu ao
+    // abrir — entra na tela.
+    useEffect(() => {
+        if (focusZone !== 'overview') return;
+        if (!temMaisSinopse) setFocusZone('play');
+        else sinopseZonaRef.current?.scrollIntoView({ block: 'nearest' });
+    }, [focusZone, temMaisSinopse, sinopseAberta]);
+
     // Reset do foco ao abrir E ao trocar de conteúdo. Só `[isOpen]` não
     // bastava: escolher outra versão do mesmo filme troca o contentId sem
     // fechar a ficha, e o foco continuava numa zona do conteúdo anterior.
@@ -248,6 +281,8 @@ export function ContentDetailModal({
             setEpisodeFocusIndex(0);
             setVersionFocusIndex(0);
             setCollectionFocusIndex(0);
+            // Outro conteúdo (versão, filme da saga) abre com a sinopse recolhida
+            setSinopseAberta(false);
         }
     }, [isOpen, contentId]);
 
@@ -438,6 +473,7 @@ export function ContentDetailModal({
             if (focusZone === 'play') {
                 if (direction === 'right') setFocusZone('watchLater');
                 else if (direction === 'up' && seasons.length > 0) setFocusZone('season');
+                else if (direction === 'up' && temMaisSinopse) setFocusZone('overview');
                 else if (direction === 'down' && episodes.length > 0) setFocusZone('episode');
             } else if (focusZone === 'watchLater') {
                 if (direction === 'left') setFocusZone('play');
@@ -451,7 +487,11 @@ export function ContentDetailModal({
                 if (direction === 'left') setFocusZone('favorite');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'close') {
-                if (direction === 'down') setFocusZone('play');
+                if (direction === 'down') setFocusZone(temMaisSinopse ? 'overview' : 'play');
+            } else if (focusZone === 'overview') {
+                // Mesma ordem do DOM: X → sinopse → temporadas
+                if (direction === 'up') setFocusZone('close');
+                else if (direction === 'down') setFocusZone(seasons.length > 0 ? 'season' : 'play');
             } else if (focusZone === 'season') {
                 if (direction === 'left') {
                     setSeasonFocusIndex(prev => Math.max(0, prev - 1));
@@ -460,7 +500,7 @@ export function ContentDetailModal({
                 } else if (direction === 'down') {
                     setFocusZone('episode');
                 } else if (direction === 'up') {
-                    setFocusZone('play');
+                    setFocusZone(temMaisSinopse ? 'overview' : 'play');
                 }
             } else if (focusZone === 'episode') {
                 if (direction === 'up') {
@@ -483,26 +523,31 @@ export function ContentDetailModal({
             }
         } else {
             // Movie modal navigation. A cadeia vertical, de cima pra baixo,
-            // é a MESMA ordem do DOM: close → saga → versões → ações.
+            // é a MESMA ordem do DOM: close → sinopse → saga → versões → ações.
             // Toda aresta usa o mesmo predicado que o JSX usa pra renderizar.
+            const acimaDaSaga: FocusZone = temMaisSinopse ? 'overview' : 'close';
             const acimaDasAcoes: FocusZone = hasVersions ? 'version'
-                : hasCollection ? 'collection' : 'close';
-            const abaixoDoClose: FocusZone = hasCollection ? 'collection'
+                : hasCollection ? 'collection' : acimaDaSaga;
+            const abaixoDaSinopse: FocusZone = hasCollection ? 'collection'
                 : hasVersions ? 'version' : 'play';
+            const abaixoDoClose: FocusZone = temMaisSinopse ? 'overview' : abaixoDaSinopse;
 
             if (focusZone === 'play') {
                 if (direction === 'right') setFocusZone('watchLater');
                 else if (direction === 'up') setFocusZone(acimaDasAcoes);
+            } else if (focusZone === 'overview') {
+                if (direction === 'up') setFocusZone('close');
+                else if (direction === 'down') setFocusZone(abaixoDaSinopse);
             } else if (focusZone === 'collection') {
                 if (direction === 'left') setCollectionFocusIndex(prev => Math.max(0, prev - 1));
                 else if (direction === 'right') setCollectionFocusIndex(prev => Math.min((saga?.itens.length || 1) - 1, prev + 1));
                 else if (direction === 'down') setFocusZone(hasVersions ? 'version' : 'play');
-                else if (direction === 'up') setFocusZone('close');
+                else if (direction === 'up') setFocusZone(acimaDaSaga);
             } else if (focusZone === 'version') {
                 if (direction === 'left') setVersionFocusIndex(prev => Math.max(0, prev - 1));
                 else if (direction === 'right') setVersionFocusIndex(prev => Math.min((versions?.length || 1) - 1, prev + 1));
                 else if (direction === 'down') setFocusZone('play');
-                else if (direction === 'up') setFocusZone(hasCollection ? 'collection' : 'close');
+                else if (direction === 'up') setFocusZone(hasCollection ? 'collection' : acimaDaSaga);
             } else if (focusZone === 'watchLater') {
                 if (direction === 'left') setFocusZone('play');
                 else if (direction === 'right') setFocusZone('favorite');
@@ -519,7 +564,7 @@ export function ContentDetailModal({
             }
         }
     }, [isOpen, focusZone, contentType, seasons.length, episodes.length, episodeFocusIndex,
-        hasVersions, versions?.length, hasCollection, saga?.itens.length, hasTrailer]);
+        hasVersions, versions?.length, hasCollection, saga?.itens.length, hasTrailer, temMaisSinopse]);
 
     // Item completo pra salvar em Favoritos/Minha Lista (com pôster e título —
     // a página de listas depende desses campos pra renderizar o card)
@@ -564,6 +609,8 @@ export function ContentDetailModal({
             if (version && onSelectVersion) onSelectVersion(version.id);
         } else if (focusZone === 'close') {
             handleClose();
+        } else if (focusZone === 'overview') {
+            setSinopseAberta(aberta => !aberta);
         } else if (focusZone === 'season') {
             setSelectedSeason(Number(seasons[seasonFocusIndex]));
             setSelectedEpisode(primeiroEpisodioDe(seriesInfo, seasons[seasonFocusIndex]));
@@ -716,8 +763,20 @@ export function ContentDetailModal({
                         </div>
                     )}
 
-                    {/* Overview */}
-                    <p className="modal-overview">{overview}</p>
+                    {/* Overview. Zona de foco própria (T115) só quando o texto
+                        não cabe nas 4 linhas: OK alterna recolhida/inteira. */}
+                    <div
+                        ref={sinopseZonaRef}
+                        className={`modal-overview-zona ${focusZone === 'overview' ? 'focused' : ''}`}
+                        onClick={temMaisSinopse ? () => setSinopseAberta(aberta => !aberta) : undefined}
+                    >
+                        <p ref={sinopseRef} className={`modal-overview ${sinopseAberta ? 'aberta' : ''}`}>{overview}</p>
+                        {temMaisSinopse && (
+                            <span className="modal-overview-mais">
+                                {sinopseAberta ? '▴ Recolher sinopse' : '▾ Ler sinopse inteira'}
+                            </span>
+                        )}
+                    </div>
 
                     {/* Elenco (item 34). Não é focável de propósito — ver a
                         nota em `elenco`. Sem `<button>`, sem zona de D-pad. */}

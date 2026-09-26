@@ -423,19 +423,44 @@
     border-color: rgba(var(--ns-accent-rgb), 0.4);
 }
 
-/* Overview */
+/* Overview (T115). Recolhida em 4 linhas pelo line-clamp; SEM max-height em
+   px: ele cortava no meio da 3ª linha assim que a fonte crescesse, e é o
+   line-clamp que põe as reticências. A zona em volta recebe o foco do D-pad
+   quando o texto não cabe, e o OK alterna para `.aberta` (texto inteiro). */
+.modal-overview-zona {
+    margin-bottom: 22px;
+    border-radius: 10px;
+}
+
+.modal-overview-zona.focused {
+    outline: 3px solid rgba(var(--ns-accent-rgb), 0.8);
+    outline-offset: 8px;
+    background: rgba(var(--ns-accent-rgb), 0.08);
+}
+
 .modal-overview {
     color: rgba(255, 255, 255, 0.8);
-    font-size: 14px;
-    line-height: 1.75;
-    margin-bottom: 22px;
-    max-height: 100px;
+    font-size: 20px;
+    line-height: 1.6;
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
     -webkit-line-clamp: 4;
     line-clamp: 4;
     -webkit-box-orient: vertical;
+}
+
+.modal-overview.aberta {
+    display: block;
+    overflow: visible;
+}
+
+.modal-overview-mais {
+    display: inline-block;
+    margin-top: 8px;
+    color: #c4b5fd;
+    font-size: 16px;
+    font-weight: 600;
 }
 
 /* Season Tabs */
