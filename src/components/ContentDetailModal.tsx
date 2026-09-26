@@ -73,6 +73,17 @@ function endsAtLabel(minutes: number): string {
     return `${end.getHours().toString().padStart(2, '0')}:${end.getMinutes().toString().padStart(2, '0')}`;
 }
 
+/**
+ * Número do primeiro episódio da temporada (T133). Nem toda temporada começa
+ * no E1: numeração corrida (T2 = E11..E20) prometia "Assistir T2 E1", um
+ * episódio que não existe.
+ */
+function primeiroEpisodioDe(info: SeriesInfo | null, temporada: string | undefined): number {
+    const lista = info && temporada ? info.episodes[temporada] : undefined;
+    const n = lista && lista.length > 0 ? Number(lista[0].episode_num) : NaN;
+    return isFinite(n) ? n : 1;
+}
+
 export function ContentDetailModal({
     isOpen,
     onClose,
@@ -237,8 +248,17 @@ export function ContentDetailModal({
                     const idxTemporada = temporadas.indexOf(String(progresso.season));
                     if (idxTemporada >= 0) setSeasonFocusIndex(idxTemporada);
                 } else {
-                    setSelectedSeason(1);
-                    setSelectedEpisode(1);
+                    // Sem progresso, abre na PRIMEIRA temporada que o provedor
+                    // mandou (T133). O 1 cravado quebrava série em exibição que
+                    // só vem com "2" e "3": abas sem nenhuma ativa, lista vazia,
+                    // "Assistir T1 E1" e o ↓ morto. Especiais (T0) só abrem
+                    // quando não há temporada regular. `temporadas` já está na
+                    // ordem das abas: chave numérica sai do Object.keys em
+                    // ordem crescente (o ramo de cima conta com isso também).
+                    const primeira = temporadas.find(t => Number(t) >= 1) || temporadas[0];
+                    setSelectedSeason(primeira ? Number(primeira) : 1);
+                    setSelectedEpisode(primeiroEpisodioDe(data, primeira));
+                    setSeasonFocusIndex(primeira ? temporadas.indexOf(primeira) : 0);
                     setEpisodeFocusIndex(0);
                 }
             })
@@ -519,7 +539,7 @@ export function ContentDetailModal({
             handleClose();
         } else if (focusZone === 'season') {
             setSelectedSeason(Number(seasons[seasonFocusIndex]));
-            setSelectedEpisode(1);
+            setSelectedEpisode(primeiroEpisodioDe(seriesInfo, seasons[seasonFocusIndex]));
             setEpisodeFocusIndex(0);
         } else if (focusZone === 'episode') {
             const ep = episodes[episodeFocusIndex];
@@ -533,7 +553,7 @@ export function ContentDetailModal({
     }, [isOpen, focusZone, contentType, selectedSeason, selectedEpisode, buildSavedItem, seasons,
         seasonFocusIndex, episodes, episodeFocusIndex, onPlay, handleClose, versions,
         versionFocusIndex, onSelectVersion, saga, collectionFocusIndex, onOpenRelated,
-        trailerKey, naTv]);
+        trailerKey, naTv, seriesInfo]);
 
     const handleBack = useCallback(() => {
         handleClose();
@@ -745,7 +765,7 @@ export function ContentDetailModal({
                                         className={`season-tab ${selectedSeason === Number(season) ? 'active' : ''} ${focusZone === 'season' && seasonFocusIndex === idx ? 'focused' : ''}`}
                                         onClick={() => {
                                             setSelectedSeason(Number(season));
-                                            setSelectedEpisode(1);
+                                            setSelectedEpisode(primeiroEpisodioDe(seriesInfo, season));
                                         }}
                                     >
                                         T{season}
