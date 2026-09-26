@@ -20,6 +20,14 @@ import { FavoritesNowPanel, SportsPanel } from './LivePanels';
 import { epgService, type EpgProgram } from '../services/epgService';
 import type { LiveStream } from '../types';
 
+/**
+ * Os dados dos paineis chegam num microtask FORA do act: o DOM ja mostra o
+ * item focado, mas o efeito que re-registra o ouvinte do useTVNavigation com a
+ * lista nova pode nao ter rodado — e um CH± nesse intervalo caia no ouvinte
+ * velho, de lista vazia (falhava ~1 vez em 10). Esvazia os efeitos antes de apertar.
+ */
+const esvaziarEfeitos = () => act(async () => { await Promise.resolve(); });
+
 beforeAll(() => {
     // jsdom não implementa scrollIntoView; agenda e painéis chamam a cada foco
     if (!Element.prototype.scrollIntoView) {
@@ -143,6 +151,7 @@ describe('guia de programação (EpgGrid)', () => {
             />
         );
         await waitFor(() => expect(texto(container, '.epgrid-prog.tv-focused .epgrid-prog-title')).toBe('Mais tarde'));
+        await esvaziarEfeitos();
 
         tecla('Enter', 13);
         expect(texto(container, '.epgrid-aviso')).toBe('Lembrete removido.');
@@ -176,6 +185,7 @@ describe('guia de programação (EpgGrid)', () => {
         // Espera a 1ª leva (linhas 0..9) chegar inteira antes de paginar
         await waitFor(() => expect(busca).toHaveBeenCalledTimes(10));
         await waitFor(() => expect(programaFocado()).toBe('No ar'));
+        await esvaziarEfeitos();
 
         tecla('ArrowRight', 39);
         expect(programaFocado()).toBe('Depois');
@@ -183,6 +193,7 @@ describe('guia de programação (EpgGrid)', () => {
         chMenos();
         expect(linhaFocada(container)).toBe('Canal 8');
         await waitFor(() => expect(programaFocado()).toBe('Depois'));
+        await esvaziarEfeitos();
         chMais();
         expect(linhaFocada(container)).toBe('Canal 1');
         expect(programaFocado()).toBe('Depois');
@@ -214,6 +225,7 @@ describe('agenda do dia (ChannelAgendaOverlay)', () => {
             <ChannelAgendaOverlay channel={canais(1)[0]} onClose={vi.fn()} onPlayArchive={vi.fn()} />
         );
         await waitFor(() => expect(focado(container)).toBe('Programa 1'));
+        await esvaziarEfeitos();
         chMais(); // já no topo: fica
         expect(focado(container)).toBe('Programa 1');
 
@@ -248,6 +260,7 @@ describe('agenda do dia (ChannelAgendaOverlay)', () => {
         }));
         await act(async () => { entregar(programas); });
         await waitFor(() => expect(focado(container)).toBe('Programa 1'));
+        await esvaziarEfeitos();
         chMenos();
         expect(focado(container)).toBe('Programa 11');
     });
@@ -296,6 +309,7 @@ describe('painéis da TV ao vivo', () => {
         );
         const focado = () => texto(container, '.sports-row.tv-focused .sports-title');
         await waitFor(() => expect(focado()).toBe('Time 0 x Rival 0'));
+        await esvaziarEfeitos();
         chMais(); // já no topo: fica
         expect(focado()).toBe('Time 0 x Rival 0');
 
