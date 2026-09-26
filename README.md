@@ -8,7 +8,7 @@ Created by **Rakjsu**.
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
 ![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Tests](https://img.shields.io/badge/tests-226-brightgreen)
+![CI](https://github.com/Rakjsu/NeoStream-TV/actions/workflows/ci.yml/badge.svg)
 ![Target](https://img.shields.io/badge/Tizen-5.5%2B%20(Chromium%2069)-1428A0?logo=samsung)
 
 ## Disclaimer
@@ -81,7 +81,9 @@ Use at your own risk. The creator and contributors are not responsible for how t
 - Real Kids profile with adult-category filtering, PIN management, and profile switching.
 - Themes: AMOLED background plus six accent colors, applied through CSS variables.
 - Usage statistics with a Wrapped-style recap.
-- Portuguese, English, and Spanish language resources.
+- Language choice (Portuguese, English, Spanish) on first launch and in Settings. Translated so far:
+  the language selection, welcome, and login screens and the sidebar tooltips; the rest of the
+  interface is Portuguese for now.
 - Optional TMDB metadata using a user-provided local API key.
 - Flexible Xtream server URL input, including bare domains, `http`, `https`, ports, and common
   Xtream endpoint paths.
@@ -122,7 +124,7 @@ Every push and pull request runs [CI](.github/workflows/ci.yml):
 | --- | --- |
 | `npx tsc -b` | The same type-check the build performs. `tsc --noEmit` lets errors through in a project with references. |
 | `npm run lint` | ESLint, including the React Hooks rules the project treats as errors. |
-| `npm test` | 226 tests. Node environment, except the `useTVNavigation` suite, which needs jsdom. |
+| `npm test` | The Vitest suite. Node environment by default; files that mount components or measure computed styles declare jsdom themselves. |
 | `npm run check:css` | CSS features Chromium 69 ignores. They break neither the build nor the browser — they only disappear on the TV. |
 | `npm run build:tizen` | Fails if `tizen/index.html` points at assets the build did not produce (that ships a black screen). |
 | `npm run check:bundle` | Size budget. On a 2019 TV the cost of a large bundle is parse time and heap, not bandwidth. |
@@ -248,6 +250,8 @@ Next up:
 - Backup and restore through the paired desktop, and favorites/progress sync.
 - The phone as a keyboard for global search.
 - LG webOS packaging.
+- The rest of the interface in English and Spanish, starting with Settings: it is where someone who
+  picked the wrong language goes to undo it, and today it only speaks Portuguese.
 
 ## License
 
