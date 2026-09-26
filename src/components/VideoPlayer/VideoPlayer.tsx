@@ -67,7 +67,10 @@ export interface VideoPlayerProps {
      * quando alcança o programa no ar, e isso não pode depender daquela opção.
      */
     autoAdvance?: boolean;
-    /** Desliga o D-pad do player à força (raro; o overlay do App já é tratado) */
+    /**
+     * Desliga as teclas do player à força — D-pad, mídia e CH±/dígitos
+     * (raro; o overlay do App já é tratado)
+     */
     navEnabled?: boolean;
     /**
      * O player É o overlay do momento — caso da Busca Global, que abre o
@@ -219,6 +222,11 @@ export function VideoPlayer({
     // pra 'overlay'. Sem consultar isso aqui, o MESMO OK pausava o vídeo por
     // baixo do aviso e ainda trocava o "último canal" do usuário.
     const { focusZone: appFocusZone } = useFocusZone();
+    // UMA condição para os TRÊS ouvintes de tecla do player (D-pad, mídia e
+    // CH±/dígitos). Só o D-pad e o 🔴 olhavam a zona: com o aviso de lembrete
+    // na tela o ⏹ fechava o player por baixo, o ⏯ pausava o vídeo e o CH+
+    // trocava de canal (T003).
+    const teclasAtivas = navEnabled && (isOverlayOwner || appFocusZone !== 'overlay');
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -843,6 +851,7 @@ export function VideoPlayer({
     }, [showControls, playing, menu, activityTick]);
     useEffect(() => {
         if (!canZap) return;
+        if (!teclasAtivas) return;
         const handleExtraKeys = (event: KeyboardEvent) => {
             if (playerFocusRef.current !== 'controls') return;
             const key = event.key || String(event.keyCode);
@@ -868,7 +877,7 @@ export function VideoPlayer({
         };
         window.addEventListener('keydown', handleExtraKeys);
         return () => window.removeEventListener('keydown', handleExtraKeys);
-    }, [canZap, nudgeZap, cancelZap, resetHideControlsTimer]);
+    }, [canZap, nudgeZap, cancelZap, resetHideControlsTimer, teclasAtivas]);
 
     // ----- Sleep timer -----
     // O estado "remaining" é setado no handler (cycleSleep) e no callback do
@@ -1205,6 +1214,7 @@ export function VideoPlayer({
     // Teclas de mídia do controle (item 38). Registradas no boot do App via
     // tvinputdevice; sem este listener elas não faziam nada no player.
     useEffect(() => {
+        if (!teclasAtivas) return;
         const handleMediaKeys = (event: KeyboardEvent) => {
             const video = videoRef.current;
             if (!video) return;
@@ -1243,7 +1253,6 @@ export function VideoPlayer({
                 // dessas camadas.
                 if (!canZap) return;
                 if (playerFocusRef.current !== 'controls') return;
-                if (appFocusZone === 'overlay' && !isOverlayOwner) return;
                 // CH± ainda pendente (T002): o 🔴 desfaz o zapping e fica no
                 // canal que está tocando — o mesmo fim de quando cada CH± já
                 // trocava na hora. Sem isto saíam DUAS trocas e ganhava o CH±.
@@ -1265,7 +1274,7 @@ export function VideoPlayer({
         return () => window.removeEventListener('keydown', handleMediaKeys);
     }, [togglePlay, handleClose, nudgeSeek, isLiveContent, canGoNext, canGoPrevious,
         onNextEpisode, onPreviousEpisode, canZap, currentChannelId, onSwitchChannel,
-        resetHideControlsTimer, appFocusZone, isOverlayOwner, cancelZap]);
+        resetHideControlsTimer, teclasAtivas, cancelZap]);
 
     // ----- Menu de opções (qualidade / áudio / legenda / stats) -----
     const openMenu = useCallback((id: MenuId) => {
@@ -1604,7 +1613,7 @@ export function VideoPlayer({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
         onBack: handleBack,
-        enabled: navEnabled && (isOverlayOwner || appFocusZone !== 'overlay')
+        enabled: teclasAtivas
     });
 
     const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
