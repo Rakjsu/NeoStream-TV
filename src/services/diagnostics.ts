@@ -38,6 +38,19 @@ export function installErrorCapture(): void {
     });
 }
 
+/**
+ * Registra no mesmo anel uma falha que NÃO vira exceção global — ex.: uma API
+ * da TV que sumiu e o app contornou calado. Uma vez por mensagem+origem: o
+ * player chama a cada canal aberto, e 20 cópias do mesmo aviso empurrariam
+ * pra fora do anel o erro que interessa.
+ */
+export function logWarning(message: string, source: string): void {
+    const texto = message.slice(0, 300);
+    if (errorLog.some(e => e.message === texto && e.source === source)) return;
+    errorLog.unshift({ at: Date.now(), message: texto, source });
+    if (errorLog.length > MAX_ERRORS) errorLog.length = MAX_ERRORS;
+}
+
 export function getErrorLog(): LoggedError[] {
     return [...errorLog];
 }
