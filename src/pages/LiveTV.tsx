@@ -7,7 +7,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
-import { epgService, epgOffset, type ChannelEpg, type EpgProgram } from '../services/epgService';
+import { epgService, type ChannelEpg, type EpgProgram } from '../services/epgService';
 import { zapHistory, hiddenChannels, hiddenCategories, liveToggles } from '../services/liveExtras';
 import { kidsFilter } from '../services/kidsFilter';
 import { useWatchSession } from '../hooks/useWatchSession';
@@ -1179,12 +1179,14 @@ export function LiveTV() {
             )}
 
             {/* Catch-up: fila de programas do arquivo via timeshift (itens 4+10).
-                start é DES-ofsetado: program.start inclui o ajuste de fuso do
-                usuário, mas a URL de timeshift precisa do epoch real do provedor */}
+                program.start vai COMO ESTÁ: o ajuste de fuso do EPG corrige o
+                guia (que o provedor errou) para o relógio REAL — o mesmo em que
+                classify(), a fila, os lembretes e o pause-live (Date.now()) já
+                trabalham, e o mesmo em que o arquivo foi gravado. Des-ofsetar
+                aqui pedia o arquivo de OUTRA hora (#T125) */}
             {archivePlayback && (() => {
                 const program = archivePlayback.programs[archivePlayback.index];
                 if (!program) return null;
-                const realStart = program.start - epgOffset.get() * 3600 * 1000;
                 // Programa NO AR: pedir só o já gravado (fim clampado ao agora);
                 // painéis variam no tratamento de duração futura
                 const effectiveEnd = Math.min(program.end, Date.now());
@@ -1193,7 +1195,7 @@ export function LiveTV() {
                     <VideoPlayer
                         key={`${archivePlayback.channel.stream_id}-${program.start}`}
                         autoAdvanceCountRef={archiveAutoAdvanceRef}
-                        src={api.getTimeshiftUrl(archivePlayback.channel.stream_id, realStart, durationMin)}
+                        src={api.getTimeshiftUrl(archivePlayback.channel.stream_id, program.start, durationMin)}
                         title={`⏮ ${program.title} — ${archivePlayback.channel.name}`}
                         poster={archivePlayback.channel.stream_icon || undefined}
                         autoPlay
