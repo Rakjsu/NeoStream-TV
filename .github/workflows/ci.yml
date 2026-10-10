@@ -84,7 +84,7 @@ jobs:
         run: node scripts/check-bundle-budget.mjs
 
       - name: Guardar o bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tizen-assets
           path: tizen/assets
