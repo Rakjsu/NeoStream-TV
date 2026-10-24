@@ -1,8 +1,10 @@
 ﻿// ProfileManager Component - TV Optimized
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { profileService, MAX_PROFILES } from '../../services/profileService';
-import type { Profile } from '../../types/profile';
+import type { Profile } from '../../types/profiles';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
+import { useTranslation } from '../../hooks/useTranslation';
+import { tt } from '../../i18n';
 import './ProfileManager.css';
 import { parentalService } from '../../services/parentalService';
 import { PinPrompt } from '../PinPrompt';
@@ -16,12 +18,12 @@ interface ProfileManagerProps {
 const DEFAULT_AVATAR = 'P';
 // Gravação que não coube nem depois de podar os caches (T107): sem isto a
 // tela voltava pra lista como se o perfil existisse, e ele sumia no boot.
-const SEM_ESPACO = 'Não foi possível salvar: a memória da TV está cheia. Libere espaço em Configurações → Sistema → Apagar dados e tente de novo.';
+const SEM_ESPACO = () => tt('pm_err_space');
 // O Salvar sempre responde (T047): antes, nome vazio e PIN incompleto davam
 // um `return` mudo, e o limite de perfis caía no aviso de memória cheia.
-const SEM_NOME = 'Dê um nome ao perfil.';
-const PIN_INCOMPLETO = 'O PIN precisa ter 4 dígitos.';
-const LIMITE_PERFIS = `Limite de ${MAX_PROFILES} perfis atingido. Exclua um perfil para criar outro.`;
+const SEM_NOME = () => tt('pm_err_name');
+const PIN_INCOMPLETO = () => tt('pm_err_pin');
+const LIMITE_PERFIS = () => tt('pm_err_limit', { n: MAX_PROFILES });
 const avatarOptions = [DEFAULT_AVATAR, 'A', 'B', 'C', 'D', 'E', 'F', 'G'];
 
 type ModalMode = 'list' | 'create' | 'edit' | 'pin-verify' | 'delete-confirm';
@@ -32,13 +34,14 @@ type ModalMode = 'list' | 'create' | 'edit' | 'pin-verify' | 'delete-confirm';
  * dava pra tirar o PIN do adulto ou apagar o perfil dele sem provar nada.
  */
 type AcaoPerfil = 'switch' | 'edit' | 'delete';
-const ROTULO_ACAO: Record<AcaoPerfil, string> = {
-    switch: 'Entrar',
-    edit: 'Editar perfil',
-    delete: 'Excluir perfil',
+const ROTULO_ACAO: Record<AcaoPerfil, () => string> = {
+    switch: () => tt('pm_action_switch'),
+    edit: () => tt('pm_action_edit'),
+    delete: () => tt('pm_action_delete'),
 };
 
 export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerProps) {
+    const { t } = useTranslation();
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
     const [mode, setMode] = useState<ModalMode>('list');
@@ -174,12 +177,12 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
      */
     const formularioValido = useCallback((): boolean => {
         if (!formName.trim()) {
-            setSaveError(SEM_NOME);
+            setSaveError(SEM_NOME());
             setEditFocusZone('name');
             return false;
         }
         if (formPin && formPin.length !== 4) {
-            setSaveError(PIN_INCOMPLETO);
+            setSaveError(PIN_INCOMPLETO());
             setEditFocusZone('pin');
             return false;
         }
@@ -192,7 +195,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         // O serviço devolve null tanto pro limite quanto pra memória cheia:
         // confere o limite antes, senão a tela mandava liberar espaço na TV
         if (profileService.getAllProfiles().length >= MAX_PROFILES) {
-            setSaveError(LIMITE_PERFIS);
+            setSaveError(LIMITE_PERFIS());
             // A lista por trás ainda era a de antes: ao cancelar, o
             // "+ Adicionar" voltaria a oferecer a vaga que acabou de sumir
             refreshProfiles();
@@ -205,7 +208,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
             pin: formPin || undefined
         });
         if (!criado) {
-            setSaveError(SEM_ESPACO);
+            setSaveError(SEM_ESPACO());
             return;
         }
         refreshProfiles();
@@ -223,7 +226,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
             ...(removePin ? { pin: null } : formPin ? { pin: formPin } : {})
         });
         if (!salvo) {
-            setSaveError(SEM_ESPACO);
+            setSaveError(SEM_ESPACO());
             return;
         }
         refreshProfiles();
@@ -346,7 +349,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
         setCardZone('card');
         if (!profileService.deleteProfile(deleteTarget.id)) {
             // Fica no diálogo: o perfil continua existindo
-            setSaveError(SEM_ESPACO);
+            setSaveError(SEM_ESPACO());
             return;
         }
         refreshProfiles();
@@ -495,8 +498,8 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
             {/* Header */}
             <div className="pm-header">
                 <h1 className="pm-title">
-                    <span className="pm-title-icon">Perfis</span>
-                    Gerenciar Perfis
+                    <span className="pm-title-icon">{t('pm_title_icon')}</span>
+                    {t('pm_title')}
                 </h1>
                 <button
                     className={`pm-close-btn ${closeButtonFocused ? 'focused' : ''}`}
@@ -533,7 +536,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                             >
                                 {isActive && (
                                     <div className="pm-active-badge">
-                                        <span>✓</span> <span>Ativo</span>
+                                        <span>✓</span> <span>{t('pm_active')}</span>
                                     </div>
                                 )}
 
@@ -548,7 +551,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
 
                                 {profile.pin && (
                                     <div className="pm-pin-indicator">
-                                        PIN ativo
+                                        {t('pm_pin_active')}
                                     </div>
                                 )}
 
@@ -559,14 +562,14 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                                             className={`pm-btn pm-btn-edit ${isFocused && cardZone === 'edit' ? 'tv-focused' : ''}`}
                                             onClick={(e) => { e.stopPropagation(); startEdit(profile); }}
                                         >
-                                            Editar
+                                            {t('pm_edit_btn')}
                                         </button>
                                         <button
                                             className={`pm-btn pm-btn-delete ${isFocused && cardZone === 'delete' ? 'tv-focused' : ''}`}
                                             onClick={(e) => { e.stopPropagation(); startDelete(profile); }}
                                             disabled={isActive || profiles.length <= 1}
                                         >
-                                            Excluir
+                                            {t('pm_delete_btn')}
                                         </button>
                                     </div>
                                 )}
@@ -591,7 +594,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                             }}
                         >
                             <div className="pm-add-icon">+</div>
-                            <span className="pm-add-label">Adicionar Perfil</span>
+                            <span className="pm-add-label">{t('pm_add')}</span>
                         </button>
                     )}
                 </div>
@@ -601,12 +604,12 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
             {(mode === 'create' || mode === 'edit') && (
                 <div className="pm-modal">
                     <div className="pm-modal-header">
-                        <span className="pm-modal-icon">{mode === 'create' ? '+' : 'Editar'}</span>
-                        <h2>{mode === 'create' ? 'Novo Perfil' : 'Editar Perfil'}</h2>
+                        <span className="pm-modal-icon">{mode === 'create' ? '+' : t('pm_edit_btn')}</span>
+                        <h2>{mode === 'create' ? t('pm_new') : t('pm_edit_title')}</h2>
                     </div>
 
                     <div className="pm-form">
-                        <label className="pm-label">Nome do Perfil</label>
+                        <label className="pm-label">{t('pm_name_label')}</label>
                         <input
                             ref={nameInputRef}
                             type="text"
@@ -617,13 +620,13 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                                 // O aviso era sobre o que estava aqui antes
                                 setSaveError('');
                             }}
-                            placeholder="Digite o nome..."
+                            placeholder={t('pm_name_ph')}
                             maxLength={20}
                             autoFocus
                         />
 
                         <label className="pm-label">
-                            PIN (4 dígitos){mode === 'edit' && editingProfile?.pin ? ' — vazio mantém o atual' : ' — opcional'}
+                            {t('pm_pin_label')}{mode === 'edit' && editingProfile?.pin ? t('pm_pin_keep') : t('pm_pin_optional')}
                         </label>
                         <input
                             ref={pinInputRef}
@@ -635,16 +638,16 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                                 setRemovePin(false);
                                 setSaveError('');
                             }}
-                            placeholder={mode === 'edit' && editingProfile?.pin ? '••••' : 'Sem PIN'}
+                            placeholder={mode === 'edit' && editingProfile?.pin ? '••••' : t('pm_pin_none')}
                             maxLength={4}
                             inputMode="numeric"
                         />
                         {removePin && (
-                            <p className="pm-pin-remove-note">O PIN será removido ao salvar.</p>
+                            <p className="pm-pin-remove-note">{t('pm_pin_will_remove')}</p>
                         )}
                         {saveError && <p className="pm-pin-remove-note" role="alert">{saveError}</p>}
 
-                        <label className="pm-label">Avatar</label>
+                        <label className="pm-label">{t('pm_avatar')}</label>
                         <div className="pm-avatar-grid">
                             {avatarOptions.map((avatar, index) => (
                                 <button
@@ -663,13 +666,13 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                             className={`pm-btn pm-btn-cancel ${editFocusZone === 'buttons' && buttonFocusIndex === 0 ? 'focused' : ''}`}
                             onClick={() => { setMode('list'); setEditFocusZone('name'); }}
                         >
-                            Cancelar
+                            {t('common_cancel')}
                         </button>
                         <button
                             className={`pm-btn pm-btn-save ${editFocusZone === 'buttons' && buttonFocusIndex === 1 ? 'focused' : ''}`}
                             onClick={mode === 'create' ? handleCreateProfile : handleEditProfile}
                         >
-                            ✓ Salvar
+                            {t('pm_save')}
                         </button>
                         {mode === 'edit' && editingProfile?.pin && (
                             <button
@@ -680,7 +683,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                                     setSaveError('');
                                 }}
                             >
-                                {removePin ? '↩ Manter PIN' : '🗑 Remover PIN'}
+                                {removePin ? t('pm_pin_keep_btn') : t('pm_pin_remove_btn')}
                             </button>
                         )}
                     </div>
@@ -694,9 +697,9 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                 ficava inacessível no controle. */}
             {mode === 'pin-verify' && pendingProfile && (
                 <PinPrompt
-                    title="Digite o PIN"
-                    hint={`Perfil: ${pendingProfile.name}`}
-                    confirmLabel={ROTULO_ACAO[pendingAction]}
+                    title={t('pin_enter')}
+                    hint={t('pm_pin_hint', { name: pendingProfile.name })}
+                    confirmLabel={ROTULO_ACAO[pendingAction]()}
                     trava={profileService.travaDoPin(pendingProfile.id)}
                     onSubmit={handlePinSubmit}
                     onCancel={() => {
@@ -710,30 +713,30 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
             {mode === 'delete-confirm' && deleteTarget && (
                 <div className="pm-modal pm-modal-delete">
                     <div className="pm-modal-header">
-                        <span className="pm-modal-icon danger">Excluir</span>
-                        <h2>Excluir Perfil?</h2>
+                        <span className="pm-modal-icon danger">{t('pm_delete_btn')}</span>
+                        <h2>{t('pm_delete_title')}</h2>
                     </div>
 
                     <p className="pm-delete-msg">
-                        Deseja excluir o perfil <strong>{deleteTarget.name}</strong>?
+                        {t('pm_delete_msg_a')}<strong>{deleteTarget.name}</strong>{t('pm_delete_msg_b')}
                         <br />
-                        <span className="pm-delete-warning">Esta ação não pode ser desfeita.</span>
+                        <span className="pm-delete-warning">{t('pm_delete_warn')}</span>
                     </p>
                     {saveError && <p className="pm-pin-remove-note" role="alert">{saveError}</p>}
-                    <p className="pm-hint">◀ ▶ escolhe · OK confirma · Voltar cancela</p>
+                    <p className="pm-hint">{t('pm_delete_hint')}</p>
 
                     <div className="pm-modal-buttons">
                         <button
                             className={`pm-btn pm-btn-cancel ${deleteFocusIndex === 0 ? 'tv-focused' : ''}`}
                             onClick={() => { setMode('list'); setDeleteTarget(null); }}
                         >
-                            Cancelar
+                            {t('common_cancel')}
                         </button>
                         <button
                             className={`pm-btn pm-btn-danger ${deleteFocusIndex === 1 ? 'tv-focused' : ''}`}
                             onClick={handleDeleteProfile}
                         >
-                            Excluir
+                            {t('pm_delete_btn')}
                         </button>
                     </div>
                 </div>
@@ -742,12 +745,14 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                 num perfil adulto a partir do Kids também (T046) */}
             {parentalTarget && (
                 <PinPrompt
-                    title={pendingAction === 'switch' ? 'Sair do modo Kids' : 'Controle parental'}
+                    title={pendingAction === 'switch' ? t('pm_leave_kids') : t('pm_parental_title')}
                     parental
-                    confirmLabel={pendingAction === 'switch' ? undefined : ROTULO_ACAO[pendingAction]}
+                    confirmLabel={pendingAction === 'switch' ? undefined : ROTULO_ACAO[pendingAction]()}
                     hint={pendingAction === 'switch'
-                        ? `Digite o PIN parental para entrar em "${parentalTarget.name}".`
-                        : `Digite o PIN parental para ${pendingAction === 'edit' ? 'editar' : 'excluir'} "${parentalTarget.name}".`}
+                        ? t('pm_hint_enter', { name: parentalTarget.name })
+                        : pendingAction === 'edit'
+                            ? t('pm_hint_edit', { name: parentalTarget.name })
+                            : t('pm_hint_delete', { name: parentalTarget.name })}
                     onSubmit={async (pin) => {
                         const ok = await parentalService.verify(pin);
                         if (!ok) return false;

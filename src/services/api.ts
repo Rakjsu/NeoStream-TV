@@ -1,6 +1,7 @@
 ﻿// Xtream Codes API Client - Ported from NeoStream IPTV
 
 import type { AuthResponse, LiveStream, VODStream, Series, Category, SeriesInfo, Credentials } from '../types';
+import { tt } from '../i18n';
 
 type VodMovieData = Record<string, unknown>;
 
@@ -148,7 +149,7 @@ export function limparCacheDeCatalogo(): void {
 }
 
 /** Mensagem do erro de `authenticate` cancelado por quem chamou. */
-export const AUTENTICACAO_CANCELADA = 'Conexão cancelada.';
+export function AUTENTICACAO_CANCELADA(): string { return tt('api_cancelled'); }
 
 class XtreamAPI {
     private baseUrl: string = '';
@@ -207,7 +208,7 @@ class XtreamAPI {
             return await response.json();
         } catch (error: unknown) {
             if (error instanceof Error && error.name === 'AbortError') {
-                throw new Error('Tempo esgotado. O servidor demorou muito para responder.');
+                throw new Error(tt('api_timeout'));
             }
             throw error;
         } finally {
@@ -232,26 +233,26 @@ class XtreamAPI {
         const text = await response.text();
 
         if (!text || text.trim() === '') {
-            throw new Error('Servidor retornou resposta vazia. Verifique a URL do servidor.');
+            throw new Error(tt('api_empty_response'));
         }
 
         if (text.trim().startsWith('<')) {
-            throw new Error('Servidor retornou página de erro. Verifique a URL.');
+            throw new Error(tt('api_error_page'));
         }
 
         let data: AuthResponse;
         try {
             data = JSON.parse(text);
         } catch {
-            throw new Error('Resposta inválida do servidor (não é JSON)');
+            throw new Error(tt('api_not_json'));
         }
 
         if (data.user_info && data.user_info.auth === 0) {
-            throw new Error('Usuário ou senha incorretos');
+            throw new Error(tt('api_bad_credentials'));
         }
 
         if (!data.user_info) {
-            throw new Error('Resposta inválida do servidor');
+            throw new Error(tt('api_invalid_response2'));
         }
 
         return data;
@@ -350,18 +351,18 @@ class XtreamAPI {
                 }
             }
 
-            if (cancelar?.aborted) throw new Error(AUTENTICACAO_CANCELADA);
+            if (cancelar?.aborted) throw new Error(AUTENTICACAO_CANCELADA());
             throw lastError;
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : '';
             const name = error instanceof Error ? error.name : '';
 
             if (name === 'AbortError') {
-                throw new Error('Tempo esgotado. O servidor demorou muito para responder.');
+                throw new Error(tt('api_timeout'));
             }
 
             if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
-                throw new Error('Erro de conexão. Verifique sua internet e a URL do servidor.');
+                throw new Error(tt('api_conn_error'));
             }
 
             throw error;

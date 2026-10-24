@@ -75,7 +75,7 @@ describe('api.authenticate com sinal de cancelamento', () => {
         // Sem andar o relógio até o prazo: o desfecho vem do cancelamento
         await vi.waitFor(() => expect(estado.feito).toBe(true));
         expect(pedidos[0].signal.aborted).toBe(true);
-        expect((estado.erro as Error).message).toBe(AUTENTICACAO_CANCELADA);
+        expect((estado.erro as Error).message).toBe(AUTENTICACAO_CANCELADA());
         expect(pedidos).toHaveLength(1);
         // Nenhum cronômetro sobrou (o prazo de 15 s foi desarmado)
         expect(vi.getTimerCount()).toBe(0);
@@ -108,7 +108,7 @@ describe('api.authenticate com sinal de cancelamento', () => {
         pedidos[0].responder(RESPOSTA_OK);
         await vi.waitFor(() => expect(estado.feito).toBe(true));
 
-        expect((estado.erro as Error).message).toBe(AUTENTICACAO_CANCELADA);
+        expect((estado.erro as Error).message).toBe(AUTENTICACAO_CANCELADA());
         expect(api.getBaseUrl()).toBe(antes);
         expect(pedidos).toHaveLength(1);
         expect(vi.getTimerCount()).toBe(0);
@@ -121,7 +121,7 @@ describe('api.authenticate com sinal de cancelamento', () => {
         const estado = acompanhar(api.authenticate('http://provedor.invalid:8080', 'u', 'p', cancelar.signal));
         await vi.waitFor(() => expect(estado.feito).toBe(true));
 
-        expect((estado.erro as Error).message).toBe(AUTENTICACAO_CANCELADA);
+        expect((estado.erro as Error).message).toBe(AUTENTICACAO_CANCELADA());
         expect(pedidos).toHaveLength(0);
         expect(vi.getTimerCount()).toBe(0);
     });
@@ -148,7 +148,7 @@ describe('api.authenticate com sinal de cancelamento', () => {
         await vi.waitFor(() => expect(estado.feito).toBe(true));
 
         expect(pedidos[0].signal.aborted).toBe(true);
-        expect((estado.erro as Error).message).toBe(AUTENTICACAO_CANCELADA);
+        expect((estado.erro as Error).message).toBe(AUTENTICACAO_CANCELADA());
         expect(remove).toHaveBeenCalledTimes(2);
         expect(remove).toHaveBeenLastCalledWith('abort', add.mock.calls[1][1]);
         expect(vi.getTimerCount()).toBe(0);

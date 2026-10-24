@@ -9,6 +9,7 @@
 // AJUSTES; a conta se recupera fazendo login de novo.
 
 import { keysOfGroup } from './dataReset';
+import { tt } from '../i18n';
 
 const PREFIX = 'neostream_';
 export const BACKUP_FORMAT = 'neostream-tv-prefs-1';
@@ -70,10 +71,10 @@ export function restoreBackup(json: string): RestoreResult {
     try {
         payload = JSON.parse(json) as BackupPayload;
     } catch {
-        return { ok: false, applied: 0, error: 'Não é um backup válido.' };
+        return { ok: false, applied: 0, error: tt('backup_invalid') };
     }
     if (payload?.f !== BACKUP_FORMAT || !payload.d || typeof payload.d !== 'object') {
-        return { ok: false, applied: 0, error: 'Formato desconhecido.' };
+        return { ok: false, applied: 0, error: tt('backup_unknown_format') };
     }
     let applied = 0;
     for (const [shortKey, value] of Object.entries(payload.d)) {

@@ -3,6 +3,8 @@
 // Três comportamentos que hoje eram fixos no código e que dividem opinião:
 // emendar o próximo episódio, retomar de onde parou, e quanto buffer segurar.
 
+import { tt } from '../i18n';
+
 const KEY = 'neostream_playback_prefs';
 
 export type BufferProfile = 'economico' | 'equilibrado' | 'generoso';
@@ -10,9 +12,9 @@ export type BufferProfile = 'economico' | 'equilibrado' | 'generoso';
 export const BUFFER_PROFILES: BufferProfile[] = ['economico', 'equilibrado', 'generoso'];
 
 export const BUFFER_LABELS: Record<BufferProfile, string> = {
-    economico: 'Econômico (TV com pouca RAM)',
-    equilibrado: 'Equilibrado',
-    generoso: 'Generoso (rede instável)',
+    get economico() { return tt('buffer_economico'); },
+    get equilibrado() { return tt('buffer_equilibrado'); },
+    get generoso() { return tt('buffer_generoso'); },
 };
 
 export interface PlaybackPrefs {

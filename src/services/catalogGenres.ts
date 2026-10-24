@@ -151,7 +151,31 @@ export function generosDisponiveis(
     return GENEROS.filter(genero => presentes.has(genero.id));
 }
 
+import { tt, type TranslationKey } from '../i18n';
+
+const ROTULO_KEY: Record<string, TranslationKey> = {
+    acao: 'genre_action',
+    aventura: 'genre_adventure',
+    anime: 'genre_anime',
+    animacao: 'genre_animation',
+    comedia: 'genre_comedy',
+    crime: 'genre_crime',
+    documentario: 'genre_doc',
+    drama: 'genre_drama',
+    ficcao: 'genre_scifi',
+    fantasia: 'genre_fantasy',
+    guerra: 'genre_war',
+    infantil: 'genre_kids',
+    musica: 'genre_music',
+    romance: 'genre_romance',
+    suspense: 'genre_thriller',
+    terror: 'genre_horror',
+    novela: 'genre_telenovela',
+};
+
 /** Rótulo do gênero pelo id (para o botão da barra de filtros). */
 export function rotuloDoGenero(id: string): string {
+    const key = ROTULO_KEY[id];
+    if (key) return tt(key);
     return GENEROS.find(genero => genero.id === id)?.rotulo || id;
 }

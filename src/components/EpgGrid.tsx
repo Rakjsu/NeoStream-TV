@@ -21,6 +21,8 @@ import {
     instanteNaJanela, moverJanela as moverJanelaPura, podarPorAlcance,
 } from '../services/epgGridLayout';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
+import { getLocale } from '../i18n';
 import type { LiveStream } from '../types';
 import './EpgGrid.css';
 
@@ -58,6 +60,7 @@ interface EpgGridProps {
 export function EpgGrid({
     channels, onClose, onPlay, onPlayArchive, onToggleReminder, isReminded, initialChannelId,
 }: EpgGridProps) {
+    const { t } = useTranslation();
     // Date.now() no render viola react-hooks/purity — congelado em state e
     // atualizado por tick (a linha do AGORA precisa andar sozinha)
     const [nowMs, setNowMs] = useState(() => Date.now());
@@ -229,7 +232,7 @@ export function EpgGrid({
         if (focado.end <= nowMs) {
             const temArquivo = Number(canalAtual.tv_archive) > 0 && focado.hasArchive !== false;
             if (!temArquivo) {
-                setAviso('Este canal não guarda programas passados.');
+                setAviso(t('epg_no_archive'));
                 return;
             }
             const todos = programasDoCanal || [];
@@ -240,7 +243,7 @@ export function EpgGrid({
         // Futuro: lembrete
         const ativo = onToggleReminder(canalAtual, focado);
         setLembreteTick(t => t + 1);
-        setAviso(ativo ? '⏰ Lembrete criado.' : 'Lembrete removido.');
+        setAviso(ativo ? t('epg_reminder_on') : t('epg_reminder_off'));
     };
 
     useTVNavigation({
@@ -270,14 +273,14 @@ export function EpgGrid({
     const linhasVisiveis = channels.slice(primeiraLinha, primeiraLinha + LINHAS_VISIVEIS);
 
     const rotuloDia = new Date(janelaInicio).toDateString() === new Date(nowMs).toDateString()
-        ? 'Hoje'
-        : new Date(janelaInicio).toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: '2-digit' });
+        ? t('epg_today')
+        : new Date(janelaInicio).toLocaleDateString(getLocale(), { weekday: 'short', day: '2-digit', month: '2-digit' });
 
     return (
         <div className="epgrid-overlay">
             <div className="epgrid-panel">
                 <div className="epgrid-header">
-                    <h2 className="epgrid-title">📊 Guia de programação</h2>
+                    <h2 className="epgrid-title">{t('epg_title')}</h2>
                     <span className="epgrid-day">{rotuloDia}</span>
                 </div>
 
@@ -323,7 +326,7 @@ export function EpgGrid({
                                 <div className="epgrid-track">
                                     {programas.length === 0 && (
                                         <div className="epgrid-empty">
-                                            {buscando || !jaVeio ? 'Carregando…' : 'Sem programação'}
+                                            {buscando || !jaVeio ? t('common_loading') : t('epg_none')}
                                         </div>
                                     )}
                                     {programas.map((programa, pIndex) => {
@@ -374,20 +377,20 @@ export function EpgGrid({
                         </>
                     ) : (
                         <span className="epgrid-detail-title">
-                            {canalAtual ? canalAtual.name : 'Nenhum canal'}
+                            {canalAtual ? canalAtual.name : t('epg_no_channel')}
                         </span>
                     )}
                     {aviso && <span className="epgrid-aviso">{aviso}</span>}
                 </div>
 
                 <div className="epgrid-hints">
-                    <span>OK: no ar assiste · passado abre o arquivo · futuro cria lembrete</span>
-                    <span>CH± Página</span>
-                    <span className="hint-red">🔴 −1h</span>
-                    <span className="hint-green">🟢 +1h</span>
-                    <span className="hint-yellow">🟡 Agora</span>
-                    <span className="hint-blue">🔵 Assistir</span>
-                    <span>Voltar fecha</span>
+                    <span>{t('epg_hint_ok')}</span>
+                    <span>{t('hint_ch_page')}</span>
+                    <span className="hint-red">{t('epg_hint_red')}</span>
+                    <span className="hint-green">{t('epg_hint_green')}</span>
+                    <span className="hint-yellow">{t('epg_hint_yellow')}</span>
+                    <span className="hint-blue">{t('epg_hint_blue')}</span>
+                    <span>{t('epg_hint_back')}</span>
                 </div>
             </div>
         </div>

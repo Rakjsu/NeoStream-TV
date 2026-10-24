@@ -5,12 +5,13 @@ import { api } from '../services/api';
 import { storage } from '../services/storage';
 import { searchMovieByName, searchSeriesByName, fetchMovieDetails, fetchSeriesDetails, getImageUrl, formatGenres, type TMDBMovieDetails, type TMDBSeriesDetails, IMAGE_SIZE_FICHA, IMAGE_SIZE_FUNDO } from '../services/tmdb';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import { fetchColecao } from '../services/tmdb';
 import { indexarCatalogo, cruzarComCatalogo } from '../services/tmdbMatch';
 import { abrirExterno, podeAbrirExterno } from '../services/tizenApp';
 import { TrailerOverlay } from './TrailerOverlay';
 import { ImagemPreguicosa } from './ImagemPreguicosa';
-import { extrairChaveYoutube } from '../services/trailer';
+import { extrairChaveYoutube } from '../services/youtubeKey';
 import { progressService } from '../services/progressService';
 import { DURACAO_DO_AVISO_DE_SERIE_MS } from '../services/seriesPlayback';
 import type { Episode, SeriesInfo } from '../types';
@@ -102,6 +103,7 @@ export function ContentDetailModal({
     catalogoFilmes,
     onOpenRelated
 }: ContentDetailModalProps) {
+    const { t } = useTranslation();
     const [seriesInfo, setSeriesInfo] = useState<SeriesInfo | null>(null);
     const [selectedSeason, setSelectedSeason] = useState(1);
     const [selectedEpisode, setSelectedEpisode] = useState(1);
@@ -663,7 +665,7 @@ export function ContentDetailModal({
         ];
         const isValidTitle = cleanTitle.length > 0 && !genericPatterns.some(p => p.test(cleanTitle));
 
-        return isValidTitle ? cleanTitle : `Episódio ${epNum}`;
+        return isValidTitle ? cleanTitle : t('cdm_episode_fallback', { n: epNum });
     };
     if (!isOpen) return null;
 
@@ -681,7 +683,7 @@ export function ContentDetailModal({
     const certification = (tmdbData as { certification?: string } | null)?.certification || null;
 
     // Use TMDB data if available, fallback to IPTV data
-    const overview = tmdbData?.overview || contentData.plot || 'Sem descrição disponível.';
+    const overview = tmdbData?.overview || contentData.plot || t('cdm_no_desc');
     const rating = tmdbData?.vote_average ? tmdbData.vote_average.toFixed(1) : contentData.rating;
     const genres = tmdbData?.genres ? formatGenres(tmdbData.genres) : contentData.genre;
     const backdropUrl = tmdbData?.backdrop_path ? getImageUrl(tmdbData.backdrop_path, IMAGE_SIZE_FUNDO) : null;
@@ -736,12 +738,12 @@ export function ContentDetailModal({
                             </span>
                         )}
                         <span className={`meta-badge ${contentType === 'series' ? 'type-badge-series' : 'type-badge-movie'}`}>
-                            {contentType === 'series' ? 'Série' : 'Filme'}
+                            {contentType === 'series' ? t('type_series') : t('type_movie')}
                         </span>
                         {runtimeMinutes > 0 && (
                             <span className="meta-badge">
                                 {formatRuntime(runtimeMinutes)}
-                                {contentType === 'movie' && ` · termina ${endsAtLabel(runtimeMinutes)}`}
+                                {contentType === 'movie' && t('cdm_ends_at', { time: endsAtLabel(runtimeMinutes) })}
                             </span>
                         )}
                         {certification && (
@@ -749,7 +751,7 @@ export function ContentDetailModal({
                         )}
                         {contentType === 'series' && seasons.length > 0 && (
                             <span className="meta-badge season-badge">
-                                {seasons.length} {seasons.length > 1 ? 'Temporadas' : 'Temporada'}
+                                {seasons.length} {seasons.length > 1 ? t('cdm_seasons') : t('cdm_season')}
                             </span>
                         )}
                     </div>
@@ -773,7 +775,7 @@ export function ContentDetailModal({
                         <p ref={sinopseRef} className={`modal-overview ${sinopseAberta ? 'aberta' : ''}`}>{overview}</p>
                         {temMaisSinopse && (
                             <span className="modal-overview-mais">
-                                {sinopseAberta ? '▴ Recolher sinopse' : '▾ Ler sinopse inteira'}
+                                {sinopseAberta ? t('cdm_synopsis_less') : t('cdm_synopsis_more')}
                             </span>
                         )}
                     </div>
@@ -782,7 +784,7 @@ export function ContentDetailModal({
                         nota em `elenco`. Sem `<button>`, sem zona de D-pad. */}
                     {elencoVisivel.length > 0 && (
                         <div className="modal-cast">
-                            <span className="modal-cast-label">🎭 Elenco</span>
+                            <span className="modal-cast-label">{t('cdm_cast')}</span>
                             <div className="cast-row">
                                 {elencoVisivel.map(pessoa => (
                                     <div className="cast-card" key={pessoa.id} title={pessoa.name}>
@@ -915,7 +917,7 @@ export function ContentDetailModal({
                     {/* Versões do mesmo título (item 21) */}
                     {versions && versions.length > 1 && onSelectVersion && (
                         <div className="modal-versions">
-                            <span className="modal-versions-label">Versões:</span>
+                            <span className="modal-versions-label">{t('cdm_versions')}</span>
                             {versions.map((version, index) => (
                                 <button
                                     key={version.id}
@@ -942,8 +944,8 @@ export function ContentDetailModal({
                         >
                             <span className="icon">▶</span>
                             {contentType === 'series'
-                                ? `Assistir T${selectedSeason} E${selectedEpisode}`
-                                : 'Assistir Filme'
+                                ? t('cdm_watch_ep', { s: selectedSeason, e: selectedEpisode })
+                                : t('cdm_watch_movie')
                             }
                         </button>
 
@@ -956,7 +958,7 @@ export function ContentDetailModal({
                             }}
                         >
                             {storage.isInWatchLater(contentId, contentType) ? '✓' : '+'}
-                            {storage.isInWatchLater(contentId, contentType) ? 'Salvo' : 'Assistir Depois'}
+                            {storage.isInWatchLater(contentId, contentType) ? t('cdm_saved') : t('cdm_watch_later')}
                         </button>
 
                         {/* Favorite Button */}
@@ -966,7 +968,7 @@ export function ContentDetailModal({
                                 storage.toggleFavorite(buildSavedItem());
                                 setRefresh(r => r + 1);
                             }}
-                            title={storage.isFavorite(contentId, contentType) ? 'Remover dos Favoritos' : 'Adicionar aos Favoritos'}
+                            title={storage.isFavorite(contentId, contentType) ? t('cdm_fav_remove') : t('cdm_fav_add')}
                         >
                             {storage.isFavorite(contentId, contentType) ? '♥' : '♡'}
                         </button>
@@ -994,7 +996,7 @@ export function ContentDetailModal({
                                 }}
                             >
                                 <span className="icon">🎬</span>
-                                <span>{naTv ? 'Trailer (sai do app)' : 'Trailer'}</span>
+                                <span>{naTv ? t('cdm_trailer_tv') : t('cdm_trailer')}</span>
                             </button>
                         )}
                     </div>

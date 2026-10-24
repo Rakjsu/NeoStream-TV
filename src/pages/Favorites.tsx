@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { storage, type FavoriteItem } from '../services/storage';
 import { api } from '../services/api';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import { useFocusZone } from '../contexts/FocusContext';
 import { kidsFilter } from '../services/kidsFilter';
 import { ContentDetailModal } from '../components/ContentDetailModal';
@@ -18,6 +19,7 @@ interface FavoritesProps {
 }
 
 export function Favorites({ onNavigate }: FavoritesProps) {
+    const { t } = useTranslation();
     const [items, setItems] = useState<FavoriteItem[]>(() => storage.getFavorites());
     const [activeTab, setActiveTab] = useState<'all' | 'movies' | 'series' | 'channels'>('all');
     const [removingId, setRemovingId] = useState<string | null>(null);
@@ -195,9 +197,9 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                         <div className="empty-icon">👶</div>
                         <div className="empty-icon-glow" />
                     </div>
-                    <h2 className="empty-title">Indisponível no perfil Kids</h2>
+                    <h2 className="empty-title">{t('common_kids_blocked')}</h2>
                     <p className="empty-text">
-                        Troque para um perfil adulto para acessar esta página.
+                        {t('common_kids_switch')}
                     </p>
                 </div>
             </div>
@@ -214,25 +216,26 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                         <div className="empty-icon">♥</div>
                         <div className="empty-icon-glow" />
                     </div>
-                    <h2 className="empty-title">Nenhum favorito ainda</h2>
+                    <h2 className="empty-title">{t('fav_empty_title')}</h2>
                     <p className="empty-text">
-                        Seus filmes, séries e canais favoritos aparecerão aqui.
-                        Clique no <strong>coração</strong> em qualquer conteúdo para adicionar aos favoritos.
+                        {t('fav_empty_text_a')}
+                        <strong>{t('fav_empty_heart')}</strong>
+                        {t('fav_empty_text_b')}
                     </p>
                     <div className="empty-suggestions">
                         <button
                             className={`suggestion-btn ${emptyFocusIndex === 0 ? 'tv-focused' : ''}`}
                             onClick={() => onNavigate?.('movies')}
                         >
-                            <span>Filmes</span>
-                            <span>Explorar Filmes</span>
+                            <span>{t('common_movies')}</span>
+                            <span>{t('fav_explore_movies')}</span>
                         </button>
                         <button
                             className={`suggestion-btn ${emptyFocusIndex === 1 ? 'tv-focused' : ''}`}
                             onClick={() => onNavigate?.('series')}
                         >
-                            <span>Séries</span>
-                            <span>Explorar Séries</span>
+                            <span>{t('common_series')}</span>
+                            <span>{t('fav_explore_series')}</span>
                         </button>
                     </div>
                 </div>
@@ -249,8 +252,8 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                 <div className="header-title">
                     <div className="title-icon">♥</div>
                     <div>
-                        <h1>Meus Favoritos</h1>
-                        <p className="subtitle">{items.length} itens salvos</p>
+                        <h1>{t('fav_title')}</h1>
+                        <p className="subtitle">{t('fav_saved_count', { n: items.length })}</p>
                     </div>
                 </div>
                 {items.length > 0 && (
@@ -258,8 +261,8 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                         className={`clear-btn ${focusArea === 'tabs' && focusedTabIndex >= tabs.length ? 'tv-focused' : ''} ${clearArmed ? 'armed' : ''}`}
                         onClick={clearAll}
                     >
-                        <span>Excluir</span>
-                        <span>{clearArmed ? 'OK de novo apaga' : 'Limpar Tudo'}</span>
+                        <span>{t('common_delete')}</span>
+                        <span>{clearArmed ? t('fav_clear_armed') : t('fav_clear_all')}</span>
                     </button>
                 )}
             </header>
@@ -270,28 +273,28 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                     className={`tab ${activeTab === 'all' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 0 ? 'tv-focused' : ''}`}
                     onClick={() => setActiveTab('all')}
                 >
-                    <span>Todos</span>
+                    <span>{t('common_all')}</span>
                     <span className="tab-count">{items.length}</span>
                 </button>
                 <button
                     className={`tab ${activeTab === 'movies' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 1 ? 'tv-focused' : ''}`}
                     onClick={() => setActiveTab('movies')}
                 >
-                    <span>Filmes</span>
+                    <span>{t('common_movies')}</span>
                     <span className="tab-count">{movies.length}</span>
                 </button>
                 <button
                     className={`tab ${activeTab === 'series' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 2 ? 'tv-focused' : ''}`}
                     onClick={() => setActiveTab('series')}
                 >
-                    <span>Séries</span>
+                    <span>{t('common_series')}</span>
                     <span className="tab-count">{series.length}</span>
                 </button>
                 <button
                     className={`tab ${activeTab === 'channels' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 3 ? 'tv-focused' : ''}`}
                     onClick={() => setActiveTab('channels')}
                 >
-                    <span>Canais</span>
+                    <span>{t('home_channels')}</span>
                     <span className="tab-count">{channels.length}</span>
                 </button>
             </div>
@@ -310,11 +313,11 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                                 <img decoding="async" src={item.poster} alt={item.title} />
                             ) : (
                                 <div className="poster-placeholder">
-                                    {item.type === 'movie' ? 'Filme' : item.type === 'series' ? 'Série' : 'Canal'}
+                                    {item.type === 'movie' ? t('type_movie') : item.type === 'series' ? t('type_series') : t('type_channel')}
                                 </div>
                             )}
                             <div className="card-type">
-                                {item.type === 'movie' ? 'Filme' : item.type === 'series' ? 'Série' : 'Canal'}
+                                {item.type === 'movie' ? t('type_movie') : item.type === 'series' ? t('type_series') : t('type_channel')}
                             </div>
                             <div className="card-overlay">
                                 <button
@@ -324,7 +327,7 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                                         removeItem(item);
                                     }}
                                 >
-                                    Excluir
+                                    {t('common_delete')}
                                 </button>
                             </div>
                         </div>
@@ -341,10 +344,10 @@ export function Favorites({ onNavigate }: FavoritesProps) {
 
             {/* Footer Hints */}
             <div className="favorites-hints">
-                <span>Setas Navegar</span>
-                <span>OK Selecionar</span>
-                <span className="hint-red">🔴 Remover</span>
-                <span>Voltar</span>
+                <span>{t('hint_arrows_nav')}</span>
+                <span>{t('hint_ok_select')}</span>
+                <span className="hint-red">{t('fav_hint_remove')}</span>
+                <span>{t('hint_back_plain')}</span>
             </div>
 
             {/* Content Detail Modal */}

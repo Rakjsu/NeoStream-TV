@@ -3,6 +3,7 @@
 // TV: tvFocused destaca o botão; ref.open() expande e foca o input (abre o IME)
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { tt } from '../i18n';
 import './AnimatedSearchBar.css';
 
 export interface AnimatedSearchBarHandle {
@@ -18,7 +19,7 @@ interface AnimatedSearchBarProps {
 }
 
 export const AnimatedSearchBar = forwardRef<AnimatedSearchBarHandle, AnimatedSearchBarProps>(
-    function AnimatedSearchBar({ value, onChange, placeholder = 'Buscar...', tvFocused = false }, ref) {
+    function AnimatedSearchBar({ value, onChange, placeholder = tt('search_placeholder'), tvFocused = false }, ref) {
         const [isExpanded, setIsExpanded] = useState(false);
         const [isFocused, setIsFocused] = useState(false);
         const inputRef = useRef<HTMLInputElement>(null);

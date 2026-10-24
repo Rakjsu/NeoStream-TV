@@ -4,17 +4,12 @@
 import { useState, useMemo } from 'react';
 import { usageStats, type UsageKind } from '../services/usageStats';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import './WrappedOverlay.css';
 
 interface WrappedOverlayProps {
     onClose: () => void;
 }
-
-const KIND_LABELS: Record<UsageKind, string> = {
-    live: '📺 TV ao vivo',
-    movie: '🎬 Filmes',
-    series: '🎞 Séries',
-};
 
 function formatHours(seconds: number): string {
     const hours = Math.floor(seconds / 3600);
@@ -24,6 +19,12 @@ function formatHours(seconds: number): string {
 }
 
 export function WrappedOverlay({ onClose }: WrappedOverlayProps) {
+    const { t } = useTranslation();
+    const KIND_LABELS: Record<UsageKind, string> = {
+        live: t('wrapped_kind_live'),
+        movie: t('wrapped_kind_movie'),
+        series: t('wrapped_kind_series'),
+    };
     const [slide, setSlide] = useState(0);
     const summary = useMemo(() => usageStats.summary(), []);
 
@@ -36,28 +37,28 @@ export function WrappedOverlay({ onClose }: WrappedOverlayProps) {
     const slides = useMemo(() => {
         const list: Array<{ title: string; big: string; sub: string }> = [
             {
-                title: 'Sua retrospectiva',
+                title: t('wrapped_title_recap'),
                 big: formatHours(summary.totalSeconds),
-                sub: 'assistidos nos últimos 60 dias',
+                sub: t('wrapped_sub_recap'),
             },
         ];
         if (favoriteKind && favoriteKind[1] > 0) {
             list.push({
-                title: 'Seu formato favorito',
+                title: t('wrapped_title_format'),
                 big: KIND_LABELS[favoriteKind[0]],
-                sub: `${formatHours(favoriteKind[1])} no período`,
+                sub: t('wrapped_sub_format', { h: formatHours(favoriteKind[1]) }),
             });
         }
         if (summary.topItems.length > 0) {
             const top = summary.topItems[0];
             list.push({
-                title: 'Campeão de tela',
+                title: t('wrapped_title_top'),
                 big: top.name,
-                sub: `${formatHours(top.seconds)} — impossível largar`,
+                sub: t('wrapped_sub_top', { h: formatHours(top.seconds) }),
             });
         }
         return list;
-    }, [summary, favoriteKind]);
+    }, [summary, favoriteKind, KIND_LABELS, t]);
 
     useTVNavigation({
         onNavigate: (direction) => {
@@ -85,7 +86,7 @@ export function WrappedOverlay({ onClose }: WrappedOverlayProps) {
                         <span key={index} className={`wrapped-dot ${index === slide ? 'active' : ''}`} />
                     ))}
                 </div>
-                <div className="wrapped-hint">←→ Navegar · OK Avançar · Voltar Fechar</div>
+                <div className="wrapped-hint">{t('wrapped_hint')}</div>
             </div>
         </div>
     );

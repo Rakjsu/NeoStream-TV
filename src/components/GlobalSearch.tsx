@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { loadSearchCatalog, searchIn, type SearchCatalogData } from '../services/searchCatalog';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import { useWatchSession } from '../hooks/useWatchSession';
 import { api } from '../services/api';
 import { zapHistory } from '../services/liveExtras';
@@ -29,6 +30,7 @@ type ResultItem =
 const GROUP_LIMIT = 8;
 
 export function GlobalSearch({ onClose }: GlobalSearchProps) {
+    const { t } = useTranslation();
     const [query, setQuery] = useState('');
     const [catalog, setCatalog] = useState<SearchCatalogData | null>(null);
     const [loadError, setLoadError] = useState(false);
@@ -148,9 +150,9 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
     });
 
     const resultLabel = (item: ResultItem): { icon: string; name: string; type: string } => {
-        if (item.kind === 'channel') return { icon: '📺', name: item.channel.name, type: 'Canal' };
-        if (item.kind === 'movie') return { icon: '🎬', name: item.movie.name, type: 'Filme' };
-        return { icon: '🎞', name: item.series.name, type: 'Série' };
+        if (item.kind === 'channel') return { icon: '📺', name: item.channel.name, type: t('type_channel') };
+        if (item.kind === 'movie') return { icon: '🎬', name: item.movie.name, type: t('type_movie') };
+        return { icon: '🎞', name: item.series.name, type: t('type_series') };
     };
 
     return (
@@ -166,7 +168,7 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
                             setQuery(e.target.value);
                             setFocusedIndex(-1);
                         }}
-                        placeholder="Buscar canais, filmes e séries..."
+                        placeholder={t('gs_placeholder')}
                         autoComplete="off"
                         spellCheck={false}
                         onBlur={() => { lastInputBlurAtRef.current = Date.now(); }}
@@ -176,16 +178,16 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
 
                 <div ref={listRef} className="gs-results">
                     {loadError && (
-                        <div className="gs-empty">Erro ao carregar o catálogo. Volte e tente de novo.</div>
+                        <div className="gs-empty">{t('gs_error')}</div>
                     )}
                     {!loadError && !catalog && (
-                        <div className="gs-empty">Carregando catálogo...</div>
+                        <div className="gs-empty">{t('gs_loading')}</div>
                     )}
                     {catalog && query.trim().length < 2 && (
-                        <div className="gs-empty">Digite pelo menos 2 letras.</div>
+                        <div className="gs-empty">{t('gs_min_chars')}</div>
                     )}
                     {catalog && query.trim().length >= 2 && results.length === 0 && (
-                        <div className="gs-empty">Nada encontrado para "{query}".</div>
+                        <div className="gs-empty">{t('gs_none', { q: query })}</div>
                     )}
                     {results.map((item, index) => {
                         const label = resultLabel(item);
@@ -204,9 +206,9 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
                 </div>
 
                 <div className="gs-hints">
-                    <span>↑↓ Navegar</span>
-                    <span>OK Abrir</span>
-                    <span>← Fechar</span>
+                    <span>{t('hint_nav2')}</span>
+                    <span>{t('hint_ok_open')}</span>
+                    <span>{t('hint_close')}</span>
                 </div>
             </div>
 

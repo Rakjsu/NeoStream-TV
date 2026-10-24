@@ -1,5 +1,5 @@
 // Profile Service for NeoStream TV
-import type { Profile, ProfilesData, CreateProfileData, UpdateProfileData } from '../types/profile';
+import type { Profile, ProfilesData, CreateProfileData, UpdateProfileData } from '../types/profiles';
 import { purgeProfileData } from './profileScope';
 import { writeJson, writeRaw, removeKey } from './safeStorage';
 import { criarTravaDePin, estaVazia, normalizarEstado, SEM_TRAVA, type EstadoTrava, type TravaDePin, type TravaVisivel } from './pinLock';

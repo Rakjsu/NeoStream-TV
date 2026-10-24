@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import type { VODStream, Series } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import { useFocusZone } from '../contexts/FocusContext';
 import { progressService, type MovieProgress, type SeriesProgress } from '../services/progressService';
 import { storage } from '../services/storage';
@@ -45,6 +46,7 @@ interface ContentCounts {
 }
 
 export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
+    const { t } = useTranslation();
     const { focusZone, setFocusZone } = useFocusZone();
     const [loading, setLoading] = useState(true);
     const [counts, setCounts] = useState<ContentCounts>({ live: 0, vod: 0, series: 0 });
@@ -251,7 +253,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 console.error('Failed to fetch data:', error);
                 // Mostrar "0 canais / 0 filmes / 0 séries" sem uma palavra
                 // fazia o usuário concluir que a lista dele foi cancelada
-                setLoadError(error instanceof Error ? error.message : 'Não foi possível falar com o provedor.');
+                setLoadError(error instanceof Error ? error.message : t('home_load_error'));
             } finally {
                 setLoading(false);
             }
@@ -535,12 +537,12 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 <div className={`home-expiry ${expiryWarning < 0 ? 'expired' : ''}`}>
                     <span className="home-expiry-text">
                         {expiryWarning < 0
-                            ? '⚠️ Sua lista venceu — fale com o provedor pra renovar.'
+                            ? t('home_expiry_expired')
                             : expiryWarning === 0
-                                ? '⚠️ Sua lista vence hoje.'
-                                : `⚠️ Sua lista vence em ${expiryWarning} dia(s).`}
+                                ? t('home_expiry_today')
+                                : t('home_expiry_days', { n: expiryWarning })}
                     </span>
-                    <span className="home-expiry-hint">🔴 lembrar depois</span>
+                    <span className="home-expiry-hint">{t('home_expiry_snooze')}</span>
                 </div>
             )}
 
@@ -552,7 +554,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 <div className="home-load-error">
                     <span className="home-load-error-text">⚠️ {loadError}</span>
                     <span className="home-load-error-hint">
-                        {expiryWarning !== null ? '🔴 adia o aviso acima' : '🔴 tentar de novo'}
+                        {expiryWarning !== null ? t('home_red_snooze') : t('home_red_retry')}
                     </span>
                 </div>
             )}
@@ -565,7 +567,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 >
                     <div className="stat-icon">📺</div>
                     <div className="stat-value">{loading ? '...' : counts.live.toLocaleString()}</div>
-                    <div className="stat-label">Canais</div>
+                    <div className="stat-label">{t('home_channels')}</div>
                 </button>
 
                 <button
@@ -574,7 +576,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 >
                     <div className="stat-icon">🎬</div>
                     <div className="stat-value">{loading ? '...' : counts.vod.toLocaleString()}</div>
-                    <div className="stat-label">Filmes</div>
+                    <div className="stat-label">{t('common_movies')}</div>
                 </button>
 
                 <button
@@ -583,7 +585,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 >
                     <div className="stat-icon">📺</div>
                     <div className="stat-value">{loading ? '...' : counts.series.toLocaleString()}</div>
-                    <div className="stat-label">Séries</div>
+                    <div className="stat-label">{t('common_series')}</div>
                 </button>
             </section>
 
@@ -593,9 +595,9 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {continueItems.length > 0 && (
                     <div id="home-continue" className="content-section">
                         <h2 className="section-title">
-                            ▶ Continuar Assistindo
+                            {t('home_continue')}
                             {focusedSection === sectionIndex('continue') && expiryWarning === null && !loadError && (
-                                <span className="section-hint">🔴 tirar da fileira</span>
+                                <span className="section-hint">{t('home_remove_hint')}</span>
                             )}
                         </h2>
                         <div className="content-row">
@@ -641,7 +643,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     lista de foco vira uma fileira que o D-pad nunca alcança. */}
                 {seedRow && (
                     <div id="home-seed" className="content-section">
-                        <h2 className="section-title">▶ Porque você assistiu {seedRow.nome}</h2>
+                        <h2 className="section-title">{t('home_because', { name: seedRow.nome })}</h2>
                         <div className="content-row">
                             {seedRow.itens.map((item, index) => (
                                 <button
@@ -666,7 +668,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Top 10 (item 33) */}
                 {topItems.length > 0 && (
                     <div id="home-top10" className="content-section">
-                        <h2 className="section-title">🔟 Top 10 do seu aparelho</h2>
+                        <h2 className="section-title">{t('home_top10')}</h2>
                         <div className="content-row">
                             {topItems.map((item, index) => (
                                 <button
@@ -692,7 +694,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Novos episódios de séries seguidas */}
                 {newEpisodesList.length > 0 && (
                     <div id="home-newepisodes" className="content-section">
-                        <h2 className="section-title">🆕 Novos Episódios</h2>
+                        <h2 className="section-title">{t('home_new_episodes')}</h2>
                         <div className="content-row">
                             {newEpisodesList.map((s, index) => (
                                 <button
@@ -709,7 +711,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                             alt={s.name}
                                             onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">📺</text></svg>'; }}
                                         />
-                                        <div className="new-episodes-badge">NOVOS EPS</div>
+                                        <div className="new-episodes-badge">{t('home_new_eps_badge')}</div>
                                     </div>
                                     <div className="card-title">{s.name}</div>
                                 </button>
@@ -723,7 +725,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     "Recomendados Para Você" com uma fileira vazia embaixo. */}
                 {recommendations.length > 0 && (
                 <div id="home-recommendations" className="content-section">
-                    <h2 className="section-title">💡 Recomendados Para Você</h2>
+                    <h2 className="section-title">{t('home_recommended')}</h2>
                     <div className="content-row">
                         {recommendations.map((item, index) => (
                             <button
@@ -748,7 +750,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Recent Series — condicional IGUAL ao array `sections` */}
                 {recentSeries.length > 0 && (
                 <div id="home-series" className="content-section">
-                    <h2 className="section-title">🆕 Séries Recentes</h2>
+                    <h2 className="section-title">{t('home_recent_series')}</h2>
                     <div className="content-row">
                         {recentSeries.map((series, index) => (
                             <button
@@ -774,7 +776,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Recent Movies — condicional IGUAL ao array `sections` */}
                 {recentMovies.length > 0 && (
                 <div id="home-movies" className="content-section">
-                    <h2 className="section-title">🎬 Filmes Recentes</h2>
+                    <h2 className="section-title">{t('home_recent_movies')}</h2>
                     <div className="content-row">
                         {recentMovies.map((movie, index) => (
                             <button
@@ -799,49 +801,49 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
 
             {/* Quick Access */}
             <section id="home-quick" className="home-quick-access">
-                <h2 className="section-title">⚡ Acesso Rápido</h2>
+                <h2 className="section-title">{t('home_quick')}</h2>
                 <div className="quick-grid">
                     <button
                         className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 0 ? 'tv-focused' : ''}`}
                         onClick={() => onNavigate?.('live')}
                     >
                         <span className="quick-icon">🔴</span>
-                        <span className="quick-label">TV ao Vivo</span>
+                        <span className="quick-label">{t('common_live')}</span>
                     </button>
                     <button
                         className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 1 ? 'tv-focused' : ''}`}
                         onClick={() => onNavigate?.('movies')}
                     >
                         <span className="quick-icon">🎥</span>
-                        <span className="quick-label">Filmes</span>
+                        <span className="quick-label">{t('common_movies')}</span>
                     </button>
                     <button
                         className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 2 ? 'tv-focused' : ''}`}
                         onClick={() => onNavigate?.('series')}
                     >
                         <span className="quick-icon">📺</span>
-                        <span className="quick-label">Séries</span>
+                        <span className="quick-label">{t('common_series')}</span>
                     </button>
                     <button
                         className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 3 ? 'tv-focused' : ''}`}
                         onClick={() => onNavigate?.('favorites')}
                     >
                         <span className="quick-icon">❤️</span>
-                        <span className="quick-label">Favoritos</span>
+                        <span className="quick-label">{t('common_favorites')}</span>
                     </button>
                     <button
                         className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 4 ? 'tv-focused' : ''}`}
                         onClick={() => onNavigate?.('settings')}
                     >
                         <span className="quick-icon">⚙️</span>
-                        <span className="quick-label">Configurações</span>
+                        <span className="quick-label">{t('sidebar_settings')}</span>
                     </button>
                     <button
                         className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 5 ? 'tv-focused' : ''}`}
                         onClick={surpriseMe}
                     >
                         <span className="quick-icon">🎲</span>
-                        <span className="quick-label">Surpreenda-me</span>
+                        <span className="quick-label">{t('home_surprise')}</span>
                     </button>
                 </div>
             </section>

@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { epgService, type EpgProgram } from '../services/epgService';
 import { collectTodaysEvents, type SportsEvent } from '../services/liveDiscovery';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import type { LiveStream } from '../types';
 import './LivePanels.css';
 
@@ -29,6 +30,7 @@ interface FavoritesNowPanelProps {
 }
 
 export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: FavoritesNowPanelProps) {
+    const { t } = useTranslation();
     const [epgByChannel, setEpgByChannel] = useState<Map<number, EpgProgram | null>>(new Map());
     const [focusedIndex, setFocusedIndex] = useState(0);
     const [reordering, setReordering] = useState(false);
@@ -91,14 +93,14 @@ export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: Favorit
         <div className="live-panel-overlay">
             <div className="live-panel">
                 <div className="live-panel-header">
-                    <h2 className="live-panel-title">⭐ Agora nos favoritos</h2>
+                    <h2 className="live-panel-title">{t('lp_fav_title')}</h2>
                     <button className="live-panel-close" onClick={onClose}>✕</button>
                 </div>
 
                 <div ref={listRef} className="live-panel-list">
                     {visible.length === 0 && (
                         <div className="live-panel-empty">
-                            Nenhum canal favorito ainda. Marque canais com ⭐ na TV ao vivo.
+                            {t('lp_fav_empty')}
                         </div>
                     )}
                     {visible.map((channel, index) => {
@@ -112,7 +114,7 @@ export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: Favorit
                             >
                                 <span className="fav-now-name">{channel.name}</span>
                                 <span className="fav-now-program">
-                                    {program ? program.title : (epgByChannel.has(channel.stream_id) ? 'Sem programação' : 'Carregando…')}
+                                    {program ? program.title : (epgByChannel.has(channel.stream_id) ? t('epg_none') : t('common_loading'))}
                                 </span>
                                 {program && (
                                     <>
@@ -131,11 +133,11 @@ export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: Favorit
                 </div>
 
                 <div className="live-panel-hints">
-                    <span>↑↓ Navegar</span>
-                    <span>CH± Página</span>
-                    <span>OK Assistir</span>
-                    {onMove && <span>{reordering ? '🟡 Sair de reordenar · ←→ Mover' : '🟡 Reordenar'}</span>}
-                    <span>{reordering && onMove ? 'Voltar Fechar' : '← Fechar'}</span>
+                    <span>{t('hint_nav2')}</span>
+                    <span>{t('hint_ch_page')}</span>
+                    <span>{t('hint_ok_watch')}</span>
+                    {onMove && <span>{reordering ? t('lp_hint_reorder_on') : t('lp_hint_reorder_off')}</span>}
+                    <span>{reordering && onMove ? t('lp_hint_back_close') : t('hint_close')}</span>
                 </div>
             </div>
         </div>
@@ -151,6 +153,7 @@ interface SportsPanelProps {
 }
 
 export function SportsPanel({ channels, onClose, onPlay, onRemind, isReminded }: SportsPanelProps) {
+    const { t } = useTranslation();
     const [events, setEvents] = useState<SportsEvent[] | null>(null);
     const [focusedIndex, setFocusedIndex] = useState(0);
     const [remindTick, setRemindTick] = useState(0);
@@ -212,15 +215,15 @@ export function SportsPanel({ channels, onClose, onPlay, onRemind, isReminded }:
         <div className="live-panel-overlay">
             <div className="live-panel">
                 <div className="live-panel-header">
-                    <h2 className="live-panel-title">⚽ Jogos de hoje</h2>
+                    <h2 className="live-panel-title">{t('lp_sports_title')}</h2>
                     <button className="live-panel-close" onClick={onClose}>✕</button>
                 </div>
 
                 <div ref={listRef} className="live-panel-list">
-                    {events === null && <div className="live-panel-empty">Procurando eventos no guia…</div>}
+                    {events === null && <div className="live-panel-empty">{t('lp_sports_loading')}</div>}
                     {events !== null && list.length === 0 && (
                         <div className="live-panel-empty">
-                            Nenhum evento encontrado hoje nos canais de esporte.
+                            {t('lp_sports_empty')}
                         </div>
                     )}
                     {list.map((event, index) => {
@@ -236,20 +239,20 @@ export function SportsPanel({ channels, onClose, onPlay, onRemind, isReminded }:
                                 <span className="sports-title">{event.program.title}</span>
                                 <span className="sports-channel">{event.channel.name}</span>
                                 {live
-                                    ? <span className="sports-badge-live">NO AR</span>
+                                    ? <span className="sports-badge-live">{t('agenda_live')}</span>
                                     : reminded
-                                        ? <span className="sports-badge-bell">🔔 Lembrete</span>
-                                        : <span className="sports-badge-hint">OK lembrar</span>}
+                                        ? <span className="sports-badge-bell">{t('agenda_reminder_on')}</span>
+                                        : <span className="sports-badge-hint">{t('agenda_reminder_set')}</span>}
                             </div>
                         );
                     })}
                 </div>
 
                 <div className="live-panel-hints">
-                    <span>↑↓ Navegar</span>
-                    <span>CH± Página</span>
-                    <span>OK Assistir / Lembrar</span>
-                    <span>← Fechar</span>
+                    <span>{t('hint_nav2')}</span>
+                    <span>{t('hint_ch_page')}</span>
+                    <span>{t('lp_sports_hint_ok')}</span>
+                    <span>{t('hint_close')}</span>
                 </div>
             </div>
         </div>

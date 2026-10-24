@@ -6,6 +6,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import qrcode from 'qrcode-generator';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
+import { tt } from '../i18n';
 import {
     deviceReport,
     getErrorLog,
@@ -28,11 +30,11 @@ function formatWhen(at: number): string {
 
 type DiagAction = 'latency' | 'speed' | 'clear' | 'close';
 
-const ACTION_LABELS: Record<DiagAction, string> = {
-    latency: '📡 Medir latência',
-    speed: '⚡ Testar velocidade',
-    clear: '🧹 Limpar erros',
-    close: '✕ Fechar',
+const ACTION_LABELS: Record<DiagAction, () => string> = {
+    latency: () => tt('diag_action_latency'),
+    speed: () => tt('diag_action_speed'),
+    clear: () => tt('diag_action_clear'),
+    close: () => tt('diag_action_close'),
 };
 
 interface DiagnosticsOverlayProps {
@@ -42,6 +44,7 @@ interface DiagnosticsOverlayProps {
 }
 
 export function DiagnosticsOverlay({ onClose, speedTestStreamId }: DiagnosticsOverlayProps) {
+    const { t } = useTranslation();
     const device = useMemo(() => deviceReport(), []);
     const account = useMemo(() => accountService.get(), []);
     const [errors, setErrors] = useState<LoggedError[]>(() => getErrorLog());
@@ -69,25 +72,25 @@ export function DiagnosticsOverlay({ onClose, speedTestStreamId }: DiagnosticsOv
 
     const runLatency = useCallback(async () => {
         setBusy(true);
-        setLatency('medindo…');
+        setLatency(t('diag_measuring'));
         const result = await measureProviderLatency();
-        setLatency(result.ms != null ? `${result.ms} ms` : (result.error || 'falhou'));
+        setLatency(result.ms != null ? `${result.ms} ms` : (result.error || t('diag_failed')));
         setBusy(false);
-    }, []);
+    }, [t]);
 
     const runSpeed = useCallback(async () => {
         if (speedTestStreamId == null) return;
         setBusy(true);
-        setSpeed('baixando…');
+        setSpeed(t('diag_downloading'));
         const controller = new AbortController();
         speedAbortRef.current = controller;
         const result = await measureProviderSpeed(speedTestStreamId, { signal: controller.signal });
         speedAbortRef.current = null;
         setSpeed(result.mbps != null
             ? `${result.mbps.toFixed(1)} Mbps — ${speedVerdict(result.mbps)}`
-            : (result.error || 'falhou'));
+            : (result.error || t('diag_failed')));
         setBusy(false);
-    }, [speedTestStreamId]);
+    }, [speedTestStreamId, t]);
 
     const run = useCallback((action: DiagAction) => {
         if (busy) return;
@@ -114,41 +117,41 @@ export function DiagnosticsOverlay({ onClose, speedTestStreamId }: DiagnosticsOv
     return (
         <div className="sysov-overlay">
             <div className="sysov-panel">
-                <h2 className="sysov-title">🩺 Diagnóstico</h2>
+                <h2 className="sysov-title">{t('diag_title')}</h2>
 
                 <div className="sysov-grid">
-                    <div className="sysov-row"><span>Versão</span><b>{device.version} ({device.target})</b></div>
-                    <div className="sysov-row"><span>Tela</span><b>{device.screen}</b></div>
+                    <div className="sysov-row"><span>{t('diag_version')}</span><b>{device.version} ({device.target})</b></div>
+                    <div className="sysov-row"><span>{t('diag_screen')}</span><b>{device.screen}</b></div>
                     <div className="sysov-row">
-                        <span>Memória do aparelho</span>
-                        <b>{device.deviceMemoryGb != null ? `${device.deviceMemoryGb} GB` : 'não informada'}</b>
+                        <span>{t('diag_mem_device')}</span>
+                        <b>{device.deviceMemoryGb != null ? `${device.deviceMemoryGb} GB` : t('diag_not_reported')}</b>
                     </div>
                     <div className="sysov-row">
-                        <span>Memória do app</span>
-                        <b>{device.heapUsedMb != null ? `${device.heapUsedMb} / ${device.heapLimitMb} MB` : 'não informada'}</b>
+                        <span>{t('diag_mem_app')}</span>
+                        <b>{device.heapUsedMb != null ? `${device.heapUsedMb} / ${device.heapLimitMb} MB` : t('diag_not_reported')}</b>
                     </div>
-                    <div className="sysov-row"><span>Rede</span><b>{device.online ? 'conectada' : 'sem conexão'}</b></div>
+                    <div className="sysov-row"><span>{t('diag_network')}</span><b>{device.online ? t('diag_connected') : t('diag_offline')}</b></div>
                     <div className="sysov-row">
-                        <span>Banda estimada pela TV</span>
-                        <b>{device.downlinkMbps != null ? `${device.downlinkMbps} Mbps` : 'não informada'}</b>
+                        <span>{t('diag_downlink')}</span>
+                        <b>{device.downlinkMbps != null ? `${device.downlinkMbps} Mbps` : t('diag_not_reported')}</b>
                     </div>
                     <div className="sysov-row">
-                        <span>Dados guardados</span>
+                        <span>{t('diag_stored')}</span>
                         <b>{device.storageUsedKb != null ? `${device.storageUsedKb} KB` : '—'}</b>
                     </div>
-                    <div className="sysov-row"><span>Latência do provedor</span><b>{latency}</b></div>
-                    <div className="sysov-row"><span>Velocidade do provedor</span><b>{speed}</b></div>
+                    <div className="sysov-row"><span>{t('diag_latency')}</span><b>{latency}</b></div>
+                    <div className="sysov-row"><span>{t('diag_speed')}</span><b>{speed}</b></div>
                     {account && (
-                        <div className="sysov-row"><span>Servidor</span><b>{account.serverUrl || '—'}</b></div>
+                        <div className="sysov-row"><span>{t('diag_server')}</span><b>{account.serverUrl || '—'}</b></div>
                     )}
                 </div>
 
                 <h3 className="sysov-subtitle">
-                    Últimos erros ({errors.length}){errors.length > 5 ? ' · ▲▼ rolam' : ''}
+                    {t('diag_errors', { n: errors.length })}{errors.length > 5 ? t('diag_errors_scroll') : ''}
                 </h3>
                 <div className="sysov-errors" ref={errorsRef}>
                     {errors.length === 0 ? (
-                        <p className="sysov-empty">Nenhum erro registrado desde que o app abriu.</p>
+                        <p className="sysov-empty">{t('diag_no_errors')}</p>
                     ) : (
                         errors.map((error, index) => (
                             <div key={`${error.at}-${index}`} className="sysov-error">
@@ -167,11 +170,11 @@ export function DiagnosticsOverlay({ onClose, speedTestStreamId }: DiagnosticsOv
                             className={`sysov-btn ${index === actionIndex ? 'tv-focused' : ''}`}
                             onClick={() => run(action)}
                         >
-                            {ACTION_LABELS[action]}
+                            {ACTION_LABELS[action]()}
                         </button>
                     ))}
                 </div>
-                <div className="sysov-hint">◀ ▶ escolhe · OK executa · Voltar fecha</div>
+                <div className="sysov-hint">{t('diag_hint')}</div>
             </div>
         </div>
     );
@@ -214,7 +217,7 @@ export function QrBackupOverlay({ onClose }: QrBackupOverlayProps) {
                 count: 0,
                 path: '',
                 bytes,
-                error: `As preferências ocupam ${bytes} bytes e o limite de um QR legível a distância é ${MAX_PAYLOAD_BYTES}.`,
+                error: tt('qr_too_big', { bytes, max: MAX_PAYLOAD_BYTES }),
             };
         }
         try {
@@ -230,7 +233,7 @@ export function QrBackupOverlay({ onClose }: QrBackupOverlayProps) {
                 count: 0,
                 path: '',
                 bytes,
-                error: error instanceof Error ? error.message : 'Não foi possível gerar o código.',
+                error: error instanceof Error ? error.message : tt('qr_gen_failed'),
             };
         }
     });
@@ -240,7 +243,7 @@ export function QrBackupOverlay({ onClose }: QrBackupOverlayProps) {
     return (
         <div className="sysov-overlay">
             <div className="sysov-panel sysov-panel-qr">
-                <h2 className="sysov-title">📱 Backup das preferências</h2>
+                <h2 className="sysov-title">{tt('qr_title')}</h2>
 
                 {result.error ? (
                     <p className="sysov-empty">{result.error}</p>
@@ -255,16 +258,14 @@ export function QrBackupOverlay({ onClose }: QrBackupOverlayProps) {
                             <path d={result.path} fill="#000" />
                         </svg>
                         <p className="sysov-qr-caption">
-                            Aponte a câmera do celular e guarde o texto do código.
+                            {tt('qr_caption_a')}
                             <br />
-                            {result.bytes} bytes de ajustes — <b>sem senha, sem endereço do
-                            provedor e sem chave do TMDB</b>, porque um código na tela da sala
-                            é lido por qualquer câmera do cômodo.
+                            {tt('qr_caption_b', { bytes: result.bytes })}<b>{tt('qr_caption_c')}</b>{tt('qr_caption_d')}
                         </p>
                     </div>
                 )}
 
-                <div className="sysov-hint">OK ou Voltar fecha</div>
+                <div className="sysov-hint">{tt('qr_hint')}</div>
             </div>
         </div>
     );

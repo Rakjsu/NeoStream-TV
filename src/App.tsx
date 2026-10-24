@@ -28,6 +28,7 @@ import { bootLastChannel } from './services/liveExtras';
 import { reminderService, type Reminder } from './services/reminderService';
 import { FocusContext, type FocusZone } from './contexts/FocusContext';
 import { useTVNavigation } from './hooks/useTVNavigation';
+import { useTranslation } from './hooks/useTranslation';
 import { useExitPrompt } from './hooks/useExitPrompt';
 import { themeService } from './services/themeService';
 import { a11yService } from './services/a11yService';
@@ -69,6 +70,7 @@ function registerTizenKeys() {
 }
 
 function OfflineRetry({ onRetry, onOtherLogin }: { onRetry: () => void; onOtherLogin: () => void }) {
+  const { t } = useTranslation();
   // 0 = tentar de novo, 1 = usar outro login (o erro pode ser do provedor,
   // não da rede — sem esta saída a tela virava beco sem saída)
   const [focusedIndex, setFocusedIndex] = useState(0);
@@ -94,23 +96,22 @@ function OfflineRetry({ onRetry, onOtherLogin }: { onRetry: () => void; onOtherL
   return (
     <div className="app-loading">
       <div className="app-loading-logo">📡</div>
-      <p className="app-loading-text">Sem conexão com o servidor</p>
+      <p className="app-loading-text">{t('app_no_connection')}</p>
       <p className="app-offline-hint">
-        Suas credenciais foram mantidas. Verifique a rede da TV e pressione OK
-        para tentar de novo — ou use outro login se o problema for do provedor.
+        {t('app_offline_hint')}
       </p>
       <div className="app-offline-actions">
         <button
           className={`app-offline-retry ${focusedIndex === 0 ? 'tv-focused' : ''}`}
           onClick={onRetry}
         >
-          🔄 Tentar novamente
+          {t('app_retry')}
         </button>
         <button
           className={`app-offline-retry app-offline-secondary ${focusedIndex === 1 ? 'tv-focused' : ''}`}
           onClick={onOtherLogin}
         >
-          👤 Usar outro login
+          {t('app_other_login')}
         </button>
       </div>
     </div>
@@ -129,16 +130,17 @@ function ReminderToast({ reminder, onWatch, onDismiss }: {
   onWatch: () => void;
   onDismiss: () => void;
 }) {
+  const { t } = useTranslation();
   useTVNavigation({ onEnter: onWatch, onBack: onDismiss });
   return (
     <div className="reminder-toast">
       <span className="reminder-toast-text">
-        🔔 {reminder.programTitle} começa já em {reminder.channelName}
+        {t('app_reminder_text', { title: reminder.programTitle, channel: reminder.channelName })}
       </span>
       <button className="app-offline-retry tv-focused" onClick={onWatch}>
-        ▶ Assistir agora
+        {t('app_watch_now')}
       </button>
-      <span className="reminder-toast-hint">OK assiste · Voltar dispensa</span>
+      <span className="reminder-toast-hint">{t('app_reminder_hint')}</span>
     </div>
   );
 }
@@ -152,10 +154,11 @@ function ReminderToast({ reminder, onWatch, onDismiss }: {
  * Como componente, o mesmo aviso serve os dois caminhos.
  */
 function ExitToast({ visivel }: { visivel: boolean }) {
+  const { t } = useTranslation();
   if (!visivel) return null;
   return (
     <div className="app-exit-toast" role="status">
-      Pressione Voltar de novo para sair do NeoStream
+      {t('app_exit_hint')}
     </div>
   );
 }

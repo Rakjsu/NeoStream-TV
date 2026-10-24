@@ -15,6 +15,7 @@ import {
     PREFIXOS_PREFERENCIAS,
     SUFIXO_PERFIL,
 } from './storageKeys';
+import { tt } from '../i18n';
 
 export type DataGroup = 'progresso' | 'listas' | 'caches' | 'preferencias' | 'conta';
 
@@ -28,32 +29,32 @@ interface GroupDef {
 
 export const DATA_GROUPS: Record<DataGroup, GroupDef> = {
     progresso: {
-        label: 'Progresso e histórico',
-        description: 'Continuar assistindo, itens marcados como vistos e a retrospectiva.',
+        get label() { return tt('reset_progresso_label'); },
+        get description() { return tt('reset_progresso_desc'); },
         bases: [...KEYS_PROGRESSO],
         prefixes: [],
     },
     listas: {
-        label: 'Favoritos e Minha Lista',
-        description: 'Favoritos, Minha Lista, ordem dos canais favoritos e lembretes.',
+        get label() { return tt('reset_listas_label'); },
+        get description() { return tt('reset_listas_desc'); },
         bases: [...KEYS_LISTAS],
         prefixes: [],
     },
     caches: {
-        label: 'Caches',
-        description: 'Capas e fichas do TMDB e o catálogo guardado. Tudo volta sozinho.',
+        get label() { return tt('reset_caches_label'); },
+        get description() { return tt('reset_caches_desc'); },
         bases: [...KEYS_CACHE],
         prefixes: [...PREFIXOS_CACHE],
     },
     preferencias: {
-        label: 'Preferências',
-        description: 'Tema, acessibilidade, filtros, ajustes do player e da TV ao vivo.',
+        get label() { return tt('reset_prefs_label'); },
+        get description() { return tt('reset_prefs_desc'); },
         bases: [...KEYS_PREFERENCIAS],
         prefixes: [...PREFIXOS_PREFERENCIAS],
     },
     conta: {
-        label: 'Conta e perfis',
-        description: 'Credenciais, playlists, perfis, PIN e o estado da configuração inicial.',
+        get label() { return tt('reset_conta_label'); },
+        get description() { return tt('reset_conta_desc'); },
         bases: [...KEYS_CONTA],
         prefixes: [],
     },

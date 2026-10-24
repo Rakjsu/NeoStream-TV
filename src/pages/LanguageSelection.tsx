@@ -1,5 +1,6 @@
 ﻿import { useCallback, useMemo, useState } from 'react';
 import { storage } from '../services/storage';
+import type { Language } from '../i18n';
 import { useTranslation } from '../hooks/useTranslation';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import './LanguageSelection.css';
@@ -16,13 +17,14 @@ export function LanguageSelection({ onComplete, onRequestExit, onCancelExit }: L
     const { t } = useTranslation();
     const [focusedIndex, setFocusedIndex] = useState(0);
 
-    const languages = useMemo(() => [
-        { code: 'pt' as const, label: t('language_pt'), icon: 'BR' },
-        { code: 'en' as const, label: t('language_en'), icon: 'US' },
-        { code: 'es' as const, label: t('language_es'), icon: 'ES' },
+    const languages = useMemo((): Array<{ code: Language; label: string; icon: string }> => [
+        { code: 'pt', label: t('language_pt'), icon: 'BR' },
+        { code: 'en', label: t('language_en'), icon: 'US' },
+        { code: 'es', label: t('language_es'), icon: 'ES' },
+        { code: 'de', label: t('language_de'), icon: 'DE' },
     ], [t]);
 
-    const handleSelect = useCallback((code: 'pt' | 'en' | 'es') => {
+    const handleSelect = useCallback((code: Language) => {
         // Save to storage
         storage.saveSettings({ language: code });
         // Fire event so hooks update immediately
@@ -75,7 +77,7 @@ export function LanguageSelection({ onComplete, onRequestExit, onCancelExit }: L
                             <button
                                 key={lang.code}
                                 className={`language-btn ${focusedIndex === index ? 'focused' : ''}`}
-                                onClick={() => handleSelect(lang.code as 'pt' | 'en' | 'es')}
+                                onClick={() => handleSelect(lang.code)}
                                 onMouseEnter={() => setFocusedIndex(index)}
                             >
                                 <span className="language-icon">{lang.icon}</span>

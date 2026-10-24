@@ -12,6 +12,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { reminderService, type Reminder } from '../services/reminderService';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import { useFocusZone } from '../contexts/FocusContext';
 import type { LiveStream } from '../types';
 import './LivePanels.css';
@@ -43,6 +44,7 @@ interface RemindersPanelProps {
 }
 
 export function RemindersPanel({ resolveChannel, onClose, onPlay }: RemindersPanelProps) {
+    const { t } = useTranslation();
     const { focusZone } = useFocusZone();
     const [lista, setLista] = useState<Reminder[]>(() => reminderService.upcoming());
     // Date.now() no render viola react-hooks/purity — congelado em state e
@@ -105,14 +107,14 @@ export function RemindersPanel({ resolveChannel, onClose, onPlay }: RemindersPan
         <div className="live-panel-overlay">
             <div className="live-panel">
                 <div className="live-panel-header">
-                    <h2 className="live-panel-title">⏰ Meus lembretes</h2>
+                    <h2 className="live-panel-title">{t('rem_title')}</h2>
                     <button className="live-panel-close" onClick={onClose}>✕</button>
                 </div>
 
                 <div ref={listRef} className="live-panel-list">
                     {lista.length === 0 && (
                         <div className="live-panel-empty">
-                            Nenhum lembrete marcado. Marque programas com 🔔 no guia 📊, na agenda do canal ou em ⚽ Jogos de hoje.
+                            {t('rem_empty')}
                         </div>
                     )}
                     {lista.map((reminder, index) => {
@@ -128,18 +130,18 @@ export function RemindersPanel({ resolveChannel, onClose, onPlay }: RemindersPan
                                 <span className="reminders-program">{reminder.programTitle}</span>
                                 <span className="reminders-channel">{reminder.channelName}</span>
                                 {noAr
-                                    ? <span className="reminders-badge-live">NO AR</span>
-                                    : focado && <span className="reminders-badge-hint">OK cancela</span>}
+                                    ? <span className="reminders-badge-live">{t('agenda_live')}</span>
+                                    : focado && <span className="reminders-badge-hint">{t('rem_ok_cancel')}</span>}
                             </div>
                         );
                     })}
                 </div>
 
                 <div className="live-panel-hints">
-                    <span>↑↓ Navegar</span>
-                    <span>CH± Página</span>
-                    <span>OK Cancelar (no ar: Assistir)</span>
-                    <span>← Fechar</span>
+                    <span>{t('hint_nav2')}</span>
+                    <span>{t('hint_ch_page')}</span>
+                    <span>{t('rem_hint_ok')}</span>
+                    <span>{t('hint_close')}</span>
                 </div>
             </div>
         </div>

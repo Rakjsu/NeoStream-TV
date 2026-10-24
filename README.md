@@ -81,9 +81,11 @@ Use at your own risk. The creator and contributors are not responsible for how t
 - Real Kids profile with adult-category filtering, PIN management, and profile switching.
 - Themes: AMOLED background plus six accent colors, applied through CSS variables.
 - Usage statistics with a Wrapped-style recap.
-- Language choice (Portuguese, English, Spanish) on first launch and in Settings. Translated so far:
-  the boot loading, language selection, welcome, and login screens and the sidebar tooltips; the rest of the
-  interface is Portuguese for now.
+- Language choice (Portuguese, English, Spanish, German) on first launch and in Settings. Translated so far:
+  app, boot loading, category menu, channel agenda overlay, content detail modal, epg grid, error screen,
+  global search, home header, live panels, pin prompt, profile manager, reminders panel, remote guide,
+  setup wizard, sidebar, system overlays, trailer overlay, video player, wrapped overlay, favorites, home,
+  language selection, live tv, login, movies, my list, series, settings, welcome;
 - Optional TMDB metadata using a user-provided local API key.
 - Flexible Xtream server URL input, including bare domains, `http`, `https`, ports, and common
   Xtream endpoint paths.
@@ -251,8 +253,6 @@ Next up:
 - Backup and restore through the paired desktop, and favorites/progress sync.
 - The phone as a keyboard for global search.
 - LG webOS packaging.
-- The rest of the interface in English and Spanish, starting with Settings: it is where someone who
-  picked the wrong language goes to undo it, and today it only speaks Portuguese.
 
 ## License
 

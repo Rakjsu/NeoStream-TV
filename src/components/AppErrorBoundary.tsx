@@ -8,6 +8,7 @@
 
 import { Component, type ReactNode } from 'react';
 import { exitApp, podeSair } from '../services/tizenApp';
+import { tt } from '../i18n';
 
 interface AppErrorBoundaryProps {
     children: ReactNode;
@@ -51,7 +52,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     static getDerivedStateFromError(error: unknown): AppErrorBoundaryState {
         return {
             hasError: true,
-            message: error instanceof Error ? error.message : 'Erro inesperado',
+            message: error instanceof Error ? error.message : tt('crash_unexpected'),
         };
     }
 
@@ -84,17 +85,16 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
         return (
             <div className="app-crash">
                 <div className="app-crash-icon">😵</div>
-                <h1 className="app-crash-title">Algo deu errado</h1>
+                <h1 className="app-crash-title">{tt('crash_title')}</h1>
                 <p className="app-crash-text">
-                    O aplicativo encontrou um erro e precisa reiniciar.
-                    Seus dados e configurações estão preservados.
+                    {tt('crash_text')}
                 </p>
                 <p className="app-crash-detail">{this.state.message}</p>
                 <button className="app-offline-retry tv-focused" onClick={() => window.location.reload()}>
-                    🔄 Reiniciar (OK)
+                    {tt('crash_restart')}
                 </button>
                 {podeSair() && (
-                    <p className="app-crash-hint">Ou aperte Voltar para sair do NeoStream</p>
+                    <p className="app-crash-hint">{tt('crash_exit_hint')}</p>
                 )}
             </div>
         );

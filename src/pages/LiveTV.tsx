@@ -14,6 +14,7 @@ import { useWatchSession } from '../hooks/useWatchSession';
 import { groupChannelVariants, qualityLabel, variantFailoverIndex, nextFailoverVariant } from '../services/channelVariants';
 import type { LiveStream, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import { useFocusZone } from '../contexts/FocusContext';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
 import { ChannelAgendaOverlay } from '../components/ChannelAgendaOverlay';
@@ -35,6 +36,7 @@ function formatClock(ms: number): string {
 }
 
 export function LiveTV() {
+    const { t } = useTranslation();
     const { focusZone, setFocusZone } = useFocusZone();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -235,7 +237,7 @@ export function LiveTV() {
                 // Com o cache na tela, uma falha de rede não pode apagar o que
                 // o usuário já está vendo — ele continua navegando o de ontem
                 if (!servedFromCache) {
-                    setError(err instanceof Error ? err.message : 'Erro ao carregar canais');
+                    setError(err instanceof Error ? err.message : t('livetv_error_load'));
                 }
             } finally {
                 setLoading(false);
@@ -502,10 +504,10 @@ export function LiveTV() {
         const next = nextFailoverVariant(variants, playingChannel.stream_id, failoverTriedRef.current,
             v => !tocandoOculto && oculto(v));
         if (next) {
-            setToast(`⚠ Falha no stream — trocando para ${qualityLabel(next.name)}`);
+            setToast(t('livetv_failover', { q: qualityLabel(next.name) }));
             startChannel(next);
         } else {
-            setToast('⚠ Todas as variantes deste canal falharam');
+            setToast(t('livetv_all_failed'));
         }
     }, [playingChannel, failoverVariantsOf, hiddenIds, hiddenCatIds, startChannel]);
 
@@ -524,13 +526,13 @@ export function LiveTV() {
             poster: stream.stream_icon || undefined,
         });
         setFavTick(t => t + 1);
-        setToast(added ? `⭐ ${stream.name} favoritado` : `☆ ${stream.name} removido dos favoritos`);
+        setToast(added ? t('livetv_fav_added', { name: stream.name }) : t('livetv_fav_removed', { name: stream.name }));
     }, []);
 
     const toggleChannelHidden = useCallback((stream: LiveStream) => {
         const set = hiddenChannels.toggle(stream.stream_id);
         setHiddenIds(new Set(set));
-        setToast(set.has(stream.stream_id) ? `🙈 ${stream.name} oculto` : `👁 ${stream.name} visível de novo`);
+        setToast(set.has(stream.stream_id) ? t('livetv_hidden', { name: stream.name }) : t('livetv_shown', { name: stream.name }));
     }, []);
 
     // Tocar programas do arquivo como FILA (agenda ou reiniciar): no fim de
@@ -608,8 +610,8 @@ export function LiveTV() {
             startMs: program.start,
         });
         setToast(active
-            ? `🔔 Lembrete criado: ${program.title}`
-            : `🔕 Lembrete removido: ${program.title}`);
+            ? t('livetv_reminder_on', { title: program.title })
+            : t('livetv_reminder_off', { title: program.title }));
         return active;
     }, []);
 
@@ -860,7 +862,7 @@ export function LiveTV() {
                 </div>
 
                 <div className="loading-text">
-                    <span>Carregando canais</span>
+                    <span>{t('livetv_loading')}</span>
                     <div className="loading-dots">
                         {[0, 1, 2].map(i => (
                             <span key={i} className="loading-dot" style={{ animationDelay: `${i * 0.2}s` }} />
@@ -888,7 +890,7 @@ export function LiveTV() {
         return (
             <ErrorScreen
                 icon="📡"
-                title="Erro ao carregar canais"
+                title={t('livetv_error_load')}
                 message={error}
                 className="livetv-error-container"
             />
@@ -906,7 +908,7 @@ export function LiveTV() {
                 ref={searchRef}
                 value={searchQuery}
                 onChange={setSearchQuery}
-                placeholder="Buscar canais..."
+                placeholder={t('livetv_search_placeholder')}
                 tvFocused={focusArea === 'categories' && focusedCategoryIndex === 0}
             />
 
@@ -919,7 +921,7 @@ export function LiveTV() {
                 type="live"
                 tvFocused={focusArea === 'categories' && focusedCategoryIndex === 1}
                 onOpenChange={setCategoryMenuOpen}
-                extraCategories={[{ category_id: 'FAVORITES', category_name: '⭐ Favoritos', parent_id: 0 }]}
+                extraCategories={[{ category_id: 'FAVORITES', category_name: t('livetv_fav_category'), parent_id: 0 }]}
                 hiddenCategoryIds={hiddenCatIds}
                 onToggleHideCategory={(id) => setHiddenCatIds(new Set(hiddenCategories.toggle(id)))}
             />
@@ -929,28 +931,28 @@ export function LiveTV() {
                 <button
                     className={`toolbar-btn ${groupVariantsOn ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('variants') ? 'tv-focused' : ''}`}
                     onClick={toggleGroupVariants}
-                    title="Agrupar variantes de qualidade (FHD/HD/SD)"
+                    title={t('livetv_tip_variants')}
                 >
                     🧬
                 </button>
                 <button
                     className={`toolbar-btn ${onlyWithEpg ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('onlyepg') ? 'tv-focused' : ''}`}
                     onClick={toggleOnlyEpg}
-                    title="Só canais com EPG (🔴)"
+                    title={t('livetv_tip_onlyepg')}
                 >
                     📅
                 </button>
                 <button
                     className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('guide') ? 'tv-focused' : ''}`}
                     onClick={() => setShowGuide(true)}
-                    title="Guia de programação (grade multi-canal)"
+                    title={t('livetv_tip_guide')}
                 >
                     📊
                 </button>
                 <button
                     className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('random') ? 'tv-focused' : ''}`}
                     onClick={randomZap}
-                    title="Canal aleatório (🟢)"
+                    title={t('livetv_tip_random')}
                 >
                     🎲
                 </button>
@@ -958,7 +960,7 @@ export function LiveTV() {
                     <button
                         className={`toolbar-btn ${showOnlyHidden ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('hidden') ? 'tv-focused' : ''}`}
                         onClick={() => setShowOnlyHidden(prev => !prev)}
-                        title="Ver canais ocultos"
+                        title={t('livetv_tip_hidden')}
                     >
                         🙈 {hiddenIds.size}
                     </button>
@@ -967,26 +969,26 @@ export function LiveTV() {
                     <button
                         className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('favpanel') ? 'tv-focused' : ''}`}
                         onClick={() => setShowFavoritesPanel(true)}
-                        title="Agora nos favoritos"
+                        title={t('livetv_tip_favpanel')}
                     >
-                        ⭐ Agora
+                        {t('livetv_now_btn')}
                     </button>
                 )}
                 {sportsChannels.length > 0 && (
                     <button
                         className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('sports') ? 'tv-focused' : ''}`}
                         onClick={() => setShowSportsPanel(true)}
-                        title="Jogos de hoje"
+                        title={t('livetv_tip_sports')}
                     >
-                        ⚽ Jogos
+                        {t('livetv_sports_btn')}
                     </button>
                 )}
                 <button
                     className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('reminders') ? 'tv-focused' : ''}`}
                     onClick={() => setShowRemindersPanel(true)}
-                    title="Meus lembretes"
+                    title={t('livetv_tip_reminders')}
                 >
-                    ⏰ Lembretes
+                    {t('livetv_reminders_btn')}
                 </button>
             </div>
 
@@ -1011,7 +1013,7 @@ export function LiveTV() {
                                 ) : (
                                     <img decoding="async"
                                         src={selectedChannel.stream_icon}
-                                        alt={selectedChannel?.name || 'Canal'}
+                                        alt={selectedChannel?.name || t('common_channel')}
                                         onError={() => handleImageError(selectedChannel.stream_id)}
                                     />
                                 )}
@@ -1021,7 +1023,7 @@ export function LiveTV() {
                                 {/* O <span> não é decorativo: texto solto vira
                                     item flex ANÔNIMO, que nenhum seletor CSS
                                     alcança — e o fallback de gap some. */}
-                                <span>AO VIVO</span>
+                                <span>{t('livetv_live_badge')}</span>
                             </div>
                         </div>
                         <div className="preview-details">
@@ -1029,7 +1031,7 @@ export function LiveTV() {
                             {activePreviewEpg?.now ? (
                                 <div className="preview-epg">
                                     <div className="preview-epg-now">
-                                        <span className="epg-label">AGORA</span>
+                                        <span className="epg-label">{t('livetv_now')}</span>
                                         <span className="epg-title">{activePreviewEpg.now.title}</span>
                                         <span className="epg-time">
                                             {formatClock(activePreviewEpg.now.start)} – {formatClock(activePreviewEpg.now.end)}
@@ -1043,14 +1045,14 @@ export function LiveTV() {
                                     </div>
                                     {activePreviewEpg.next && (
                                         <div className="preview-epg-next">
-                                            <span className="epg-label">A SEGUIR</span>
+                                            <span className="epg-label">{t('livetv_next')}</span>
                                             <span className="epg-title-next">{activePreviewEpg.next.title}</span>
                                             <span className="epg-time">{formatClock(activePreviewEpg.next.start)}</span>
                                         </div>
                                     )}
                                 </div>
                             ) : (
-                                <div className="preview-epg preview-epg-empty">Sem programação disponível</div>
+                                <div className="preview-epg preview-epg-empty">{t('livetv_no_epg')}</div>
                             )}
 
                             {/* Variantes de qualidade */}
@@ -1073,37 +1075,37 @@ export function LiveTV() {
                                     className={`play-button ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('play') ? 'tv-focused' : ''}`}
                                     onClick={() => playChannel(selectedChannel)}
                                 >
-                                    ▶ Assistir
+                                    {t('common_watch')}
                                 </button>
                                 <button
                                     className={`info-button ${favoriteChannelIds.has(selectedChannel.stream_id) ? 'active' : ''} ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('fav') ? 'tv-focused' : ''}`}
                                     onClick={() => toggleChannelFavorite(selectedChannel)}
-                                    title="Favorito (🟡)"
+                                    title={t('livetv_tip_fav')}
                                 >
-                                    {favoriteChannelIds.has(selectedChannel.stream_id) ? '⭐ Favorito' : '☆ Favoritar'}
+                                    {favoriteChannelIds.has(selectedChannel.stream_id) ? t('livetv_fav_on') : t('livetv_fav_off')}
                                 </button>
                                 <button
                                     className={`info-button ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('hide') ? 'tv-focused' : ''}`}
                                     onClick={() => toggleChannelHidden(selectedChannel)}
-                                    title="Ocultar canal (🔵)"
+                                    title={t('livetv_tip_hide')}
                                 >
-                                    🙈 {hiddenIds.has(selectedChannel.stream_id) ? 'Mostrar' : 'Ocultar'}
+                                    {hiddenIds.has(selectedChannel.stream_id) ? t('livetv_show') : t('livetv_hide')}
                                 </button>
                                 {canRestart && (
                                     <button
                                         className={`info-button ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('restart') ? 'tv-focused' : ''}`}
                                         onClick={restartProgram}
-                                        title="Reiniciar o programa atual (catch-up)"
+                                        title={t('livetv_tip_restart')}
                                     >
-                                        ⏮ Reiniciar
+                                        {t('livetv_restart')}
                                     </button>
                                 )}
                                 <button
                                     className={`info-button ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('agenda') ? 'tv-focused' : ''}`}
                                     onClick={() => setShowAgenda(true)}
-                                    title="Programação do dia"
+                                    title={t('livetv_tip_agenda')}
                                 >
-                                    📋 Agenda
+                                    {t('livetv_agenda')}
                                 </button>
                             </div>
                         </div>
@@ -1116,8 +1118,8 @@ export function LiveTV() {
                 {filteredStreams.length === 0 ? (
                     <div className="no-results">
                         <div className="no-results-icon">📺</div>
-                        <p>Nenhum canal encontrado</p>
-                        <span>Tente buscar por outro termo</span>
+                        <p>{t('livetv_no_channels')}</p>
+                        <span>{t('livetv_try_search')}</span>
                     </div>
                 ) : (
                     <div className="channels-grid">
@@ -1133,7 +1135,7 @@ export function LiveTV() {
                                 <PosterPreguicoso
                                     className="channel-logo"
                                     src={brokenImages.has(stream.stream_id) ? null : stream?.stream_icon}
-                                    alt={stream?.name || 'Canal'}
+                                    alt={stream?.name || t('common_channel')}
                                     raiz={scrollContainerRef}
                                     onError={() => handleImageError(stream.stream_id)}
                                 >
@@ -1144,7 +1146,7 @@ export function LiveTV() {
                                 <div className="channel-info">
                                     <div className="channel-name">
                                         {favoriteChannelIds.has(stream.stream_id) && <span className="channel-fav">⭐ </span>}
-                                        {stream?.name || 'Canal Sem Nome'}
+                                        {stream?.name || t('common_unnamed_channel')}
                                         {Number(stream.tv_archive) > 0 && <span className="channel-catchup"> ⏮</span>}
                                     </div>
                                 </div>
@@ -1157,13 +1159,13 @@ export function LiveTV() {
 
             {/* Footer Hints */}
             <div className="livetv-hints">
-                <span>↑↓←→ Navegar</span>
-                <span>OK Ficha / Assistir</span>
-                <span>← Voltar</span>
-                <span className="hint-red">🔴 Só EPG</span>
-                <span className="hint-green">🟢 Aleatório</span>
-                <span className="hint-yellow">🟡 Favorito</span>
-                <span className="hint-blue">🔵 Ocultar</span>
+                <span>{t('hint_nav4')}</span>
+                <span>{t('livetv_hint_ok')}</span>
+                <span>{t('hint_back')}</span>
+                <span className="hint-red">{t('livetv_hint_red')}</span>
+                <span className="hint-green">{t('livetv_hint_green')}</span>
+                <span className="hint-yellow">{t('livetv_hint_yellow')}</span>
+                <span className="hint-blue">{t('livetv_hint_blue')}</span>
             </div>
 
             {/* Agenda do dia do canal (itens 2+4) */}

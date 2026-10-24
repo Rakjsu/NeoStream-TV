@@ -15,6 +15,7 @@ export interface QualityLevel {
 export type { StreamErrorCause } from '../services/playerDecisions';
 import { classifyStreamError, chooseCappedLevel, classifyMediaElementError } from '../services/playerDecisions';
 import type { StreamErrorCause } from '../services/playerDecisions';
+import { tt } from '../i18n';
 
 /** Faixa embutida no stream (áudio ou legenda) — itens 39 e 40 */
 export interface MediaTrack {
@@ -163,7 +164,7 @@ export function useHls({
     const getQualityLabel = (height: number, bitrate = 0): string => {
         // Playlist de mídia única (o caso mais comum em Xtream) não declara
         // RESOLUTION — "0p" no menu não diz nada a ninguém
-        if (!height) return bitrate > 0 ? `${Math.round(bitrate / 1000)} kbps` : 'Padrão';
+        if (!height) return bitrate > 0 ? `${Math.round(bitrate / 1000)} kbps` : tt('vp_quality_default');
         if (height >= 2160) return '4K';
         if (height >= 1440) return '1440p';
         if (height >= 1080) return '1080p';

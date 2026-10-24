@@ -16,18 +16,24 @@
 import { scopedKey } from './profileScope';
 import { readJson, writeJson } from './safeStorage';
 import type { SavedContentItem, SavedContentInput } from './storage';
+import { tt, type TranslationKey } from '../i18n';
 
 const KEY = () => scopedKey('neostream_lists');
 
 /** Nomes oferecidos ao criar. Ordem = ordem de navegação por ←→. */
-export const NOMES_SUGERIDOS: readonly string[] = [
-    'Maratona de sexta',
-    'Ver com a família',
-    'Clássicos',
-    'Assistir sozinho',
-    'Comédia da madrugada',
-    'Rever',
+export const NOMES_SUGERIDOS: readonly TranslationKey[] = [
+    'list_name_maratona',
+    'list_name_familia',
+    'list_name_classicos',
+    'list_name_sozinho',
+    'list_name_madrugada',
+    'list_name_rever',
 ];
+
+/** Sugestões já traduzidas para o idioma ativo. */
+export function nomesSugeridos(): string[] {
+    return NOMES_SUGERIDOS.map(key => tt(key));
+}
 
 /**
  * Tetos. A quota é de ~5 MB no aparelho inteiro e cada item guarda pôster,
@@ -65,7 +71,7 @@ function ler(): ListaNomeada[] {
                         ...item,
                         id: String(item.id),
                         type: item.type as SavedContentItem['type'],
-                        title: item.title || 'Sem título',
+                        title: item.title || tt('common_untitled'),
                         addedAt: item.addedAt || 0,
                     }))
                 : [],

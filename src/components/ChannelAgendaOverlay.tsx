@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { epgService, type EpgProgram } from '../services/epgService';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import type { LiveStream } from '../types';
 import './ChannelAgendaOverlay.css';
 
@@ -27,6 +28,7 @@ function formatClock(ms: number): string {
 }
 
 export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive, onToggleReminder, isReminded }: ChannelAgendaOverlayProps) {
+    const { t } = useTranslation();
     const [programs, setPrograms] = useState<EpgProgram[] | null>(null);
     const [focusedIndex, setFocusedIndex] = useState(0);
     const listRef = useRef<HTMLDivElement>(null);
@@ -107,10 +109,10 @@ export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive, onToggle
 
                 <div ref={listRef} className="agenda-list">
                     {programs === null && (
-                        <div className="agenda-empty">Carregando programação...</div>
+                        <div className="agenda-empty">{t('agenda_loading')}</div>
                     )}
                     {programs !== null && programs.length === 0 && (
-                        <div className="agenda-empty">Sem programação disponível para este canal.</div>
+                        <div className="agenda-empty">{t('agenda_empty')}</div>
                     )}
                     {programs?.map((program, index) => {
                         const isCurrent = program.start <= now && program.end > now;
@@ -126,11 +128,11 @@ export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive, onToggle
                                     {formatClock(program.start)}–{formatClock(program.end)}
                                 </span>
                                 <span className="agenda-name">{program.title}</span>
-                                {isCurrent && <span className="agenda-badge-live">NO AR</span>}
-                                {playable && !isCurrent && <span className="agenda-badge-replay">⏮ Replay</span>}
+                                {isCurrent && <span className="agenda-badge-live">{t('agenda_live')}</span>}
+                                {playable && !isCurrent && <span className="agenda-badge-replay">{t('agenda_replay')}</span>}
                                 {program.start > now && onToggleReminder && (
                                     <span className="agenda-badge-bell">
-                                        {isReminded?.(program) ? '🔔 Lembrete' : 'OK lembrar'}
+                                        {isReminded?.(program) ? t('agenda_reminder_on') : t('agenda_reminder_set')}
                                     </span>
                                 )}
                             </div>
@@ -139,10 +141,10 @@ export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive, onToggle
                 </div>
 
                 <div className="agenda-hints">
-                    <span>↑↓ Navegar</span>
-                    <span>CH± Página</span>
-                    <span>OK Replay / 🔔 Lembrete</span>
-                    <span>← Fechar</span>
+                    <span>{t('hint_nav2')}</span>
+                    <span>{t('hint_ch_page')}</span>
+                    <span>{t('agenda_hint_ok')}</span>
+                    <span>{t('hint_close')}</span>
                 </div>
             </div>
         </div>

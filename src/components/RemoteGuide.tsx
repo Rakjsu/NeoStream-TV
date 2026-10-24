@@ -9,8 +9,9 @@
 // Tela nova que atende tecla colorida ganha seção aqui: o RemoteGuide.test.tsx
 // varre src/ e falha apontando o arquivo e a cor que ficaram de fora.
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import './RemoteGuide.css';
 
 interface KeyRow {
@@ -23,102 +24,103 @@ interface GuideSection {
     rows: KeyRow[];
 }
 
-const SECTIONS: GuideSection[] = [
-    {
-        title: 'Em qualquer tela',
-        rows: [
-            { keys: '▲ ▼ ◀ ▶', what: 'Navegar entre os itens' },
-            { keys: 'OK', what: 'Abrir / confirmar o item em foco' },
-            { keys: 'VOLTAR', what: 'Fechar o que está aberto ou voltar' },
-            { keys: '◀ na borda', what: 'Abrir o menu lateral' },
-        ],
-    },
-    {
-        title: 'Início',
-        rows: [
-            { keys: '🔴 Vermelho', what: 'Em Continuar Assistindo: tirar o card em foco da fileira (com aviso no topo, o 🔴 é do aviso)' },
-        ],
-    },
-    {
-        title: 'TV ao Vivo',
-        rows: [
-            { keys: '🔴 Vermelho', what: 'Mostrar só canais com programação (EPG)' },
-            { keys: '🟢 Verde', what: 'Sortear um canal aleatório' },
-            { keys: '🟡 Amarelo', what: 'Favoritar o canal em foco' },
-            { keys: '🔵 Azul', what: 'Ocultar o canal em foco da lista' },
-        ],
-    },
-    {
-        title: 'Menu de categorias (TV ao Vivo)',
-        rows: [
-            { keys: '🔵 Azul', what: 'Ocultar ou mostrar a categoria em foco' },
-        ],
-    },
-    {
-        title: 'Agora nos favoritos (TV ao Vivo)',
-        rows: [
-            { keys: '🟡 Amarelo', what: 'Entrar e sair do modo reordenar' },
-            { keys: '◀ ▶ reordenando', what: 'Mover o canal em foco na lista' },
-        ],
-    },
-    {
-        title: 'Guia de programação',
-        rows: [
-            { keys: '🔴 Vermelho', what: 'Voltar uma hora na grade' },
-            { keys: '🟢 Verde', what: 'Avançar uma hora na grade' },
-            { keys: '🟡 Amarelo', what: 'Voltar a grade para agora' },
-            { keys: '🔵 Azul', what: 'Assistir o canal em foco' },
-        ],
-    },
-    {
-        title: 'Filmes e Séries',
-        rows: [
-            { keys: '🟡 Amarelo', what: 'Menu rápido do card, sem abrir a ficha' },
-        ],
-    },
-    {
-        title: 'Favoritos',
-        rows: [
-            { keys: '🔴 Vermelho', what: 'Remover o item em foco' },
-        ],
-    },
-    {
-        title: 'Minha Lista',
-        rows: [
-            { keys: '🔴 Vermelho', what: 'Remover o item em foco (numa lista sua, tira só dela)' },
-            { keys: '🟡 Amarelo', what: 'Pôr ou tirar o item em foco de uma das suas listas' },
-            { keys: '🔵 Azul', what: 'Na aba de uma lista sua: apagar a lista (aperte duas vezes)' },
-        ],
-    },
-    {
-        title: 'Durante a reprodução',
-        rows: [
-            { keys: 'CH+ / CH−', what: 'Trocar de canal ao vivo (e de rádio)' },
-            { keys: '🔴 Vermelho', what: 'Voltar ao canal anterior (ao vivo)' },
-            { keys: '0 – 9', what: 'Ir direto para o número do canal' },
-            { keys: '▲ na barra', what: 'Focar a barra e pular com ◀ ▶ (10s → 30s → 1min)' },
-            { keys: '⏯ ⏸ ▶', what: 'Pausar e retomar' },
-            { keys: '⏪ ⏩', what: 'Voltar e avançar em filmes e episódios' },
-            { keys: '⏮ ⏭', what: 'Episódio anterior e próximo' },
-            { keys: '⏹', what: 'Parar e fechar o player' },
-        ],
-    },
-    {
-        title: 'Configurações',
-        rows: [
-            { keys: '◀ ▶', what: 'Mudar o valor da linha em foco' },
-            { keys: '🔴 Vermelho', what: 'Remover a playlist em foco' },
-        ],
-    },
-];
-
 interface RemoteGuideProps {
     onClose: () => void;
 }
 
 export function RemoteGuide({ onClose }: RemoteGuideProps) {
+    const { t } = useTranslation();
     // A lista é longa: o D-pad rola de seção em seção
     const [sectionIndex, setSectionIndex] = useState(0);
+
+    const SECTIONS = useMemo<GuideSection[]>(() => [
+        {
+            title: t('guide_s_any'),
+            rows: [
+                { keys: '▲ ▼ ◀ ▶', what: t('guide_r_nav') },
+                { keys: 'OK', what: t('guide_r_ok') },
+                { keys: t('guide_key_back'), what: t('guide_r_back') },
+                { keys: t('guide_key_edge'), what: t('guide_r_edge') },
+            ],
+        },
+        {
+            title: t('guide_s_home'),
+            rows: [
+                { keys: t('guide_key_red'), what: t('guide_r_home_red') },
+            ],
+        },
+        {
+            title: t('guide_s_live'),
+            rows: [
+                { keys: t('guide_key_red'), what: t('guide_r_live_red') },
+                { keys: t('guide_key_green'), what: t('guide_r_live_green') },
+                { keys: t('guide_key_yellow'), what: t('guide_r_live_yellow') },
+                { keys: t('guide_key_blue'), what: t('guide_r_live_blue') },
+            ],
+        },
+        {
+            title: t('guide_s_catmenu'),
+            rows: [
+                { keys: t('guide_key_blue'), what: t('guide_r_catmenu_blue') },
+            ],
+        },
+        {
+            title: t('guide_s_favnow'),
+            rows: [
+                { keys: t('guide_key_yellow'), what: t('guide_r_favnow_yellow') },
+                { keys: t('guide_key_reorder'), what: t('guide_r_favnow_move') },
+            ],
+        },
+        {
+            title: t('guide_s_epg'),
+            rows: [
+                { keys: t('guide_key_red'), what: t('guide_r_epg_red') },
+                { keys: t('guide_key_green'), what: t('guide_r_epg_green') },
+                { keys: t('guide_key_yellow'), what: t('guide_r_epg_yellow') },
+                { keys: t('guide_key_blue'), what: t('guide_r_epg_blue') },
+            ],
+        },
+        {
+            title: t('guide_s_vod'),
+            rows: [
+                { keys: t('guide_key_yellow'), what: t('guide_r_vod_yellow') },
+            ],
+        },
+        {
+            title: t('guide_s_fav'),
+            rows: [
+                { keys: t('guide_key_red'), what: t('guide_r_fav_red') },
+            ],
+        },
+        {
+            title: t('guide_s_mylist'),
+            rows: [
+                { keys: t('guide_key_red'), what: t('guide_r_mylist_red') },
+                { keys: t('guide_key_yellow'), what: t('guide_r_mylist_yellow') },
+                { keys: t('guide_key_blue'), what: t('guide_r_mylist_blue') },
+            ],
+        },
+        {
+            title: t('guide_s_player'),
+            rows: [
+                { keys: 'CH+ / CH−', what: t('guide_r_player_ch') },
+                { keys: t('guide_key_red'), what: t('guide_r_player_red') },
+                { keys: '0 – 9', what: t('guide_r_player_digits') },
+                { keys: t('guide_key_barup'), what: t('guide_r_player_barup') },
+                { keys: '⏯ ⏸ ▶', what: t('guide_r_player_play') },
+                { keys: '⏪ ⏩', what: t('guide_r_player_seek') },
+                { keys: '⏮ ⏭', what: t('guide_r_player_ep') },
+                { keys: '⏹', what: t('guide_r_player_stop') },
+            ],
+        },
+        {
+            title: t('guide_s_settings'),
+            rows: [
+                { keys: '◀ ▶', what: t('guide_r_settings_lr') },
+                { keys: t('guide_key_red'), what: t('guide_r_settings_red') },
+            ],
+        },
+    ], [t]);
 
     useTVNavigation({
         onNavigate: (direction) => {
@@ -136,8 +138,8 @@ export function RemoteGuide({ onClose }: RemoteGuideProps) {
         <div className="guide-overlay">
             <div className="guide-panel">
                 <div className="guide-header">
-                    <h2 className="guide-title">🎛 Guia do controle remoto</h2>
-                    <span className="guide-sub">▲▼ percorre · OK ou Voltar fecha</span>
+                    <h2 className="guide-title">{t('guide_title')}</h2>
+                    <span className="guide-sub">{t('guide_sub')}</span>
                 </div>
 
                 <div className="guide-body">
@@ -161,8 +163,7 @@ export function RemoteGuide({ onClose }: RemoteGuideProps) {
                 </div>
 
                 <div className="guide-footer">
-                    As teclas coloridas mudam de função conforme a tela — procure
-                    acima a seção da tela em que você está.
+                    {t('guide_footer')}
                 </div>
             </div>
         </div>

@@ -3,6 +3,8 @@
 // referencia as vars); o fundo vira data-bg no <html> com overrides em
 // theme.css. Aplicar no boot (App) e a cada mudança (Settings).
 
+import { tt } from '../i18n';
+
 export type AccentId = 'roxo' | 'azul' | 'verde' | 'rosa' | 'laranja' | 'ciano';
 export type BackgroundId = 'default' | 'amoled';
 
@@ -13,19 +15,19 @@ interface AccentDef {
 }
 
 export const ACCENTS: Record<AccentId, AccentDef> = {
-    roxo: { label: 'Roxo', hex: '#a855f7', rgb: '168, 85, 247' },
-    azul: { label: 'Azul', hex: '#3b82f6', rgb: '59, 130, 246' },
-    verde: { label: 'Verde', hex: '#22c55e', rgb: '34, 197, 94' },
-    rosa: { label: 'Rosa', hex: '#ec4899', rgb: '236, 72, 153' },
-    laranja: { label: 'Laranja', hex: '#f97316', rgb: '249, 115, 22' },
-    ciano: { label: 'Ciano', hex: '#06b6d4', rgb: '6, 182, 212' },
+    roxo: { get label() { return tt('accent_roxo'); }, hex: '#a855f7', rgb: '168, 85, 247' },
+    azul: { get label() { return tt('accent_azul'); }, hex: '#3b82f6', rgb: '59, 130, 246' },
+    verde: { get label() { return tt('accent_verde'); }, hex: '#22c55e', rgb: '34, 197, 94' },
+    rosa: { get label() { return tt('accent_rosa'); }, hex: '#ec4899', rgb: '236, 72, 153' },
+    laranja: { get label() { return tt('accent_laranja'); }, hex: '#f97316', rgb: '249, 115, 22' },
+    ciano: { get label() { return tt('accent_ciano'); }, hex: '#06b6d4', rgb: '6, 182, 212' },
 };
 
 export const ACCENT_IDS = Object.keys(ACCENTS) as AccentId[];
 
 export const BACKGROUNDS: Record<BackgroundId, string> = {
-    default: 'Padrão',
-    amoled: 'AMOLED (preto puro)',
+    get default() { return tt('bg_default'); },
+    get amoled() { return tt('bg_amoled'); },
 };
 
 export const BACKGROUND_IDS = Object.keys(BACKGROUNDS) as BackgroundId[];

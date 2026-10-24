@@ -19,6 +19,8 @@ import { RemoteGuide } from '../components/RemoteGuide';
 import { DiagnosticsOverlay, QrBackupOverlay } from '../components/SystemOverlays';
 import { WrappedOverlay } from '../components/WrappedOverlay';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
+import { getLocale, tt, type Language } from '../i18n';
 import { useFocusZone } from '../contexts/FocusContext';
 import './Settings.css';
 
@@ -48,21 +50,22 @@ const ZONES: FocusZone[] = [
 
 function formatDate(epochMs: number | null): string {
     if (!epochMs) return '—';
-    return new Date(epochMs).toLocaleDateString('pt-BR');
+    return new Date(epochMs).toLocaleDateString(getLocale());
 }
 
-type LanguageId = 'pt' | 'en' | 'es';
+type LanguageId = Language;
 const LANGUAGES: Array<{ id: LanguageId; label: string }> = [
     { id: 'pt', label: 'Português' },
     { id: 'en', label: 'English' },
     { id: 'es', label: 'Español' },
+    { id: 'de', label: 'Deutsch' },
 ];
 
 /**
  * Gravação de conta que não coube nem depois de podar os caches (T107). Dizer
  * "salvo" aqui era mentira: o PIN ou a playlist sumiam no boot seguinte.
  */
-const SEM_ESPACO = 'Não foi possível salvar: a memória da TV está cheia. Libere espaço em Sistema → Apagar dados e tente de novo.';
+const SEM_ESPACO = () => tt('settings_no_space');
 
 interface SettingsProps {
     onAddPlaylist?: () => void;
@@ -76,6 +79,7 @@ function formatHours(seconds: number): string {
 }
 
 export function Settings({ onAddPlaylist }: SettingsProps) {
+    const { t } = useTranslation();
     const { focusZone: appFocusZone, setFocusZone: setAppFocusZone } = useFocusZone();
     const [tmdbKey, setTmdbKey] = useState(() => storage.getTmdbApiKey());
     const [savedKey, setSavedKey] = useState(() => storage.getTmdbApiKey());
@@ -176,14 +180,14 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
         const current = storage.getTmdbApiKey();
         setSavedKey(current);
         setTmdbKey(current);
-        setMessage(current ? 'Chave TMDB salva neste dispositivo.' : 'Chave TMDB removida.');
+        setMessage(current ? t('settings_tmdb_saved') : t('settings_tmdb_removed'));
     };
 
     const clearKey = () => {
         storage.clearTmdbApiKey();
         setTmdbKey('');
         setSavedKey('');
-        setMessage('Chave TMDB removida deste dispositivo.');
+        setMessage(t('settings_tmdb_removed_device'));
     };
 
     const applyBackground = (id: BackgroundId) => {
@@ -201,7 +205,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
         setLanguage(id);
         // Mesmo evento da LanguageSelection — telas traduzidas re-renderizam
         window.dispatchEvent(new Event('neostream-lang-change'));
-        setMessage('Idioma alterado. Telas traduzidas aplicam na hora.');
+        setMessage(t('settings_lang_changed'));
     };
 
     // Mesmas chaves dos checkboxes do Login; o serviço espelha na playlist
@@ -216,21 +220,21 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
         if (playlistService.setActive(entry.id)) {
             window.location.reload();
         } else {
-            setMessage(SEM_ESPACO);
+            setMessage(SEM_ESPACO());
         }
     };
 
     const removePlaylist = (entry: PlaylistEntry) => {
         if (entry.id === activePlaylistId) {
-            setMessage('A playlist ativa não pode ser removida.');
+            setMessage(t('settings_playlist_active_locked'));
             return;
         }
         if (playlistService.remove(entry.id)) {
             setPlaylists(playlistService.list());
             setActivePlaylistId(playlistService.getActiveId());
-            setMessage(`Playlist "${entry.alias}" removida.`);
+            setMessage(t('settings_playlist_removed', { name: entry.alias }));
         } else {
-            setMessage(SEM_ESPACO);
+            setMessage(SEM_ESPACO());
         }
     };
 
@@ -325,7 +329,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     return;
                 }
                 if (parentalService.setGates({ [gate]: value })) setGates(prev => ({ ...prev, [gate]: value }));
-                else setMessage(SEM_ESPACO);
+                else setMessage(SEM_ESPACO());
             } else if (focusZone === 'snapshot') {
                 setSnapshotIndex(prev => direction === 'left'
                     ? Math.max(0, prev - 1)
@@ -367,7 +371,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             else if (focusZone === 'epgoffset') {
                 epgOffset.set(0);
                 setEpgOffsetHours(0);
-                setMessage('Fuso do EPG zerado.');
+                setMessage(t('settings_epg_reset'));
             }
             else if (focusZone === 'bootlast') {
                 setBootLast(prev => {
@@ -420,12 +424,12 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     return;
                 }
                 if (parentalService.setGates({ [gate]: value })) setGates(prev => ({ ...prev, [gate]: value }));
-                else setMessage(SEM_ESPACO);
+                else setMessage(SEM_ESPACO());
             }
             else if (focusZone === 'qualitycap') {
                 qualityCap.set(0);
                 setCap(0);
-                setMessage('Teto de qualidade removido. Vale no próximo play.');
+                setMessage(t('settings_cap_removed'));
             }
             // Réguas de vários valores: OK volta ao padrão, o mesmo que o fuso
             // do EPG e o teto de qualidade já fazem.
@@ -433,12 +437,12 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 const bufferProfile: BufferProfile = 'equilibrado';
                 playbackPrefs.set({ bufferProfile });
                 setPlayback(prev => ({ ...prev, bufferProfile }));
-                setMessage('Buffer de volta ao padrão (equilibrado).');
+                setMessage(t('settings_buffer_reset'));
             }
             else if (focusZone === 'textscale') {
                 a11yService.setTextScale(100);
                 setTextScale(100);
-                setMessage('Tamanho do texto de volta a 100%.');
+                setMessage(t('settings_textscale_reset'));
             }
             else if (focusZone === 'parentalpin') {
                 if (pinSet) {
@@ -454,11 +458,11 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             else if (focusZone === 'qrbackup') setShowQr(true);
             else if (focusZone === 'snapshot') {
                 if (snapshots.length === 0) {
-                    setMessage('Nenhum ponto de restauração ainda.');
+                    setMessage(t('settings_no_snapshot'));
                 } else if (configSnapshot.restore(snapshotIndex)) {
                     themeService.apply();
                     a11yService.apply();
-                    setMessage('Preferências restauradas. Recarregando…');
+                    setMessage(t('settings_restored_reloading'));
                     setTimeout(() => window.location.reload(), 900);
                 }
             }
@@ -473,11 +477,11 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 }
                 if (!resetArmed) {
                     setResetArmed(true);
-                    setMessage(`OK de novo apaga: ${DATA_GROUPS[group].label}.`);
+                    setMessage(t('settings_reset_confirm', { group: DATA_GROUPS[group].label }));
                 } else {
                     const result = resetGroup(group);
                     setResetArmed(false);
-                    setMessage(`${result.removed} registro(s) apagados. Recarregando…`);
+                    setMessage(t('settings_reset_done', { n: result.removed }));
                     setTimeout(() => window.location.reload(), 900);
                 }
             }
@@ -562,7 +566,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     setParentalUnlocked(true);
                     setAfterUnlock(null);
                     setPinMode('none');
-                    setMessage('PIN parental removido pela senha da conta. Crie um novo em Controle parental.');
+                    setMessage(t('settings_pin_recovered'));
                 }}
                 onCancel={() => setPinMode(resgateDe)}
             />
@@ -575,8 +579,8 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     if (pinMode === 'entry') {
         return (
             <PinPrompt
-                title="Configurações protegidas"
-                hint="Digite o PIN parental para continuar."
+                title={t('pin_settings_title')}
+                hint={t('pin_settings_hint')}
                 parental
                 // Cancelar devolve o foco pra sidebar mas a trava CONTINUA na
                 // tela: sem isto os dois receberiam a mesma tecla
@@ -602,14 +606,14 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     if (pinMode === 'unlock') {
         return (
             <PinPrompt
-                title="Confirmar com o PIN"
+                title={t('pin_confirm_title')}
                 parental
                 onForgot={esqueciOPin('unlock')}
                 hint={afterUnlock?.kind === 'removepin'
-                    ? 'Digite o PIN atual para removê-lo.'
+                    ? t('pin_remove_hint')
                     : afterUnlock?.kind === 'resetconta'
-                        ? 'Apagar "Conta e perfis" remove o PIN junto. Digite-o para continuar.'
-                    : 'Digite o PIN para mudar as travas do controle parental.'}
+                        ? t('pin_resetconta_hint')
+                    : t('pin_gates_hint')}
                 onSubmit={async (pin) => {
                     const ok = await parentalService.verify(pin);
                     if (!ok) return false;
@@ -621,16 +625,16 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                         parentalService.clear();
                         setPinSet(false);
                         setParentalUnlocked(true);
-                        setMessage('PIN parental removido.');
+                        setMessage(t('settings_pin_removed'));
                     } else if (action?.kind === 'resetconta') {
                         // PIN provado: o usuário ainda precisa confirmar
                         setResetArmed(true);
-                        setMessage('OK de novo apaga: Conta e perfis.');
+                        setMessage(t('settings_reset_confirm', { group: DATA_GROUPS.conta.label }));
                     } else if (action?.kind === 'gate') {
                         if (parentalService.setGates({ [action.gate]: action.value })) {
                             setGates(prev => ({ ...prev, [action.gate]: action.value }));
                         } else {
-                            setMessage(SEM_ESPACO);
+                            setMessage(SEM_ESPACO());
                         }
                     }
                     return true;
@@ -648,8 +652,8 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     if (pinMode === 'define') {
         return (
             <PinPrompt
-                title="Criar PIN parental"
-                hint="4 dígitos. Vale pra abrir as Configurações e pra sair do modo Kids."
+                title={t('pin_define_title')}
+                hint={t('pin_define_hint')}
                 onSubmit={async (pin) => {
                     const ok = await parentalService.set(pin);
                     if (!ok) {
@@ -657,14 +661,14 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                         // que não coube. Devolver false mostraria "PIN
                         // incorreto" — fecha e diz o que houve de verdade.
                         setPinMode('none');
-                        setMessage(SEM_ESPACO);
+                        setMessage(SEM_ESPACO());
                         return true;
                     }
                     setPinSet(true);
                     // Quem acabou de criar o PIN já o provou
                     setParentalUnlocked(true);
                     setPinMode('none');
-                    setMessage('PIN parental criado.');
+                    setMessage(t('settings_pin_created'));
                     return true;
                 }}
                 onCancel={() => setPinMode('none')}
@@ -676,15 +680,15 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
         <div className="settings-page">
             <div className="settings-panel">
                 <header className="settings-header">
-                    <span className="settings-kicker">Configurações</span>
-                    <h1>Aparência, uso e integrações</h1>
+                    <span className="settings-kicker">{t('settings_kicker')}</span>
+                    <h1>{t('settings_subtitle')}</h1>
                 </header>
 
                 {/* Aparência */}
                 <section id="sec-aparencia" className="settings-section">
-                    <h2 className="settings-section-title">🎨 Aparência</h2>
+                    <h2 className="settings-section-title">{t('settings_sec_appearance')}</h2>
 
-                    <label className="settings-label">Fundo</label>
+                    <label className="settings-label">{t('settings_background')}</label>
                     <div className="settings-options-row">
                         {BACKGROUND_IDS.map((id, index) => (
                             <button
@@ -697,7 +701,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                         ))}
                     </div>
 
-                    <label className="settings-label">Cor de destaque</label>
+                    <label className="settings-label">{t('settings_accent')}</label>
                     <div className="settings-options-row">
                         {ACCENT_IDS.map((id, index) => (
                             <button
@@ -715,9 +719,9 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
 
                 {/* Idioma */}
                 <section id="sec-idioma" className="settings-section">
-                    <h2 className="settings-section-title">🌐 Idioma</h2>
+                    <h2 className="settings-section-title">{t('settings_sec_language')}</h2>
                     <p className="settings-muted">
-                        Vale para as telas traduzidas (Login, Boas-vindas, menu lateral).
+                        {t('settings_lang_note')}
                     </p>
                     <div className="settings-options-row">
                         {LANGUAGES.map((lang, index) => (
@@ -734,9 +738,9 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
 
                 {/* Playlists */}
                 <section id="sec-playlists" className="settings-section">
-                    <h2 className="settings-section-title">📡 Playlists</h2>
+                    <h2 className="settings-section-title">{t('settings_sec_playlists')}</h2>
                     <p className="settings-muted">
-                        OK troca de provedor (recarrega o app) · 🔴 remove a playlist focada
+                        {t('settings_playlists_hint')}
                     </p>
                     <div className="settings-options-row settings-playlists">
                         {playlists.map((entry, index) => (
@@ -764,176 +768,173 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                             className={`settings-option ${focusZone === 'playlists' && safePlaylistIndex === playlists.length ? 'focused' : ''}`}
                             onClick={() => onAddPlaylist?.()}
                         >
-                            ➕ Adicionar
+                            {t('settings_add')}
                         </button>
                     </div>
 
                     {/* Os checkboxes "Incluir" do Login, pra quem já entrou */}
                     <div className="settings-row">
-                        <span className="settings-label">Mostrar TV ao vivo no menu</span>
+                        <span className="settings-label">{t('settings_show_tv')}</span>
                         <span className={`settings-value ${focusZone === 'showtv' ? 'focused' : ''}`}>
-                            {secoes.tv ? 'Ligado' : 'Desligado'}
+                            {secoes.tv ? t('common_on') : t('common_off')}
                         </span>
                     </div>
                     <div className="settings-row">
-                        <span className="settings-label">Mostrar Filmes e Séries no menu</span>
+                        <span className="settings-label">{t('settings_show_vod')}</span>
                         <span className={`settings-value ${focusZone === 'showvod' ? 'focused' : ''}`}>
-                            {secoes.vod ? 'Ligado' : 'Desligado'}
+                            {secoes.vod ? t('common_on') : t('common_off')}
                         </span>
                     </div>
                     <p className="settings-muted">
-                        Vale para a playlist ativa, como as opções "Incluir" do login.
+                        {t('settings_sections_note')}
                     </p>
                 </section>
 
                 {/* TV ao Vivo */}
                 <section id="sec-tv" className="settings-section">
-                    <h2 className="settings-section-title">📺 TV ao Vivo</h2>
+                    <h2 className="settings-section-title">{t('settings_sec_tv')}</h2>
                     <div className="settings-row">
-                        <span className="settings-label">Ajuste de fuso do EPG (←→ muda, OK zera)</span>
+                        <span className="settings-label">{t('settings_epg_offset')}</span>
                         <span className={`settings-value ${focusZone === 'epgoffset' ? 'focused' : ''}`}>
-                            {epgOffsetHours > 0 ? `+${epgOffsetHours}h` : epgOffsetHours < 0 ? `${epgOffsetHours}h` : 'Sem ajuste'}
+                            {epgOffsetHours > 0 ? `+${epgOffsetHours}h` : epgOffsetHours < 0 ? `${epgOffsetHours}h` : t('settings_epg_none')}
                         </span>
                     </div>
                     <div className="settings-row">
-                        <span className="settings-label">Ligar direto no último canal</span>
+                        <span className="settings-label">{t('settings_boot_last')}</span>
                         <span className={`settings-value ${focusZone === 'bootlast' ? 'focused' : ''}`}>
-                            {bootLast ? 'Ligado' : 'Desligado'}
+                            {bootLast ? t('common_on') : t('common_off')}
                         </span>
                     </div>
                 </section>
 
                 {/* Reprodução */}
                 <section id="sec-player" className="settings-section">
-                    <h2 className="settings-section-title">▶️ Reprodução</h2>
+                    <h2 className="settings-section-title">{t('settings_sec_playback')}</h2>
                     <div className="settings-row">
-                        <span className="settings-label">Qualidade máxima (←→ muda, OK remove o limite)</span>
+                        <span className="settings-label">{t('settings_quality_cap')}</span>
                         <span className={`settings-value ${focusZone === 'qualitycap' ? 'focused' : ''}`}>
                             {qualityCap.label(cap)}
                         </span>
                     </div>
                     <p className="settings-muted">
-                        Vale pra rede fraca: o player nunca sobe além disso. Aplica no próximo play.
+                        {t('settings_cap_note')}
                     </p>
 
                     <div className="settings-row">
-                        <span className="settings-label">Emendar o próximo episódio</span>
+                        <span className="settings-label">{t('settings_auto_next')}</span>
                         <span className={`settings-value ${focusZone === 'autonext' ? 'focused' : ''}`}>
-                            {playback.autoNextEpisode ? 'Ligado' : 'Desligado'}
+                            {playback.autoNextEpisode ? t('common_on') : t('common_off')}
                         </span>
                     </div>
 
                     <div className="settings-row">
-                        <span className="settings-label">Retomar de onde parou</span>
+                        <span className="settings-label">{t('settings_resume')}</span>
                         <span className={`settings-value ${focusZone === 'resume' ? 'focused' : ''}`}>
-                            {playback.resume ? 'Ligado' : 'Desligado'}
+                            {playback.resume ? t('common_on') : t('common_off')}
                         </span>
                     </div>
 
                     <div className="settings-row">
-                        <span className="settings-label">Buffer (←→ muda)</span>
+                        <span className="settings-label">{t('settings_buffer')}</span>
                         <span className={`settings-value ${focusZone === 'buffer' ? 'focused' : ''}`}>
                             {BUFFER_LABELS[playback.bufferProfile]}
                         </span>
                     </div>
                     <p className="settings-muted">
-                        Buffer maior aguenta rede instável e gasta mais memória. Aplica no próximo play.
+                        {t('settings_buffer_note')}
                     </p>
                 </section>
 
                 {/* Acessibilidade (itens 58, 64, 65) */}
                 <section id="sec-a11y" className="settings-section">
-                    <h2 className="settings-section-title">♿ Acessibilidade</h2>
+                    <h2 className="settings-section-title">{t('settings_sec_a11y')}</h2>
 
                     <div className="settings-row">
-                        <span className="settings-label">Alto contraste</span>
+                        <span className="settings-label">{t('settings_contrast')}</span>
                         <span className={`settings-value ${focusZone === 'contrast' ? 'focused' : ''}`}>
-                            {contrast === 'alto' ? 'Ligado' : 'Desligado'}
+                            {contrast === 'alto' ? t('common_on') : t('common_off')}
                         </span>
                     </div>
                     <p className="settings-muted">
-                        Fundo preto, texto mais claro e anel de foco amarelo bem mais grosso.
+                        {t('settings_contrast_note')}
                     </p>
 
                     <div className="settings-row">
-                        <span className="settings-label">Tamanho da interface (←→ muda)</span>
+                        <span className="settings-label">{t('settings_textscale')}</span>
                         <span className={`settings-value ${focusZone === 'textscale' ? 'focused' : ''}`}>
                             {textScale}%
                         </span>
                     </div>
 
                     <div className="settings-row">
-                        <span className="settings-label">Reduzir animações</span>
+                        <span className="settings-label">{t('settings_motion')}</span>
                         <span className={`settings-value ${focusZone === 'motion' ? 'focused' : ''}`}>
-                            {reduceMotion ? 'Ligado' : 'Desligado'}
+                            {reduceMotion ? t('common_on') : t('common_off')}
                         </span>
                     </div>
                     <p className="settings-muted">
-                        Deixa a navegação mais responsiva em TVs antigas.
+                        {t('settings_motion_note')}
                     </p>
 
                     <div className="settings-row">
-                        <span className="settings-label">Escurecer o menu parado (anti burn-in)</span>
+                        <span className="settings-label">{t('settings_burnin')}</span>
                         <span className={`settings-value ${focusZone === 'burnin' ? 'focused' : ''}`}>
-                            {dimmer ? 'Ligado' : 'Desligado'}
+                            {dimmer ? t('common_on') : t('common_off')}
                         </span>
                     </div>
                     <p className="settings-muted">
-                        Depois de 5 min sem tocar no controle a interface escurece — nunca
-                        durante a reprodução. Protege painéis OLED de marcar a imagem.
+                        {t('settings_burnin_note')}
                     </p>
                 </section>
 
                 {/* Minha conta (item 56) */}
                 <section id="sec-conta" className="settings-section">
-                    <h2 className="settings-section-title">👤 Minha conta</h2>
+                    <h2 className="settings-section-title">{t('settings_sec_account')}</h2>
                     {!account ? (
                         <p className="settings-muted">
-                            Os dados da conta aparecem depois do próximo login.
+                            {t('settings_account_none')}
                         </p>
                     ) : (
                         <>
                             <div className="settings-row">
-                                <span className="settings-label">Usuário</span>
+                                <span className="settings-label">{t('settings_user')}</span>
                                 <span className={`settings-value ${focusZone === 'account' ? 'focused' : ''}`}>
                                     {account.username || '—'}
                                 </span>
                             </div>
                             <div className="settings-row">
-                                <span className="settings-label">Situação</span>
+                                <span className="settings-label">{t('settings_status')}</span>
                                 <span className="settings-value">
-                                    {account.status || '—'}{account.isTrial ? ' (teste)' : ''}
+                                    {account.status || '—'}{account.isTrial ? t('settings_trial') : ''}
                                 </span>
                             </div>
                             <div className="settings-row">
-                                <span className="settings-label">Validade</span>
+                                <span className="settings-label">{t('settings_expiry')}</span>
                                 <span className="settings-value">
-                                    {account.expiresAt ? formatDate(account.expiresAt) : 'sem data'}
-                                    {expiryDays != null && expiryDays >= 0 && ` · ${expiryDays} dia(s)`}
-                                    {expiryDays != null && expiryDays < 0 && ' · vencida'}
+                                    {account.expiresAt ? formatDate(account.expiresAt) : t('settings_no_date')}
+                                    {expiryDays != null && expiryDays >= 0 && t('settings_days', { n: expiryDays })}
+                                    {expiryDays != null && expiryDays < 0 && t('settings_expired')}
                                 </span>
                             </div>
                             <div className="settings-row">
-                                <span className="settings-label">Conexões</span>
+                                <span className="settings-label">{t('settings_connections')}</span>
                                 <span className="settings-value">
-                                    {account.activeConnections ?? '?'} de {account.maxConnections ?? '?'} em uso
+                                    {t('settings_conn_inuse', { a: account.activeConnections ?? '?', b: account.maxConnections ?? '?' })}
                                 </span>
                             </div>
                             <div className="settings-row">
-                                <span className="settings-label">Cliente desde</span>
+                                <span className="settings-label">{t('settings_since')}</span>
                                 <span className="settings-value">{formatDate(account.createdAt)}</span>
                             </div>
                             {account.inseguro && (
                                 <p className="settings-warning">
-                                    ⚠️ A conexão segura falhou e o app entrou por HTTP: sua senha
-                                    trafega sem proteção nesta rede. Se puder, peça ao provedor um
-                                    endereço HTTPS que funcione nesta TV.
+                                    {t('settings_insecure_warn')}
                                 </p>
                             )}
                             <p className="settings-muted">
-                                Lido do provedor no último login — atualiza sozinho ao entrar de novo.
+                                {t('settings_account_note')}
                                 {expiryDays != null && expiryDays <= EXPIRY_WARN_DAYS && expiryDays >= 0 &&
-                                    ' A Home avisa quando estiver perto de vencer.'}
+                                    t('settings_account_expiry_note')}
                             </p>
                         </>
                     )}
@@ -941,114 +942,112 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
 
                 {/* Controle parental (item 55) */}
                 <section id="sec-parental" className="settings-section">
-                    <h2 className="settings-section-title">🔒 Controle parental</h2>
+                    <h2 className="settings-section-title">{t('settings_sec_parental')}</h2>
                     <div className="settings-row">
                         <span className="settings-label">
-                            PIN de 4 dígitos (OK {pinSet ? 'remove' : 'define'})
+                            {t('settings_pin_4digit', { action: pinSet ? t('common_remove') : t('common_define') })}
                         </span>
                         <span className={`settings-value ${focusZone === 'parentalpin' ? 'focused' : ''}`}>
-                            {pinSet ? 'Definido' : 'Não definido'}
+                            {pinSet ? t('common_set') : t('common_notset')}
                         </span>
                     </div>
 
                     <div className="settings-row">
-                        <span className="settings-label">Pedir PIN pra abrir Configurações</span>
+                        <span className="settings-label">{t('settings_gate_settings')}</span>
                         <span className={`settings-value ${focusZone === 'gatesettings' ? 'focused' : ''} ${pinSet ? '' : 'settings-value-off'}`}>
-                            {gates.settings ? 'Ligado' : 'Desligado'}
+                            {gates.settings ? t('common_on') : t('common_off')}
                         </span>
                     </div>
 
                     <div className="settings-row">
-                        <span className="settings-label">Pedir PIN pra sair de um perfil Kids</span>
+                        <span className="settings-label">{t('settings_gate_kids')}</span>
                         <span className={`settings-value ${focusZone === 'gatekids' ? 'focused' : ''} ${pinSet ? '' : 'settings-value-off'}`}>
-                            {gates.leaveKids ? 'Ligado' : 'Desligado'}
+                            {gates.leaveKids ? t('common_on') : t('common_off')}
                         </span>
                     </div>
                     <p className="settings-muted">
-                        {pinSet
-                            ? 'Sem o PIN não dá pra sair do modo Kids nem mexer aqui.'
-                            : 'Enquanto não houver PIN, estas travas ficam inativas — o modo Kids é contornável em dois cliques.'}
+                        {pinSet ? t('settings_parental_on_note') : t('settings_parental_off_note')}
                     </p>
                 </section>
 
                 {/* Sistema (itens 57, 59, 61, 62, 63) */}
                 <section id="sec-sistema" className="settings-section">
-                    <h2 className="settings-section-title">🛠 Sistema</h2>
+                    <h2 className="settings-section-title">{t('settings_sec_system')}</h2>
 
                     <div className="settings-row">
-                        <span className="settings-label">Guia do controle remoto</span>
-                        <span className={`settings-value ${focusZone === 'guide' ? 'focused' : ''}`}>OK abre</span>
+                        <span className="settings-label">{t('settings_remote_guide')}</span>
+                        <span className={`settings-value ${focusZone === 'guide' ? 'focused' : ''}`}>{t('settings_ok_opens')}</span>
                     </div>
 
                     <div className="settings-row">
-                        <span className="settings-label">Diagnóstico e testes de rede</span>
-                        <span className={`settings-value ${focusZone === 'diag' ? 'focused' : ''}`}>OK abre</span>
+                        <span className="settings-label">{t('settings_diag')}</span>
+                        <span className={`settings-value ${focusZone === 'diag' ? 'focused' : ''}`}>{t('settings_ok_opens')}</span>
                     </div>
 
                     <div className="settings-row">
-                        <span className="settings-label">Backup das preferências por QR</span>
-                        <span className={`settings-value ${focusZone === 'qrbackup' ? 'focused' : ''}`}>OK abre</span>
+                        <span className="settings-label">{t('settings_qrbackup')}</span>
+                        <span className={`settings-value ${focusZone === 'qrbackup' ? 'focused' : ''}`}>{t('settings_ok_opens')}</span>
                     </div>
 
                     <div className="settings-row">
                         <span className="settings-label">
-                            Ponto de restauração {snapshots.length > 0 ? '(←→ escolhe, OK restaura)' : ''}
+                            {t('settings_restore_point')} {snapshots.length > 0 ? t('settings_restore_hint') : ''}
                         </span>
                         <span className={`settings-value ${focusZone === 'snapshot' ? 'focused' : ''}`}>
                             {snapshots.length === 0
-                                ? 'nenhum ainda'
+                                ? t('settings_none_yet')
                                 : `${snapshotIndex + 1}/${snapshots.length} · ${formatDate(snapshots[snapshotIndex]?.at ?? null)}`}
                         </span>
                     </div>
                     <p className="settings-muted">
-                        Um retrato das preferências é guardado por semana. Restaurar recarrega o app.
+                        {t('settings_snapshot_note')}
                     </p>
 
                     <div className="settings-row">
-                        <span className="settings-label">Apagar dados (←→ escolhe o grupo)</span>
+                        <span className="settings-label">{t('settings_reset')}</span>
                         <span className={`settings-value ${focusZone === 'reset' ? 'focused' : ''} ${resetArmed ? 'settings-value-danger' : ''}`}>
                             {DATA_GROUPS[DATA_GROUP_IDS[resetIndex]].label} · {groupSizeKb(DATA_GROUP_IDS[resetIndex])} KB
                         </span>
                     </div>
                     <p className="settings-muted">
                         {resetArmed
-                            ? '⚠️ Pressione OK de novo para apagar. Sair da linha cancela.'
+                            ? t('settings_reset_armed')
                             : DATA_GROUPS[DATA_GROUP_IDS[resetIndex]].description}
                     </p>
                 </section>
 
                 {/* Seu uso */}
                 <section id="sec-uso" className="settings-section">
-                    <h2 className="settings-section-title">📊 Seu uso</h2>
+                    <h2 className="settings-section-title">{t('settings_sec_usage')}</h2>
                     {usage.totalSeconds === 0 ? (
-                        <p className="settings-muted">Assista algo e as estatísticas aparecem aqui.</p>
+                        <p className="settings-muted">{t('settings_usage_empty')}</p>
                     ) : (
                         <>
                             <div className="usage-cards">
                                 <div className="usage-card">
                                     <span className="usage-value">{formatHours(usage.totalSeconds)}</span>
-                                    <span className="usage-label">Total</span>
+                                    <span className="usage-label">{t('settings_usage_total')}</span>
                                 </div>
                                 <div className="usage-card">
                                     <span className="usage-value">{formatHours(usage.last7Seconds)}</span>
-                                    <span className="usage-label">Últimos 7 dias</span>
+                                    <span className="usage-label">{t('settings_usage_7d')}</span>
                                 </div>
                                 <div className="usage-card">
                                     <span className="usage-value">{formatHours(usage.byKind.live)}</span>
-                                    <span className="usage-label">📺 TV ao vivo</span>
+                                    <span className="usage-label">{t('settings_usage_live')}</span>
                                 </div>
                                 <div className="usage-card">
                                     <span className="usage-value">{formatHours(usage.byKind.movie)}</span>
-                                    <span className="usage-label">🎬 Filmes</span>
+                                    <span className="usage-label">{t('settings_usage_movies')}</span>
                                 </div>
                                 <div className="usage-card">
                                     <span className="usage-value">{formatHours(usage.byKind.series)}</span>
-                                    <span className="usage-label">📺 Séries</span>
+                                    <span className="usage-label">{t('settings_usage_series')}</span>
                                 </div>
                             </div>
                             {usage.topItems.length > 0 && (
                                 <div className="usage-top">
-                                    <span className="settings-label">Mais assistidos</span>
+                                    <span className="settings-label">{t('settings_top')}</span>
                                     <ol className="usage-top-list">
                                         {usage.topItems.map(item => (
                                             <li key={`${item.kind}|${item.name}`}>
@@ -1064,7 +1063,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                                     className={`settings-button primary ${focusZone === 'wrapped' ? 'focused' : ''}`}
                                     onClick={() => setShowWrapped(true)}
                                 >
-                                    🏆 Ver retrospectiva
+                                    {t('settings_wrapped')}
                                 </button>
                             </div>
                         </>
@@ -1073,12 +1072,12 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
 
                 {/* TMDB */}
                 <section id="sec-tmdb" className="settings-section">
-                    <h2 className="settings-section-title">🎞 Integração TMDB</h2>
+                    <h2 className="settings-section-title">{t('settings_sec_tmdb')}</h2>
                     <p className="settings-muted">
-                        Opcional. Com uma chave própria, o app busca sinopse, capas e metadados extras.
+                        {t('settings_tmdb_note')}
                     </p>
                     <label className="settings-label" htmlFor="tmdb-key">
-                        Chave API TMDB
+                        {t('settings_tmdb_key')}
                     </label>
                     <input
                         id="tmdb-key"
@@ -1091,13 +1090,13 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                             setEditing(true);
                         }}
                         onBlur={() => setEditing(false)}
-                        placeholder="Cole sua chave TMDB aqui"
+                        placeholder={t('settings_tmdb_placeholder')}
                         autoComplete="off"
                         spellCheck={false}
                     />
 
                     <div className="settings-status">
-                        Status: {hasSavedKey ? 'chave salva localmente neste dispositivo' : 'nenhuma chave salva'}
+                        Status: {hasSavedKey ? t('settings_tmdb_status_saved') : t('settings_tmdb_status_none')}
                     </div>
 
                     <div className="settings-actions">
@@ -1105,14 +1104,14 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                             className={`settings-button primary ${focusZone === 'save' ? 'focused' : ''}`}
                             onClick={saveKey}
                         >
-                            Salvar chave
+                            {t('settings_save_key')}
                         </button>
                         <button
                             className={`settings-button secondary ${focusZone === 'clear' ? 'focused' : ''}`}
                             onClick={clearKey}
                             disabled={!hasSavedKey && !tmdbKey}
                         >
-                            Remover chave
+                            {t('settings_remove_key')}
                         </button>
                     </div>
 

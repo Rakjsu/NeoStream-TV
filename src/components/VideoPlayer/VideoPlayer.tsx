@@ -7,6 +7,8 @@ import {
 } from '../../services/playerDecisions';
 import { playbackPrefs } from '../../services/playbackPrefs';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
+import { useTranslation } from '../../hooks/useTranslation';
+import { tt } from '../../i18n';
 import { useFocusZone } from '../../contexts/FocusContext';
 import { epgService, type EpgProgram } from '../../services/epgService';
 import { aspectPrefs, ASPECT_MODES, ASPECT_LABELS, zapHistory, type AspectMode } from '../../services/liveExtras';
@@ -123,15 +125,15 @@ const ZAP_WINDOW = 9; // linhas visíveis no overlay de zapping
 const STALL_LIMIT_MS = 12000; // watchdog: tempo parado antes de reconectar
 
 // Mensagem acionável por causa (R1 item 45)
-const CAUSE_MESSAGES: Record<string, string> = {
-    notfound: 'Canal indisponível no provedor (404). Tente outra variante ou canal.',
+const CAUSE_MESSAGES: Record<string, () => string> = {
+    notfound: () => tt('vp_cause_notfound'),
     // Filme/episódio: o <video> não diz o status HTTP — o mesmo código vale
     // pra arquivo inexistente e pra formato que a TV não toca (T121)
-    notfoundVod: 'Conteúdo indisponível ou formato não suportado.',
-    network: 'Falha de rede. Verifique a conexão da TV.',
-    media: 'Falha ao decodificar o vídeo (codec não suportado?).',
-    stall: 'O stream congelou.',
-    fatal: 'Erro no stream.',
+    notfoundVod: () => tt('vp_cause_notfoundvod'),
+    network: () => tt('vp_cause_network'),
+    media: () => tt('vp_cause_media'),
+    stall: () => tt('vp_cause_stall'),
+    fatal: () => tt('vp_cause_fatal'),
 };
 
 // Numa TV Tizen a falha do segura-screensaver não pode ser silenciosa: o
@@ -225,6 +227,7 @@ export function VideoPlayer({
     autoAdvance,
     isOverlayOwner = false
 }: VideoPlayerProps) {
+    const { t } = useTranslation();
     // Um overlay do App (o aviso de lembrete) toma as teclas mudando a zona
     // pra 'overlay'. Sem consultar isso aqui, o MESMO OK pausava o vídeo por
     // baixo do aviso e ainda trocava o "último canal" do usuário.
@@ -418,7 +421,7 @@ export function VideoPlayer({
         // senão o vídeo volta a tocar sozinho e a pausa não acontece
         autoPlay: autoPlay && !pausedLiveSrc,
         isLive: isLive || contentType === 'live',
-        onError: (cause) => setError(CAUSE_MESSAGES[cause || 'fatal']),
+        onError: (cause) => setError((CAUSE_MESSAGES[cause || 'fatal'] || CAUSE_MESSAGES.fatal)()),
         onStreamError: (cause) => scheduleReconnect(cause || 'fatal'),
     });
 
@@ -534,7 +537,7 @@ export function VideoPlayer({
             streamFailedRef.current = true;
             videoRef.current?.pause();
             setReconnecting(false);
-            setError(CAUSE_MESSAGES[isLiveContent ? 'notfound' : 'notfoundVod']);
+            setError(CAUSE_MESSAGES[isLiveContent ? 'notfound' : 'notfoundVod']());
             onStreamFailedRef.current?.();
             return;
         }
@@ -543,7 +546,7 @@ export function VideoPlayer({
             streamFailedRef.current = true;
             videoRef.current?.pause();
             setReconnecting(false);
-            setError(CAUSE_MESSAGES[cause] || CAUSE_MESSAGES.fatal);
+            setError((CAUSE_MESSAGES[cause] || CAUSE_MESSAGES.fatal)());
             onStreamFailedRef.current?.();
             return;
         }
@@ -1115,7 +1118,7 @@ export function VideoPlayer({
         // isto, a queda de um filme (URL direta, onde o useHls ouve o MESMO
         // evento) cobria o "Reconectando…" com a tela de erro (T121).
         const handleError = () => {
-            if (!reconnectTimerRef.current && !streamFailedRef.current) setError('Erro ao reproduzir vídeo');
+            if (!reconnectTimerRef.current && !streamFailedRef.current) setError(t('vp_err_play'));
         };
 
         video.addEventListener('play', handlePlay);
@@ -1346,8 +1349,8 @@ export function VideoPlayer({
 
     const currentAudioLabel = audioTracks.find(track => track.id === currentAudioTrack)?.label || '—';
     const currentSubLabel = currentSubtitleTrack >= 0
-        ? (subtitleTracks.find(track => track.id === currentSubtitleTrack)?.label || 'Ligada')
-        : 'Desligadas';
+        ? (subtitleTracks.find(track => track.id === currentSubtitleTrack)?.label || t('vp_subs_on'))
+        : t('vp_subs_off');
 
     // Itens do menu aberto. A raiz só mostra o que o stream realmente oferece —
     // linha morta em menu de TV é pior que ausência.
@@ -1356,25 +1359,25 @@ export function VideoPlayer({
             const entries: MenuEntry[] = [];
             if (qualityLevels.length > 0) {
                 entries.push({
-                    label: 'Qualidade',
+                    label: t('vp_quality'),
                     hint: isAutoQuality ? 'Auto' : (qualityLevels.find(l => l.index === currentQualityIndex)?.label || 'Auto'),
                     run: () => openMenu('quality'),
                 });
             }
             if (audioTracks.length > 1) {
-                entries.push({ label: 'Áudio', hint: currentAudioLabel, run: () => openMenu('audio') });
+                entries.push({ label: t('vp_audio'), hint: currentAudioLabel, run: () => openMenu('audio') });
             }
             if (subtitleTracks.length > 0) {
-                entries.push({ label: 'Legendas', hint: currentSubLabel, run: () => openMenu('subs') });
+                entries.push({ label: t('vp_subs'), hint: currentSubLabel, run: () => openMenu('subs') });
                 entries.push({
-                    label: 'Tamanho da legenda',
+                    label: t('vp_subsize'),
                     hint: SUBTITLE_SIZE_LABELS[subSize],
                     run: () => openMenu('subsize'),
                 });
             }
             entries.push({
-                label: 'Estatísticas do stream',
-                hint: showStats ? 'Ligadas' : 'Desligadas',
+                label: t('vp_stats'),
+                hint: showStats ? t('vp_stats_on') : t('vp_subs_off'),
                 run: toggleStats,
             });
             return entries;
@@ -1408,7 +1411,7 @@ export function VideoPlayer({
         if (menu === 'subs') {
             return [
                 {
-                    label: 'Desligadas',
+                    label: t('vp_subs_off'),
                     selected: currentSubtitleTrack < 0,
                     run: () => { setSubtitleTrack(-1); closeMenu(); },
                 },
@@ -1455,11 +1458,11 @@ export function VideoPlayer({
     }
 
     const MENU_TITLES: Record<MenuId, string> = {
-        root: 'Opções',
-        quality: 'Qualidade',
-        audio: 'Áudio',
-        subs: 'Legendas',
-        subsize: 'Tamanho da legenda',
+        root: t('vp_menu_root'),
+        quality: t('vp_quality'),
+        audio: t('vp_audio'),
+        subs: t('vp_subs'),
+        subsize: t('vp_subsize'),
     };
 
     // Execute focused control action
@@ -1737,11 +1740,11 @@ export function VideoPlayer({
                 {isRadio && (
                     <div className="radio-stage">
                         {poster
-                            ? <img decoding="async" className="radio-logo" src={poster} alt={title || 'Rádio'} />
+                            ? <img decoding="async" className="radio-logo" src={poster} alt={title || t('vp_radio')} />
                             : <div className="radio-logo radio-logo-fallback">📻</div>}
                         <div className="radio-name">{title}</div>
                         <RadioClock />
-                        <div className="radio-hint">CH+ / CH− trocam de estação</div>
+                        <div className="radio-hint">{t('vp_radio_hint')}</div>
                     </div>
                 )}
             </div>
@@ -1749,7 +1752,7 @@ export function VideoPlayer({
             {/* Aviso "a seguir" perto do fim do programa (item 9) */}
             {nextSoon && !showControls && liveEpg?.now && (
                 <div className="next-soon-banner">
-                    Em {Math.max(1, Math.ceil((liveEpg.now.end - Date.now()) / 60000))} min: {nextSoon.title}
+                    {t('vp_next_in', { min: Math.max(1, Math.ceil((liveEpg.now.end - Date.now()) / 60000)), title: nextSoon.title })}
                 </div>
             )}
 
@@ -1781,7 +1784,7 @@ export function VideoPlayer({
                 const visible = channelList.slice(start, start + ZAP_WINDOW);
                 return (
                     <div className="zap-overlay">
-                        <div className="zap-overlay-header">📺 Canais</div>
+                        <div className="zap-overlay-header">{t('vp_zap_title')}</div>
                         <div className="zap-overlay-list">
                             {visible.map((channel, i) => {
                                 const realIndex = start + i;
@@ -1806,7 +1809,7 @@ export function VideoPlayer({
                                 );
                             })}
                         </div>
-                        <div className="zap-overlay-hint">↑↓ Navegar · CH± Página · 0-9 Nº · OK Assistir · ← Fechar</div>
+                        <div className="zap-overlay-hint">{t('vp_zap_hint')}</div>
                     </div>
                 );
             })()}
@@ -1814,14 +1817,14 @@ export function VideoPlayer({
             {/* Ainda está assistindo? (item 51) */}
             {stillWatching && (
                 <div className="still-watching">
-                    <div className="still-watching-title">Ainda está assistindo?</div>
+                    <div className="still-watching-title">{t('vp_still_title')}</div>
                     <div className="still-watching-sub">
-                        {AUTO_EPISODE_LIMIT} episódios seguidos sem toque no controle.
+                        {t('vp_still_sub', { n: AUTO_EPISODE_LIMIT })}
                     </div>
                     <button className="still-watching-btn" onClick={confirmStillWatching}>
-                        ▶ Continuar
+                        {t('vp_still_continue')}
                     </button>
-                    <div className="still-watching-hint">OK continua · Voltar sai</div>
+                    <div className="still-watching-hint">{t('vp_still_hint')}</div>
                 </div>
             )}
 
@@ -1829,7 +1832,7 @@ export function VideoPlayer({
             {seekDisplay && (
                 <div className="seek-osd">
                     <span className="seek-osd-target">{formatTime(seekDisplay.target)}</span>
-                    <span className="seek-osd-step">passo de {seekDisplay.step}s</span>
+                    <span className="seek-osd-step">{t('vp_seek_step', { s: seekDisplay.step })}</span>
                 </div>
             )}
 
@@ -1860,21 +1863,21 @@ export function VideoPlayer({
                         <div className="spinner-ring"></div>
                         <div className="spinner-ring"></div>
                     </div>
-                    <span className="loading-text">Carregando...</span>
+                    <span className="loading-text">{t('common_loading')}</span>
                 </div>
             )}
 
             {/* Pausado no ao vivo (item 8) */}
             {pausedLiveSrc && !playing && (
                 <div className="paused-live-badge">
-                    ⏸ Pausado — retomar continua de onde parou
+                    {t('vp_paused_live')}
                 </div>
             )}
 
             {/* Reconectando (R1 item 44) */}
             {reconnecting && !error && (
                 <div className="reconnect-overlay">
-                    🔄 Reconectando… tentativa {reconnectAttempt}/{MAX_RECONNECT_ATTEMPTS}
+                    {t('vp_reconnecting', { n: reconnectAttempt, max: MAX_RECONNECT_ATTEMPTS })}
                 </div>
             )}
 
@@ -1883,8 +1886,8 @@ export function VideoPlayer({
                 <div className="video-player-error">
                     <p>⚠️ {error}</p>
                     <div className="video-player-error-actions">
-                        <button className="tv-focused" onClick={tentarDeNovo}>Tentar de novo (OK)</button>
-                        {onClose && <button onClick={handleClose}>Fechar (Voltar)</button>}
+                        <button className="tv-focused" onClick={tentarDeNovo}>{t('vp_retry')}</button>
+                        {onClose && <button onClick={handleClose}>{t('vp_close')}</button>}
                     </div>
                 </div>
             )}
@@ -1907,7 +1910,7 @@ export function VideoPlayer({
                             </div>
                         ))}
                     </div>
-                    <div className="quality-menu-hint">OK escolhe · ← Voltar</div>
+                    <div className="quality-menu-hint">{t('vp_menu_hint')}</div>
                 </div>
             )}
 
@@ -1929,7 +1932,7 @@ export function VideoPlayer({
                             />
                         </div>
                         {liveEpg.next && (
-                            <div className="mini-epg-next">A seguir: {liveEpg.next.title}</div>
+                            <div className="mini-epg-next">{t('vp_next', { title: liveEpg.next.title })}</div>
                         )}
                     </div>
                 )}
@@ -1944,7 +1947,7 @@ export function VideoPlayer({
                         onMouseLeave={() => setHoverTime(null)}
                     >
                         {playerFocus === 'seekbar' && (
-                            <div className="seek-hint">← → pulam · OK confirma · ↓ volta</div>
+                            <div className="seek-hint">{t('vp_seek_hint')}</div>
                         )}
                         {hoverTime !== null && (
                             <div
@@ -2012,12 +2015,12 @@ export function VideoPlayer({
                                     <span className="live-dot" />
                                     {/* Texto solto vira item flex anônimo e o
                                         fallback de gap não o alcança */}
-                                    <span>VOLTAR AO VIVO</span>
+                                    <span>{t('vp_golive')}</span>
                                 </button>
                             ) : (
                                 <span className="live-badge">
                                     <span className="live-dot" />
-                                    <span>AO VIVO</span>
+                                    <span>{t('vp_live')}</span>
                                 </span>
                             )
                         ) : (
@@ -2032,7 +2035,7 @@ export function VideoPlayer({
                         <button
                             className={`control-btn quality-btn ${focusedControl === 'options' && playerFocus === 'controls' ? 'focused' : ''}`}
                             onClick={() => openMenu('root')}
-                            title="Opções"
+                            title={t('vp_tip_options')}
                         >
                             <FaCog />
                             {qualityLevels.length > 0 && (
@@ -2045,7 +2048,7 @@ export function VideoPlayer({
                             <button
                                 className={`control-btn ${focusedControl === 'channels' && playerFocus === 'controls' ? 'focused' : ''}`}
                                 onClick={openZapList}
-                                title="Lista de canais"
+                                title={t('vp_tip_channels')}
                             >
                                 <FaListUl />
                             </button>
@@ -2055,7 +2058,7 @@ export function VideoPlayer({
                         <button
                             className={`control-btn ${sleepUntil ? 'active' : ''} ${focusedControl === 'sleep' && playerFocus === 'controls' ? 'focused' : ''}`}
                             onClick={cycleSleep}
-                            title="Timer de desligamento"
+                            title={t('vp_tip_sleep')}
                         >
                             <FaMoon />
                             {sleepRemainingMin != null && (
@@ -2067,7 +2070,7 @@ export function VideoPlayer({
                         <button
                             className={`control-btn ${focusedControl === 'aspect' && playerFocus === 'controls' ? 'focused' : ''}`}
                             onClick={cycleAspect}
-                            title="Proporção"
+                            title={t('vp_tip_aspect')}
                         >
                             <FaExpand />
                             {aspectMode !== 'original' && (

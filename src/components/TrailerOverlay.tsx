@@ -10,6 +10,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import './TrailerOverlay.css';
 
 interface TrailerOverlayProps {
@@ -20,6 +21,7 @@ interface TrailerOverlayProps {
 }
 
 export function TrailerOverlay({ youtubeKey, title, onClose }: TrailerOverlayProps) {
+    const { t } = useTranslation();
     const painelRef = useRef<HTMLDivElement>(null);
 
     // O overlay é dono exclusivo das teclas: OK e Voltar fecham.
@@ -43,12 +45,12 @@ export function TrailerOverlay({ youtubeKey, title, onClose }: TrailerOverlayPro
             <div className="trailer-painel" ref={painelRef} tabIndex={-1}>
                 <div className="trailer-topo">
                     <span className="trailer-titulo">▶ {title}</span>
-                    <span className="trailer-dica">OK ou Voltar fecha</span>
+                    <span className="trailer-dica">{t('qr_hint')}</span>
                 </div>
                 <div className="trailer-quadro">
                     <iframe
                         src={src}
-                        title={`Trailer de ${title}`}
+                        title={t('trailer_title', { title })}
                         allow="autoplay; encrypted-media"
                         allowFullScreen
                     />

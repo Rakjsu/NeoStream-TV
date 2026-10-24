@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../services/api';
 import type { Series as SeriesType, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import { useFocusZone } from '../contexts/FocusContext';
 import { mapaDeGeneros, generosDisponiveis, rotuloDoGenero } from '../services/catalogGenres';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
@@ -31,6 +32,7 @@ function letraDe(item: SeriesType): string {
 }
 
 export function Series() {
+    const { t } = useTranslation();
     const { focusZone, setFocusZone } = useFocusZone();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -157,7 +159,7 @@ export function Series() {
                 // Com o cache na tela, cair a rede não apaga o que o usuário já
                 // está navegando
                 if (servedFromCache) return;
-                setError(err instanceof Error ? err.message : 'Erro ao carregar s�ries');
+                setError(err instanceof Error ? err.message : t('series_error_load'));
             } finally {
                 setLoading(false);
             }
@@ -281,13 +283,13 @@ export function Series() {
     // Grade vazia numa TV e indistinguivel de defeito: dizer QUAIS filtros
     // estao ligados e o que fecha a duvida
     const filtrosLigados = [
-        searchQuery ? `busca "${searchQuery}"` : '',
-        selectedCategory !== 'all' ? 'categoria' : '',
-        genero ? `genero ${rotuloDoGenero(genero)}` : '',
-        letterFilter ? `letra ${letterFilter}` : '',
+        searchQuery ? t('filter_search', { q: searchQuery }) : '',
+        selectedCategory !== 'all' ? t('filter_category') : '',
+        genero ? t('filter_genre', { g: rotuloDoGenero(genero) }) : '',
+        letterFilter ? t('filter_letter', { l: letterFilter }) : '',
         filters.decade > 0 ? `${filters.decade}s` : '',
-        filters.minRating > 0 ? `nota ${filters.minRating}+` : '',
-        hideWatchedOn ? 'esconder assistidos' : '',
+        filters.minRating > 0 ? t('filter_rating', { n: filters.minRating }) : '',
+        hideWatchedOn ? t('filter_hidewatched') : '',
     ].filter(Boolean);
 
     // Índice focado sempre no range (lista encolhe ao esconder assistidos)
@@ -498,7 +500,7 @@ export function Series() {
 
     const contextActions = contextItem ? [
         {
-            label: storage.isFavorite(String(contextItem.series_id), 'series') ? '💔 Remover dos favoritos' : '❤️ Favoritar',
+            label: storage.isFavorite(String(contextItem.series_id), 'series') ? t('ctx_unfav') : t('ctx_fav'),
             run: () => {
                 const added = storage.toggleFavorite({
                     id: String(contextItem.series_id),
@@ -507,11 +509,11 @@ export function Series() {
                     poster: contextItem.cover,
                     rating: contextItem.rating,
                 });
-                setToast(added ? '❤️ Adicionado aos favoritos' : '💔 Removido dos favoritos');
+                setToast(added ? t('ctx_fav_added') : t('ctx_fav_removed'));
             },
         },
         {
-            label: storage.isInWatchLater(String(contextItem.series_id), 'series') ? '➖ Tirar da Minha Lista' : '➕ Minha Lista',
+            label: storage.isInWatchLater(String(contextItem.series_id), 'series') ? t('ctx_unlist') : t('ctx_list'),
             run: () => {
                 const added = storage.toggleWatchLater({
                     id: String(contextItem.series_id),
@@ -520,7 +522,7 @@ export function Series() {
                     poster: contextItem.cover,
                     rating: contextItem.rating,
                 });
-                setToast(added ? '➕ Salvo na Minha Lista' : '➖ Removido da Minha Lista');
+                setToast(added ? t('ctx_list_added') : t('ctx_list_removed'));
             },
         },
     ] : [];
@@ -642,7 +644,7 @@ export function Series() {
         return (
             <ErrorScreen
                 icon="📺"
-                title="Erro ao carregar séries"
+                title={t('series_error_load')}
                 message={error}
                 className="series-error-container"
             />
@@ -665,7 +667,7 @@ export function Series() {
                 ref={searchRef}
                 value={searchQuery}
                 onChange={setSearchQuery}
-                placeholder="Buscar séries..."
+                placeholder={t('series_search')}
                 tvFocused={focusArea === 'categories' && focusedCategoryIndex === 0}
             />
 
@@ -685,39 +687,39 @@ export function Series() {
                 <button
                     className={`toolbar-btn ${sortMode !== 'default' ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('sort') ? 'tv-focused' : ''}`}
                     onClick={cycleSort}
-                    title="Ordenar"
+                    title={t('movies_tip_sort')}
                 >
                     ↕ {SORT_LABELS[sortMode]}
                 </button>
                 <button
                     className={`toolbar-btn ${hideWatchedOn ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('hidewatched') ? 'tv-focused' : ''}`}
                     onClick={toggleHideWatched}
-                    title="Esconder assistidos"
+                    title={t('movies_tip_hidewatched')}
                 >
                     🙈
                 </button>
                 <button
                     className={`toolbar-btn ${filters.decade > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('decade') ? 'tv-focused' : ''}`}
                     onClick={cycleFilters}
-                    title="Filtrar por década"
+                    title={t('movies_tip_decade')}
                 >
-                    {filters.decade > 0 ? `${filters.decade}s` : '📅 Década'}
+                    {filters.decade > 0 ? `${filters.decade}s` : t('movies_decade_btn')}
                 </button>
                 {generosDoCatalogo.length > 0 && (
                     <button
                         className={`toolbar-btn ${genero ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('genero') ? 'tv-focused' : ''}`}
                         onClick={cycleGenero}
-                        title="Filtrar por gênero"
+                        title={t('movies_tip_genre')}
                     >
-                        {genero ? rotuloDoGenero(genero) : '🎭 Gênero'}
+                        {genero ? rotuloDoGenero(genero) : t('movies_genre_btn')}
                     </button>
                 )}
                 <button
                     className={`toolbar-btn ${filters.minRating > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('nota') ? 'tv-focused' : ''}`}
                     onClick={cycleNota}
-                    title="Nota mínima"
+                    title={t('movies_tip_rating')}
                 >
-                    {filters.minRating > 0 ? `⭐ ${filters.minRating}+` : '⭐ Nota'}
+                    {filters.minRating > 0 ? `⭐ ${filters.minRating}+` : t('movies_rating_btn')}
                 </button>
             </div>
 
@@ -777,11 +779,11 @@ export function Series() {
                 {filteredSeries.length === 0 ? (
                     <div className="no-results">
                         <div className="no-results-icon">📺</div>
-                        <p>Nenhuma série encontrada</p>
+                        <p>{t('series_none')}</p>
                         <span>
                             {filtrosLigados.length > 0
-                                ? `Filtros ligados: ${filtrosLigados.join(' · ')}`
-                                : 'Tente buscar por outro termo'}
+                                ? t('movies_filters_on', { list: filtrosLigados.join(' · ') })
+                                : t('common_try_search')}
                         </span>
                     </div>
                 ) : (
@@ -807,15 +809,15 @@ export function Series() {
                                     )}
                                     {followedSeriesIds.has(String(item.series_id)) &&
                                         newEpisodes.has(String(item.series_id), item.last_modified || '0') ? (
-                                        <div className="new-badge new-badge-episodes">NOVOS EPS</div>
+                                        <div className="new-badge new-badge-episodes">{t('home_new_eps_badge')}</div>
                                     ) : isRecentlyAdded(item, nowMs) && (
-                                        <div className="new-badge">NOVO</div>
+                                        <div className="new-badge">{t('common_new')}</div>
                                     )}
                                     {item.rating && parseFloat(item.rating) > 0 && (
                                         <div className="series-rating">⭐ {item.rating}</div>
                                     )}
                                 </PosterPreguicoso>
-                                <div className="series-title">{item?.name || 'Série Sem Nome'}</div>
+                                <div className="series-title">{item?.name || t('common_unnamed_series')}</div>
                             </div>
                         ))}
                     </div>
@@ -855,18 +857,18 @@ export function Series() {
                                 {action.label}
                             </div>
                         ))}
-                        <div className="context-hint">↑↓ Navegar · OK Executar · ← Fechar</div>
+                        <div className="context-hint">{t('hint_ctx')}</div>
                     </div>
                 </div>
             )}
 
             {/* Footer Hints */}
             <div className="series-hints">
-                <span>↑↓←→ Navegar</span>
-                <span>OK Selecionar</span>
-                <span>← Voltar</span>
-                <span>🟡 Ações</span>
-                <span>CH± Página</span>
+                <span>{t('hint_nav4')}</span>
+                <span>{t('hint_ok_select')}</span>
+                <span>{t('hint_back')}</span>
+                <span>{t('movies_hint_yellow')}</span>
+                <span>{t('hint_ch_page')}</span>
             </div>
         </div>
     );

@@ -6,6 +6,7 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import type { Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import './CategoryMenu.css';
 
 export interface CategoryMenuHandle {
@@ -40,6 +41,7 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
         hiddenCategoryIds,
         onToggleHideCategory,
     }, ref) {
+        const { t } = useTranslation();
         const [isOpen, setIsOpen] = useState(false);
         const [isClosing, setIsClosing] = useState(false);
         const [focusedIndex, setFocusedIndex] = useState(0);
@@ -175,32 +177,32 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
 
         const getCategoryIcon = (name: string): string => {
             const lower = name.toLowerCase();
-            if (lower.includes('ação') || lower.includes('action')) return 'Ação';
-            if (lower.includes('aventura') || lower.includes('adventure')) return 'Aventura';
-            if (lower.includes('drama')) return 'Drama';
-            if (lower.includes('romance')) return 'Romance';
-            if (lower.includes('comédia') || lower.includes('comedy')) return 'Comédia';
-            if (lower.includes('terror') || lower.includes('horror')) return 'Terror';
-            if (lower.includes('suspense') || lower.includes('thriller')) return 'Suspense';
-            if (lower.includes('ficção') || lower.includes('sci-fi')) return 'Sci-Fi';
-            if (lower.includes('fantasia') || lower.includes('fantasy')) return 'Fantasia';
-            if (lower.includes('animação') || lower.includes('animation')) return 'Animação';
-            if (lower.includes('anime')) return 'Anime';
-            if (lower.includes('infantil') || lower.includes('kids')) return 'Kids';
-            if (lower.includes('documentário') || lower.includes('documentary')) return 'Doc';
-            if (lower.includes('crime') || lower.includes('policial')) return 'Crime';
-            if (lower.includes('guerra') || lower.includes('war')) return 'Guerra';
-            if (lower.includes('esporte') || lower.includes('sport')) return 'Esporte';
-            if (lower.includes('música') || lower.includes('music')) return 'Música';
+            if (lower.includes('ação') || lower.includes('action')) return t('genre_action');
+            if (lower.includes('aventura') || lower.includes('adventure')) return t('genre_adventure');
+            if (lower.includes('drama')) return t('genre_drama');
+            if (lower.includes('romance')) return t('genre_romance');
+            if (lower.includes('comédia') || lower.includes('comedy')) return t('genre_comedy');
+            if (lower.includes('terror') || lower.includes('horror')) return t('genre_horror');
+            if (lower.includes('suspense') || lower.includes('thriller')) return t('genre_thriller');
+            if (lower.includes('ficção') || lower.includes('sci-fi')) return t('genre_scifi');
+            if (lower.includes('fantasia') || lower.includes('fantasy')) return t('genre_fantasy');
+            if (lower.includes('animação') || lower.includes('animation')) return t('genre_animation');
+            if (lower.includes('anime')) return t('genre_anime');
+            if (lower.includes('infantil') || lower.includes('kids')) return t('genre_kids');
+            if (lower.includes('documentário') || lower.includes('documentary')) return t('genre_doc');
+            if (lower.includes('crime') || lower.includes('policial')) return t('genre_crime');
+            if (lower.includes('guerra') || lower.includes('war')) return t('genre_war');
+            if (lower.includes('esporte') || lower.includes('sport')) return t('genre_sport');
+            if (lower.includes('música') || lower.includes('music')) return t('genre_music');
             if (lower.includes('favorito')) return '⭐';
             if (type === 'live') return 'TV';
-            return type === 'vod' ? 'Filme' : 'Série';
+            return type === 'vod' ? t('type_movie') : t('type_series');
         };
 
         const getTypeLabel = () => {
-            if (type === 'live') return 'Todos os Canais';
-            if (type === 'vod') return 'Todos os Filmes';
-            return 'Todas as Séries';
+            if (type === 'live') return t('cat_all_live');
+            if (type === 'vod') return t('cat_all_vod');
+            return t('cat_all_series');
         };
 
         return (
@@ -233,8 +235,8 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
                         {/* Header */}
                         <div className="category-panel-header">
                             <div className="header-content">
-                                <h2>Categorias</h2>
-                                <p>Explore por gênero{onToggleHideCategory ? ' · 🔵 oculta/mostra' : ''}</p>
+                                <h2>{t('cat_title')}</h2>
+                                <p>{t('cat_subtitle')}{onToggleHideCategory ? t('cat_hide_hint') : ''}</p>
                             </div>
                             <button className="close-btn" onClick={handleClose}>
                                 X
@@ -260,7 +262,7 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
                                         {!isAll && cat.category_id !== 'FAVORITES' && onToggleHideCategory && (
                                             <span
                                                 className="category-hide-toggle"
-                                                title="Ocultar/mostrar categoria"
+                                                title={t('cat_hide_title')}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     onToggleHideCategory(cat.category_id);

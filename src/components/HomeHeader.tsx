@@ -8,19 +8,16 @@
 //
 // As classes (.home-header etc.) vêm do Home.css, importado pela Home.
 
-import { memo, useEffect, useState } from 'react';
-
-// Formatadores montados UMA vez: toLocale*String com opções constrói um
-// Intl.DateTimeFormat novo a cada chamada. Saída idêntica à de antes.
-const formatoHora = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
-const formatoData = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+import { memo, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from '../hooks/useTranslation';
+import { getLocale } from '../i18n';
 
 /** Saudação pelo horário (como no app original). */
-function saudacao(agora: Date): string {
+function saudacao(agora: Date): 'home_greeting_morning' | 'home_greeting_afternoon' | 'home_greeting_evening' {
     const hora = agora.getHours();
-    if (hora < 12) return 'Bom dia';
-    if (hora < 18) return 'Boa tarde';
-    return 'Boa noite';
+    if (hora < 12) return 'home_greeting_morning';
+    if (hora < 18) return 'home_greeting_afternoon';
+    return 'home_greeting_evening';
 }
 
 /** Milissegundos até o próximo minuto cheio do relógio. */
@@ -29,7 +26,18 @@ function ateOProximoMinuto(agora: Date): number {
 }
 
 export const HomeHeader = memo(function HomeHeader() {
+    const { t } = useTranslation();
     const [agora, setAgora] = useState(() => new Date());
+
+    // Formatadores refeitos quando o idioma muda: toLocale*String com opções
+    // constrói um Intl.DateTimeFormat novo a cada chamada.
+    const { formatoHora, formatoData } = useMemo(() => {
+        const locale = getLocale();
+        return {
+            formatoHora: new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }),
+            formatoData: new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long' }),
+        };
+    }, [t]);
 
     // Tique alinhado à VIRADA do minuto. O setInterval de 60 s contava da
     // montagem: aberta às 10:00:30, a Home mostrava "10:00" até 10:01:30. O
@@ -51,9 +59,9 @@ export const HomeHeader = memo(function HomeHeader() {
             <div className="home-header-left">
                 <div className="home-date">{formatoData.format(agora)}</div>
                 <h1 className="home-greeting">
-                    {saudacao(agora)}! <span className="waving-hand">👋</span>
+                    {t(saudacao(agora))}! <span className="waving-hand">👋</span>
                 </h1>
-                <p className="home-subtitle">O que você quer assistir hoje?</p>
+                <p className="home-subtitle">{t('home_subtitle')}</p>
             </div>
             <div className="home-clock">{formatoHora.format(agora)}</div>
         </header>

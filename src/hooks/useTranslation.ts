@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { translations, type Language, type TranslationKey } from '../i18n';
+import { translations, type Language, type TranslationKey, type TranslationVars } from '../i18n';
 import { storage } from '../services/storage';
 
 export function useTranslation() {
@@ -32,9 +32,13 @@ export function useTranslation() {
         };
     }, []);
 
-    const t = useCallback((key: TranslationKey): string => {
+    const t = useCallback((key: TranslationKey, vars?: TranslationVars): string => {
         // Fallback to Portuguese key if missing in the selected language somehow
-        return translations[currentLang][key] || translations['pt'][key] || key;
+        const template = translations[currentLang][key] || translations['pt'][key] || key;
+        if (!vars) return template;
+        return template.replace(/\{(\w+)\}/g, (m, name) =>
+            name in vars ? String(vars[name]) : m
+        );
     }, [currentLang]);
 
     return { t, currentLang };

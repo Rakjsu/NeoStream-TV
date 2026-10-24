@@ -7,6 +7,7 @@
 
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
+import { useTranslation } from '../hooks/useTranslation';
 import './ErrorScreen.css';
 
 interface ErrorScreenProps {
@@ -21,6 +22,7 @@ interface ErrorScreenProps {
 }
 
 export function ErrorScreen({ icon, title, message, className = '', onRetry }: ErrorScreenProps) {
+    const { t } = useTranslation();
     const { focusZone, setFocusZone } = useFocusZone();
 
     const retry = onRetry ?? (() => window.location.reload());
@@ -47,9 +49,9 @@ export function ErrorScreen({ icon, title, message, className = '', onRetry }: E
                     className={`error-screen-retry ${focusZone === 'content' ? 'tv-focused' : ''}`}
                     onClick={retry}
                 >
-                    🔄 Tentar novamente
+                    {t('errscreen_retry')}
                 </button>
-                <p className="error-screen-hint">OK tenta de novo · ← ou Voltar abre o menu</p>
+                <p className="error-screen-hint">{t('errscreen_hint')}</p>
             </div>
         </div>
     );

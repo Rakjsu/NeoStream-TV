@@ -16,6 +16,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import {
     themeService,
     ACCENTS,
@@ -31,17 +32,17 @@ import './SetupWizard.css';
 
 type StepId = 'fundo' | 'cor' | 'tamanho';
 
-const STEPS: Array<{ id: StepId; title: string; help: string }> = [
-    { id: 'fundo', title: 'Fundo da tela', help: 'AMOLED deixa o preto realmente preto e economiza energia em telas OLED.' },
-    { id: 'cor', title: 'Cor de destaque', help: 'É a cor do foco: o que mostra onde você está na tela.' },
-    { id: 'tamanho', title: 'Tamanho da interface', help: 'Se você assiste de longe ou enxerga pouco, aumente aqui.' },
-];
-
 interface SetupWizardProps {
     onFinish: () => void;
 }
 
 export function SetupWizard({ onFinish }: SetupWizardProps) {
+    const { t } = useTranslation();
+    const STEPS = useMemo<Array<{ id: StepId; title: string; help: string }>>(() => [
+        { id: 'fundo', title: t('wiz_step_bg'), help: t('wiz_step_bg_help') },
+        { id: 'cor', title: t('wiz_step_accent'), help: t('wiz_step_accent_help') },
+        { id: 'tamanho', title: t('wiz_step_size'), help: t('wiz_step_size_help') },
+    ], [t]);
     const [stepIndex, setStepIndex] = useState(0);
     const [background, setBackground] = useState<BackgroundId>(() => themeService.getBackground());
     const [accent, setAccent] = useState<AccentId>(() => themeService.getAccent());
@@ -114,8 +115,8 @@ export function SetupWizard({ onFinish }: SetupWizardProps) {
         <div className="wizard-overlay ns-surface">
             <div className="wizard-panel">
                 <div className="wizard-steps">
-                    <span className="wizard-done">✓ Idioma</span>
-                    <span className="wizard-done">✓ Playlist</span>
+                    <span className="wizard-done">{t('wiz_done_lang')}</span>
+                    <span className="wizard-done">{t('wiz_done_playlist')}</span>
                     {STEPS.map((item, index) => (
                         <span
                             key={item.id}
@@ -144,7 +145,7 @@ export function SetupWizard({ onFinish }: SetupWizardProps) {
                 </div>
 
                 <div className="wizard-footer">
-                    ◀ ▶ escolhe · OK confirma e avança · Voltar {stepIndex === 0 ? 'pula tudo' : 'volta um passo'}
+                    {t('wiz_footer')} {stepIndex === 0 ? t('wiz_skip') : t('wiz_prev')}
                 </div>
             </div>
         </div>

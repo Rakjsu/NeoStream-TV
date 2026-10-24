@@ -3,6 +3,7 @@
 import type { Credentials } from '../types';
 import { scopedKey } from './profileScope';
 import { writeJson, writeRaw, removeKey } from './safeStorage';
+import { tt } from '../i18n';
 
 export interface SavedContentItem {
     id: string;
@@ -37,7 +38,7 @@ const watchLaterKey = () => scopedKey(STORAGE_KEYS.WATCH_LATER);
 const lastChannelKey = () => scopedKey(STORAGE_KEYS.LAST_CHANNEL);
 
 interface Settings {
-    language: 'pt' | 'en' | 'es';
+    language: 'pt' | 'en' | 'es' | 'de';
     autoPlay: boolean;
     preferredQuality: 'auto' | '1080p' | '720p' | '480p';
 }
@@ -81,7 +82,7 @@ class StorageService {
                     ...item,
                     id: String(item.id),
                     type: item.type as SavedContentItem['type'],
-                    title: item.title || 'Sem título',
+                    title: item.title || tt('common_untitled'),
                     addedAt: item.addedAt || 0,
                 }));
         } catch {

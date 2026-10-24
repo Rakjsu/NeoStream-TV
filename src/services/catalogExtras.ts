@@ -5,15 +5,17 @@
 // - detecção de novos episódios de séries seguidas (diff de last_modified)
 // - recomendações por afinidade de categoria (local-first, zero rede)
 
+import { tt } from '../i18n';
+
 export type CatalogSort = 'default' | 'recent' | 'name' | 'rating';
 
 export const SORT_ORDER: CatalogSort[] = ['default', 'recent', 'name', 'rating'];
 
 export const SORT_LABELS: Record<CatalogSort, string> = {
-    default: 'Padrão',
-    recent: 'Recentes',
-    name: 'Nome',
-    rating: 'Nota',
+    get default() { return tt('sort_default'); },
+    get recent() { return tt('sort_recent'); },
+    get name() { return tt('sort_name'); },
+    get rating() { return tt('sort_rating'); },
 };
 
 const SORT_KEY_PREFIX = 'neostream_sort_';

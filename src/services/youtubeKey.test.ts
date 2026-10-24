@@ -5,7 +5,7 @@
 // `youtube_trailer` do Xtream chega em três formatos diferentes.
 
 import { describe, it, expect } from 'vitest';
-import { extrairChaveYoutube } from './trailer';
+import { extrairChaveYoutube } from './youtubeKey';
 
 const CHAVE = 'dQw4w9WgXcQ';
 

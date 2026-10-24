@@ -7,6 +7,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
+import { tt } from '../i18n';
 import { parentalService } from '../services/parentalService';
 import type { TravaVisivel } from '../services/pinLock';
 import './PinPrompt.css';
@@ -61,6 +63,7 @@ interface PinPromptProps {
 }
 
 export function PinPrompt({ title, hint, onSubmit, onCancel, confirmLabel, parental = false, trava: travaRecebida, enabled = true, onForgot }: PinPromptProps) {
+    const { t } = useTranslation();
     const trava = travaRecebida ?? (parental ? TRAVA_PARENTAL : undefined);
     const [pin, setPin] = useState('');
     const [padIndex, setPadIndex] = useState(0);
@@ -91,7 +94,7 @@ export function PinPrompt({ title, hint, onSubmit, onCancel, confirmLabel, paren
         if (ok) return;
         setPin('');
         if (!trava) {
-            setError('PIN incorreto.');
+            setError(t('pin_incorrect'));
             return;
         }
         // A tentativa pode ter sido a que disparou a espera
@@ -103,9 +106,9 @@ export function PinPrompt({ title, hint, onSubmit, onCancel, confirmLabel, paren
         }
         const faltam = trava.tentativasRestantes();
         setError(faltam <= 2
-            ? `PIN incorreto. Mais ${faltam} ${faltam === 1 ? 'tentativa' : 'tentativas'} antes da espera.`
-            : 'PIN incorreto.');
-    }, [onSubmit, checking, trava]);
+            ? (faltam === 1 ? t('pin_incorrect_left_one', { n: faltam }) : t('pin_incorrect_left', { n: faltam }))
+            : t('pin_incorrect'));
+    }, [onSubmit, checking, trava, t]);
 
     const press = useCallback((keyId: string) => {
         if (travado) return; // digitar durante a espera só gasta o controle
@@ -186,7 +189,7 @@ export function PinPrompt({ title, hint, onSubmit, onCancel, confirmLabel, paren
 
                 {travado && (
                     <div className="pin-error">
-                        Muitas tentativas. Tente de novo em {formatarEspera(esperaSeg)}.
+                        {t('pin_locked', { time: formatarEspera(esperaSeg) })}
                     </div>
                 )}
                 {!travado && error && <div className="pin-error">{error}</div>}
@@ -208,13 +211,13 @@ export function PinPrompt({ title, hint, onSubmit, onCancel, confirmLabel, paren
                         className={`pin-forgot ${padIndex === ESQUECI ? 'tv-focused' : ''}`}
                         onClick={onForgot}
                     >
-                        Esqueci o PIN
+                        {t('pin_forgot')}
                     </button>
                 )}
 
                 <div className="pin-footer">
                     {confirmLabel && <span className="pin-confirm-label">{confirmLabel}</span>}
-                    <span>Números do controle também funcionam · Voltar cancela</span>
+                    <span>{t('pin_footer')}</span>
                 </div>
             </div>
         </div>
@@ -235,12 +238,13 @@ interface PinRecoveryProps {
  * CSS, como no Login: o Tizen tem bugs com type="password".
  */
 export function PinRecovery({ onRecovered, onCancel, enabled = true }: PinRecoveryProps) {
+    const { t } = useTranslation();
     const [senha, setSenha] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
     // Quem chega aqui depois de errar o PIN demais já encontra a espera
     const [erro, setErro] = useState(() => {
         const espera = Math.ceil(parentalService.travaRestanteMs() / 1000);
-        return espera > 0 ? `Muitas tentativas. Tente de novo em ${formatarEspera(espera)}.` : '';
+        return espera > 0 ? tt('pin_locked', { time: formatarEspera(espera) }) : '';
     });
 
     const conferir = (valor: string) => {
@@ -251,8 +255,8 @@ export function PinRecovery({ onRecovered, onCancel, enabled = true }: PinRecove
         setSenha('');
         const espera = Math.ceil(parentalService.travaRestanteMs() / 1000);
         setErro(espera > 0
-            ? `Muitas tentativas. Tente de novo em ${formatarEspera(espera)}.`
-            : 'A senha não confere com a da conta.');
+            ? t('pin_locked', { time: formatarEspera(espera) })
+            : t('pin_wrong_password'));
     };
 
     useTVNavigation({
@@ -275,17 +279,16 @@ export function PinRecovery({ onRecovered, onCancel, enabled = true }: PinRecove
     return (
         <div className="pin-overlay">
             <div className="pin-panel">
-                <div className="pin-title">🔑 Esqueci o PIN</div>
+                <div className="pin-title">{t('pin_recovery_title')}</div>
                 <div className="pin-hint">
-                    Digite a senha da sua conta IPTV — a mesma do login. Se ela conferir, o PIN
-                    parental é removido e nada mais é apagado.
+                    {t('pin_recovery_hint')}
                 </div>
 
                 <input
                     ref={inputRef}
                     type="text"
                     className="pin-recover-input tv-focused"
-                    aria-label="Senha da conta IPTV"
+                    aria-label={t('pin_recovery_aria')}
                     value={senha}
                     onChange={(e) => { setSenha(e.target.value); setErro(''); }}
                     tabIndex={-1}
@@ -297,7 +300,7 @@ export function PinRecovery({ onRecovered, onCancel, enabled = true }: PinRecove
                 {erro && <div className="pin-error">{erro}</div>}
 
                 <div className="pin-footer">
-                    <span>OK abre o teclado e confere · Voltar cancela</span>
+                    <span>{t('pin_recovery_footer')}</span>
                 </div>
             </div>
         </div>

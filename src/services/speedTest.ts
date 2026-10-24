@@ -9,6 +9,7 @@
 // medir esse download.
 
 import { api } from './api';
+import { tt } from '../i18n';
 
 const MAX_MS = 8000;
 const MAX_BYTES = 6 * 1024 * 1024;
@@ -71,7 +72,7 @@ export async function measureProviderSpeed(
     options: SpeedTestOptions = {}
 ): Promise<SpeedResult> {
     if (!api.isAuthenticated()) {
-        return { mbps: null, bytes: 0, seconds: 0, error: 'Faça login antes de testar.' };
+        return { mbps: null, bytes: 0, seconds: 0, error: tt('st_login_first') };
     }
 
     const controller = new AbortController();
@@ -94,7 +95,7 @@ export async function measureProviderSpeed(
                 mbps: null,
                 bytes: total,
                 seconds,
-                error: 'Amostra curta demais pra medir. Tente de novo.',
+                error: tt('st_short_sample'),
             };
         }
         return { mbps: (measured * 8) / seconds / 1_000_000, bytes: total, seconds };
@@ -103,15 +104,15 @@ export async function measureProviderSpeed(
     try {
         const segmentUrl = await resolveSegmentUrl(api.getLiveStreamUrl(streamId), controller.signal);
         if (!segmentUrl) {
-            return { mbps: null, bytes: 0, seconds: 0, error: 'Não achei um segmento de vídeo pra medir.' };
+            return { mbps: null, bytes: 0, seconds: 0, error: tt('st_no_segment') };
         }
 
         const response = await fetch(segmentUrl, { signal: controller.signal, cache: 'no-store' });
         if (!response.ok) {
-            return { mbps: null, bytes: 0, seconds: 0, error: `Provedor respondeu ${response.status}.` };
+            return { mbps: null, bytes: 0, seconds: 0, error: tt('st_provider_status', { status: response.status }) };
         }
         if (!response.body) {
-            return { mbps: null, bytes: 0, seconds: 0, error: 'Streaming não suportado neste aparelho.' };
+            return { mbps: null, bytes: 0, seconds: 0, error: tt('st_unsupported') };
         }
 
         const reader = response.body.getReader();
@@ -148,7 +149,7 @@ export async function measureProviderSpeed(
             mbps: null,
             bytes: total,
             seconds: 0,
-            error: aborted ? 'Tempo esgotado — provedor muito lento ou fora do ar.' : message,
+            error: aborted ? tt('speedtest_timeout') : message,
         };
     } finally {
         clearTimeout(deadline);
@@ -161,9 +162,9 @@ export async function measureProviderSpeed(
 
 /** Leitura humana do resultado. */
 export function speedVerdict(mbps: number): string {
-    if (mbps >= 25) return 'Folgado até pra 4K';
-    if (mbps >= 12) return 'Bom pra Full HD';
-    if (mbps >= 6) return 'Dá conta de HD';
-    if (mbps >= 3) return 'Só SD com conforto';
-    return 'Apertado — espere travadas';
+    if (mbps >= 25) return tt('st_verdict_4k');
+    if (mbps >= 12) return tt('st_verdict_fhd');
+    if (mbps >= 6) return tt('st_verdict_hd');
+    if (mbps >= 3) return tt('st_verdict_sd');
+    return tt('st_verdict_bad');
 }

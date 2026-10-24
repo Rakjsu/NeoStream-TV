@@ -2,6 +2,8 @@
 // Tudo em localStorage, sempre com try/catch: numa TV com armazenamento cheio
 // uma exceção aqui derrubaria a reprodução inteira.
 
+import { tt } from '../i18n';
+
 const QUALITY_BY_KEY = 'neostream_quality_by_content';
 const QUALITY_CAP = 'neostream_quality_cap';
 const SUBTITLE_SIZE = 'neostream_subtitle_size';
@@ -75,7 +77,7 @@ export const qualityCap = {
         }
     },
     label(cap: QualityCap): string {
-        return cap === 0 ? 'Sem limite' : `Máx ${cap}p`;
+        return cap === 0 ? tt('quality_no_limit') : tt('quality_max', { cap });
     },
 };
 

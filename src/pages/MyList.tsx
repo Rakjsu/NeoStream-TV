@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { storage, type WatchLaterItem } from '../services/storage';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
 import { useFocusZone } from '../contexts/FocusContext';
 import { kidsFilter } from '../services/kidsFilter';
-import { listsService, NOMES_SUGERIDOS, MAX_LISTAS, type ListaNomeada } from '../services/listsService';
+import { listsService, nomesSugeridos, NOMES_SUGERIDOS, MAX_LISTAS, type ListaNomeada } from '../services/listsService';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
@@ -17,6 +18,7 @@ interface MyListProps {
 }
 
 export function MyList({ onNavigate }: MyListProps) {
+    const { t } = useTranslation();
     const [items, setItems] = useState<WatchLaterItem[]>(() => storage.getWatchLater());
     // Abas: os três filtros de tipo E as listas nomeadas (item 30). É UMA
     // dimensão só — "o que mostrar" —, então cabe numa fileira de abas sem
@@ -238,15 +240,15 @@ export function MyList({ onNavigate }: MyListProps) {
         }
 
         if (criandoLista) {
-            const criada = listsService.create(NOMES_SUGERIDOS[sugestaoIndex]);
+            const criada = listsService.create(nomesSugeridos()[sugestaoIndex]);
             setCriandoLista(false);
             if (!criada) {
-                setAviso('Você já tem o máximo de listas.');
+                setAviso(t('ml_max_lists'));
                 return;
             }
             recarregarListas();
             setActiveTab(`list:${criada.id}`);
-            setAviso(`Lista "${criada.nome}" criada.`);
+            setAviso(t('ml_list_created', { name: criada.nome }));
             return;
         }
         if (addAlvo) {
@@ -255,8 +257,8 @@ export function MyList({ onNavigate }: MyListProps) {
                 const dentro = listsService.toggleItem(destino.id, addAlvo);
                 recarregarListas();
                 setAviso(dentro
-                    ? `Adicionado a "${destino.nome}".`
-                    : `Removido de "${destino.nome}".`);
+                    ? t('ml_added_to', { name: destino.nome })
+                    : t('ml_removed_from', { name: destino.nome }));
             }
             setAddAlvo(null);
             return;
@@ -310,7 +312,7 @@ export function MyList({ onNavigate }: MyListProps) {
                 if (!alvo) return;
                 if (excluirArmado !== id) {
                     setExcluirArmado(id);
-                    setAviso('🔵 de novo apaga a lista "' + alvo.nome + '".');
+                    setAviso(t('ml_blue_armed', { name: alvo.nome }));
                     return;
                 }
                 listsService.remove(id);
@@ -318,7 +320,7 @@ export function MyList({ onNavigate }: MyListProps) {
                 recarregarListas();
                 setActiveTab('all');
                 setFocusedTabIndex(0);
-                setAviso('Lista "' + alvo.nome + '" apagada.');
+                setAviso(t('ml_list_deleted', { name: alvo.nome }));
                 return;
             }
             if (focusArea !== 'items') return;
@@ -330,7 +332,7 @@ export function MyList({ onNavigate }: MyListProps) {
             } else if (action === 'yellow') {
                 // 🟡 adicionar a uma lista nomeada (item 30)
                 if (listas.length === 0) {
-                    setAviso('Crie uma lista primeiro no botão ＋.');
+                    setAviso(t('ml_create_first'));
                     return;
                 }
                 setAddIndex(0);
@@ -351,9 +353,9 @@ export function MyList({ onNavigate }: MyListProps) {
                         <div className="empty-icon">👶</div>
                         <div className="empty-icon-glow" />
                     </div>
-                    <h2 className="empty-title">Indisponível no perfil Kids</h2>
+                    <h2 className="empty-title">{t('common_kids_blocked')}</h2>
                     <p className="empty-text">
-                        Troque para um perfil adulto para acessar esta página.
+                        {t('common_kids_switch')}
                     </p>
                 </div>
             </div>
@@ -372,10 +374,11 @@ export function MyList({ onNavigate }: MyListProps) {
                         <div className="empty-icon">📑</div>
                         <div className="empty-icon-glow" />
                     </div>
-                    <h2 className="empty-title">Sua lista está vazia</h2>
+                    <h2 className="empty-title">{t('ml_empty_title')}</h2>
                     <p className="empty-text">
-                        Adicione filmes e séries para assistir depois clicando em
-                        <strong> "+ Minha Lista"</strong> no modal de detalhes.
+                        {t('ml_empty_text_a')}
+                        <strong>{t('ml_empty_text_b')}</strong>
+                        {t('ml_empty_text_c')}
                     </p>
                     <div className="empty-suggestions">
                         <button
@@ -383,14 +386,14 @@ export function MyList({ onNavigate }: MyListProps) {
                             onClick={() => onNavigate?.('movies')}
                         >
                             <span>🎬</span>
-                            <span>Explorar Filmes</span>
+                            <span>{t('fav_explore_movies')}</span>
                         </button>
                         <button
                             className={`suggestion-btn ${emptyFocusIndex === 1 ? 'tv-focused' : ''}`}
                             onClick={() => onNavigate?.('series')}
                         >
                             <span>📺</span>
-                            <span>Explorar Séries</span>
+                            <span>{t('fav_explore_series')}</span>
                         </button>
                     </div>
                 </div>
@@ -407,11 +410,11 @@ export function MyList({ onNavigate }: MyListProps) {
                 <div className="header-title">
                     <div className="title-icon">📑</div>
                     <div>
-                        <h1>Minha Lista</h1>
+                        <h1>{t('ml_title')}</h1>
                         <p className="subtitle">
                             {listaAtiva
-                                ? `${listaAtiva.itens.length} em “${listaAtiva.nome}”`
-                                : `${items.length} itens para assistir`}
+                                ? t('ml_in_list', { n: listaAtiva.itens.length, name: listaAtiva.nome })
+                                : t('ml_count', { n: items.length })}
                         </p>
                     </div>
                 </div>
@@ -421,7 +424,7 @@ export function MyList({ onNavigate }: MyListProps) {
                         onClick={clearAll}
                     >
                         <span>🗑️</span>
-                        <span>{clearArmed ? 'OK de novo apaga' : 'Limpar Tudo'}</span>
+                        <span>{clearArmed ? t('fav_clear_armed') : t('fav_clear_all')}</span>
                     </button>
                 )}
             </header>
@@ -432,21 +435,21 @@ export function MyList({ onNavigate }: MyListProps) {
                     className={`tab ${activeTab === 'all' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 0 ? 'tv-focused' : ''}`}
                     onClick={() => setActiveTab('all')}
                 >
-                    <span>Todos</span>
+                    <span>{t('common_all')}</span>
                     <span className="tab-count">{items.length}</span>
                 </button>
                 <button
                     className={`tab ${activeTab === 'movies' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 1 ? 'tv-focused' : ''}`}
                     onClick={() => setActiveTab('movies')}
                 >
-                    <span>🎬 Filmes</span>
+                    <span>🎬 {t('common_movies')}</span>
                     <span className="tab-count">{movies.length}</span>
                 </button>
                 <button
                     className={`tab ${activeTab === 'series' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 2 ? 'tv-focused' : ''}`}
                     onClick={() => setActiveTab('series')}
                 >
-                    <span>📺 Séries</span>
+                    <span>📺 {t('common_series')}</span>
                     <span className="tab-count">{series.length}</span>
                 </button>
 
@@ -469,7 +472,7 @@ export function MyList({ onNavigate }: MyListProps) {
                         className={`tab ${focusArea === 'tabs' && tabs[focusedTabIndex] === 'new' ? 'tv-focused' : ''}`}
                         onClick={() => { setSugestaoIndex(0); setCriandoLista(true); }}
                     >
-                        <span>＋ Nova lista</span>
+                        <span>＋ {t('ml_new_list')}</span>
                     </button>
                 )}
             </div>
@@ -481,10 +484,10 @@ export function MyList({ onNavigate }: MyListProps) {
             {criandoLista && (
                 <div className="mylist-overlay">
                     <div className="mylist-overlay-painel">
-                        <h2 className="mylist-overlay-titulo">Nova lista</h2>
-                        <p className="mylist-overlay-dica">← → escolhe · OK cria · Voltar cancela</p>
+                        <h2 className="mylist-overlay-titulo">{t('ml_new_list')}</h2>
+                        <p className="mylist-overlay-dica">{t('ml_new_hint')}</p>
                         <div className="mylist-sugestoes">
-                            {NOMES_SUGERIDOS.map((nome, index) => (
+                            {nomesSugeridos().map((nome, index) => (
                                 <button
                                     key={nome}
                                     className={`mylist-sugestao ${index === sugestaoIndex ? 'tv-focused' : ''}`}
@@ -502,8 +505,8 @@ export function MyList({ onNavigate }: MyListProps) {
             {addAlvo && (
                 <div className="mylist-overlay">
                     <div className="mylist-overlay-painel">
-                        <h2 className="mylist-overlay-titulo">Adicionar “{addAlvo.title}” a…</h2>
-                        <p className="mylist-overlay-dica">↑ ↓ escolhe · OK liga/desliga · Voltar cancela</p>
+                        <h2 className="mylist-overlay-titulo">{t('ml_add_title', { title: addAlvo.title })}</h2>
+                        <p className="mylist-overlay-dica">{t('ml_add_hint')}</p>
                         <div className="mylist-destinos" ref={destinosRef}>
                             {listas.map((lista, index) => (
                                 <button
@@ -579,12 +582,12 @@ export function MyList({ onNavigate }: MyListProps) {
 
             {/* Footer Hints */}
             <div className="mylist-hints">
-                <span>↑↓←→ Navegar</span>
-                <span>OK Selecionar</span>
-                <span className="hint-red">🔴 Remover</span>
-                <span className="hint-yellow">🟡 Adicionar a uma lista</span>
-                <span className="hint-blue">🔵 Apagar lista</span>
-                <span>← Voltar</span>
+                <span>{t('hint_nav4')}</span>
+                <span>{t('hint_ok_select')}</span>
+                <span className="hint-red">{t('fav_hint_remove')}</span>
+                <span className="hint-yellow">{t('ml_hint_add')}</span>
+                <span className="hint-blue">{t('ml_hint_delete')}</span>
+                <span>{t('hint_back')}</span>
             </div>
 
             {/* Content Detail Modal */}

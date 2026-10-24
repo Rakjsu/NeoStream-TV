@@ -3,6 +3,7 @@
 // Series, MyList, Favorites e Home (continuar assistindo).
 
 import { api } from './api';
+import { tt } from '../i18n';
 
 export interface QueueEpisode {
     id: string;
@@ -57,8 +58,8 @@ export async function buildEpisodeQueue(
 // console — e a TV não tem console: a ficha fechava (Séries) ou ficava imóvel
 // (Home, Minha Lista, Favoritos, busca) sem uma palavra. Quem chama recebe a
 // fila OU a frase que tem de ir pra tela; não há terceiro caminho mudo.
-const AVISO_SERIE_SEM_EPISODIOS = 'Esta série está sem episódios no provedor agora. Tente mais tarde.';
-const AVISO_SERIE_FALHOU = 'Não deu para carregar os episódios. Confira a conexão e tente de novo.';
+const AVISO_SERIE_SEM_EPISODIOS = () => tt('series_no_episodes');
+const AVISO_SERIE_FALHOU = () => tt('series_load_failed');
 /** Quanto tempo o aviso fica na tela — a três metros, uma frase inteira. */
 export const DURACAO_DO_AVISO_DE_SERIE_MS = 5000;
 
@@ -75,10 +76,10 @@ export async function montarFilaOuAviso(
 ): Promise<FilaOuAviso> {
     try {
         const fila = await buildEpisodeQueue(seriesId, seriesName, poster, season, episode);
-        return fila ? { fila, aviso: null } : { fila: null, aviso: AVISO_SERIE_SEM_EPISODIOS };
+        return fila ? { fila, aviso: null } : { fila: null, aviso: AVISO_SERIE_SEM_EPISODIOS() };
     } catch (err) {
         console.error('Erro ao montar a fila de episódios:', err);
-        return { fila: null, aviso: AVISO_SERIE_FALHOU };
+        return { fila: null, aviso: AVISO_SERIE_FALHOU() };
     }
 }
 

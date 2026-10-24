@@ -60,13 +60,29 @@
     // do diagnostico. Sem esta trava, QUALQUER rejeicao solta (ex.: AbortError
     // de um play()) cobre um app que esta funcionando com a tela de erro do
     // boot — que nao tem zona de foco e nao sai com tecla nenhuma.
+    // Textos da tela de boot por idioma: esta tela aparece ANTES do bundle,
+    // então não dá pra usar o i18n do app — lê o mesmo localStorage.
+    var __BOOT_I18N__ = {
+      pt: { loading: 'Carregando NeoStream', preparing: 'Preparando o app para a TV...', errTitle: 'Erro ao carregar NeoStream' },
+      en: { loading: 'Loading NeoStream', preparing: 'Preparing the app for TV...', errTitle: 'Failed to load NeoStream' },
+      es: { loading: 'Cargando NeoStream', preparing: 'Preparando la app para la TV...', errTitle: 'Error al cargar NeoStream' },
+      de: { loading: 'NeoStream wird geladen', preparing: 'App wird für den TV vorbereitet...', errTitle: 'NeoStream konnte nicht geladen werden' }
+    };
+    window.__BOOT_TXT__ = __BOOT_I18N__.pt;
+    try {
+      var __cfg = JSON.parse(localStorage.getItem('neostream_settings') || '{}');
+      if (__cfg.language && __BOOT_I18N__[__cfg.language]) {
+        window.__BOOT_TXT__ = __BOOT_I18N__[__cfg.language];
+      }
+    } catch (e) { /* sem settings: fica em pt */ }
+
     window.__NEOSTREAM_BOOTED__ = false;
     window.__NEOSTREAM_BOOT_ERROR__ = function (message) {
       if (window.__NEOSTREAM_BOOTED__) return;
       var boot = document.getElementById('boot-status');
       if (!boot) return;
       boot.className = '';
-      boot.innerHTML = '<div><strong>Erro ao carregar NeoStream</strong><span>' + message + '</span></div>';
+      boot.innerHTML = '<div><strong>' + window.__BOOT_TXT__.errTitle + '</strong><span>' + message + '</span></div>';
     };
 
     // Chamado por quem SABE que renderizou (src/main.tsx, num efeito depois
@@ -99,12 +115,18 @@
 <body>
   <div id="boot-status">
     <div>
-      <strong>Carregando NeoStream</strong>
-      <span>Preparando o app para a TV...</span>
+      <strong id="boot-title">Carregando NeoStream</strong>
+      <span id="boot-sub">Preparando o app para a TV...</span>
     </div>
   </div>
   <div id="root"></div>
   <script>
+    // Aplica o idioma salvo na tela de boot (mesma leitura do script do <head>)
+    var __bt = document.getElementById('boot-title');
+    if (__bt) __bt.textContent = window.__BOOT_TXT__.loading;
+    var __bs = document.getElementById('boot-sub');
+    if (__bs) __bs.textContent = window.__BOOT_TXT__.preparing;
+
     var version = new Date().getTime();
     var css = document.createElement('link');
     css.rel = 'stylesheet';
